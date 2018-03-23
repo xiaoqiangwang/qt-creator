@@ -8,15 +8,10 @@ SUBDIRS   += \
     utils \
     languageutils \
     cplusplus \
-    modelinglib \
     qmljs \
     qmldebug \
     qmleditorwidgets \
-    glsl \
-    ssh \
-    clangsupport \
-    languageserverprotocol \
-    sqlite
+    ssh
 
 qtHaveModule(quick) {
     SUBDIRS += \
