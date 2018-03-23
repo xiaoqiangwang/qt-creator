@@ -3,77 +3,18 @@ include(../../qtcreator.pri)
 TEMPLATE  = subdirs
 
 SUBDIRS   = \
-    autotest \
-    clangstaticanalyzer \
     coreplugin \
     texteditor \
-    cppeditor \
-    bineditor \
     diffeditor \
-    imageviewer \
-    bookmarks \
     projectexplorer \
     vcsbase \
-    perforce \
-    subversion \
     git \
-    cvs \
-    cpptools \
     qtsupport \
+    cpptools \
     qmakeprojectmanager \
-    debugger \
-    cpaster \
-    cmakeprojectmanager \
-    autotoolsprojectmanager \
-    fakevim \
-    emacskeys \
     resourceeditor \
-    genericprojectmanager \
     qmljseditor \
-    qmlprojectmanager \
-    glsleditor \
-    pythoneditor \
-    nim \
-    mercurial \
-    bazaar \
-    classview \
-    tasklist \
-    qmljstools \
-    macros \
-    remotelinux \
-    android \
-    valgrind \
-    todo \
-    qnx \
-    clearcase \
-    baremetal \
-    ios \
-    beautifier \
-    modeleditor \
-    qmakeandroidsupport \
-    winrt \
-    updateinfo \
-    scxmleditor \
-    welcome \
-    silversearcher
-
-qtHaveModule(quick) {
-    SUBDIRS += qmlprofiler
-} else {
-    warning("QmlProfiler plugin has been disabled since the Qt Quick module is not available.")
-}
-
-qtHaveModule(help) {
-    SUBDIRS += help
-} else {
-    warning("Help plugin has been disabled since the Qt Help module is not available.")
-}
-
-qtHaveModule(designercomponents_private) {
-    SUBDIRS += designer
-} else {
-    warning("Qt Widget Designer plugin has been disabled since the Qt Designer module is not available.")
-}
+    qmljstools
 
 DO_NOT_BUILD_QMLDESIGNER = $$(DO_NOT_BUILD_QMLDESIGNER)
 isEmpty(DO_NOT_BUILD_QMLDESIGNER):qtHaveModule(quick-private) {
@@ -90,41 +31,9 @@ isEmpty(DO_NOT_BUILD_QMLDESIGNER):qtHaveModule(quick-private) {
     }
 }
 
-
-isEmpty(QBS_INSTALL_DIR): QBS_INSTALL_DIR = $$(QBS_INSTALL_DIR)
-exists(../shared/qbs/qbs.pro)|!isEmpty(QBS_INSTALL_DIR): \
-    SUBDIRS += \
-        qbsprojectmanager
-
-# prefer qmake variable set on command line over env var
-isEmpty(LLVM_INSTALL_DIR):LLVM_INSTALL_DIR=$$(LLVM_INSTALL_DIR)
-exists($$LLVM_INSTALL_DIR) {
-    SUBDIRS += clangcodemodel
-
-    QTC_NO_CLANG_LIBTOOLING=$$(QTC_NO_CLANG_LIBTOOLING)
-    isEmpty(QTC_NO_CLANG_LIBTOOLING) {
-        SUBDIRS += clangrefactoring
-        SUBDIRS += clangpchmanager
-    } else {
-        warning("Building the Clang refactoring and the pch manager plugins are disabled.")
-    }
-} else {
-    warning("Set LLVM_INSTALL_DIR to build the Clang Code Model. " \
-            "For details, see doc/src/editors/creator-clang-codemodel.qdoc.")
-}
-
-isEmpty(IDE_PACKAGE_MODE) {
-    SUBDIRS += \
-        helloworld
-}
-
 for(p, SUBDIRS) {
     QTC_PLUGIN_DEPENDS =
     include($$p/$${p}_dependencies.pri)
     pv = $${p}.depends
     $$pv = $$QTC_PLUGIN_DEPENDS
-}
-
-linux-* {
-     SUBDIRS += debugger/ptracepreload.pro
 }
