@@ -34,6 +34,16 @@
 
 namespace Utils {
 
+template <typename String>
+using enable_if_has_char_data_pointer = typename std::enable_if_t<
+                                            std::is_same<
+                                                std::remove_const_t<
+                                                    std::remove_pointer_t<
+                                                        decltype(std::declval<const String>().data())
+                                                        >
+                                                    >, char>::value
+                                            , int>;
+
 class SmallStringView
 {
 public:
@@ -67,7 +77,15 @@ public:
     {
     }
 
-    SmallStringView(const std::string &string) noexcept
+    SmallStringView(const const_iterator begin, const const_iterator end) noexcept
+        : m_pointer(begin.data()),
+          m_size(std::size_t(end - begin))
+    {
+    }
+
+    template<typename String,
+             typename Utils::enable_if_has_char_data_pointer<String> = 0>
+    SmallStringView(const String &string) noexcept
         : m_pointer(string.data()),
           m_size(string.size())
     {
@@ -101,6 +119,18 @@ public:
     size_type empty() const noexcept
     {
         return m_size == 0;
+    }
+
+    constexpr
+    SmallStringView mid(size_type position) const noexcept
+    {
+        return SmallStringView(data() + position, size() - position);
+    }
+
+    constexpr
+    SmallStringView mid(size_type position, size_type length) const noexcept
+    {
+        return SmallStringView(data() + position, length);
     }
 
     constexpr
@@ -193,15 +223,16 @@ inline
 int reverse_memcmp(const char *first, const char *second, size_t n)
 {
 
-    const char *currentFirst = first + n;
-    const char *currentSecond = second + n;
+    const char *currentFirst = first + n - 1;
+    const char *currentSecond = second + n - 1;
 
     while (n > 0)
     {
         // If the current characters differ, return an appropriately signed
         // value; otherwise, keep searching backwards
-        if (*currentFirst != *currentSecond)
-            return *currentFirst - *currentSecond;
+        int difference = *currentFirst - *currentSecond;
+        if (difference != 0)
+            return difference;
 
         --currentFirst;
         --currentSecond;

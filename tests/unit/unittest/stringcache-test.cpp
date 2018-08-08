@@ -25,6 +25,9 @@
 
 #include "googletest.h"
 
+#include "mockmutex.h"
+#include "mockfilepathstorage.h"
+
 #include <stringcache.h>
 
 #include <utils/smallstringio.h>
@@ -38,8 +41,16 @@ using uint64 = unsigned long long;
 using Utils::compare;
 using Utils::reverseCompare;
 using ClangBackEnd::findInSorted;
+using StorageIdFunction = std::function<int(Utils::SmallStringView)>;
+using StorageStringFunction = std::function<Utils::PathString(int)>;
 
-using CacheEntries = ClangBackEnd::FileCacheCacheEntries;
+using Cache = ClangBackEnd::StringCache<Utils::PathString,
+                                        Utils::SmallStringView,
+                                        int,
+                                        NiceMock<MockMutex>,
+                                        decltype(&Utils::reverseCompare),
+                                        Utils::reverseCompare>;
+using CacheEntries = Cache::CacheEntries;
 
 class StringCache : public testing::Test
 {
@@ -47,7 +58,15 @@ protected:
     void SetUp();
 
 protected:
-    ClangBackEnd::FilePathCache<> cache;
+    NiceMock<MockFilePathStorage> mockStorage;
+    StorageIdFunction mockStorageFetchDirectyId = [&] (Utils::SmallStringView string) {
+        return mockStorage.fetchDirectoryId(string);
+    };
+    StorageStringFunction mockStorageFetchDirectyPath = [&] (int id) {
+        return mockStorage.fetchDirectoryPath(id);
+    };
+    Cache cache;
+    NiceMock<MockMutex> &mockMutex = cache.mutex();
     Utils::PathString filePath1{"/file/pathOne"};
     Utils::PathString filePath2{"/file/pathTwo"};
     Utils::PathString filePath3{"/file/pathThree"};
@@ -311,11 +330,185 @@ TEST_F(StringCache, FindInSortedFifeReverse)
     ASSERT_TRUE(found.wasFound);
 }
 
+TEST_F(StringCache, StringIdIsReadAndWriteLockedForUnknownEntry)
+{
+    InSequence s;
+
+    EXPECT_CALL(mockMutex, lock_shared());
+    EXPECT_CALL(mockMutex, unlock_shared());
+    EXPECT_CALL(mockMutex, lock());
+    EXPECT_CALL(mockMutex, unlock());
+
+    cache.stringId("foo");
+}
+
+TEST_F(StringCache, StringIdWithStorageFunctionIsReadAndWriteLockedForUnknownEntry)
+{
+    InSequence s;
+
+    EXPECT_CALL(mockMutex, lock_shared());
+    EXPECT_CALL(mockMutex, unlock_shared());
+    EXPECT_CALL(mockMutex, lock());
+    EXPECT_CALL(mockStorage, fetchDirectoryId(Eq("foo")));
+    EXPECT_CALL(mockMutex, unlock());
+
+    cache.stringId("foo", mockStorageFetchDirectyId);
+}
+
+TEST_F(StringCache, StringIdWithStorageFunctionIsReadLockedForKnownEntry)
+{
+    InSequence s;
+    cache.stringId("foo", mockStorageFetchDirectyId);
+
+    EXPECT_CALL(mockMutex, lock_shared());
+    EXPECT_CALL(mockMutex, unlock_shared());
+    EXPECT_CALL(mockMutex, lock()).Times(0);
+    EXPECT_CALL(mockStorage, fetchDirectoryId(Eq("foo"))).Times(0);
+    EXPECT_CALL(mockMutex, unlock()).Times(0);
+
+    cache.stringId("foo", mockStorageFetchDirectyId);
+}
+
+TEST_F(StringCache, StringIdIsReadLockedForKnownEntry)
+{
+    cache.stringId("foo");
+
+    EXPECT_CALL(mockMutex, lock_shared());
+    EXPECT_CALL(mockMutex, unlock_shared());
+    EXPECT_CALL(mockMutex, lock()).Times(0);
+    EXPECT_CALL(mockMutex, unlock()).Times(0);
+
+    cache.stringId("foo");
+}
+
+TEST_F(StringCache, StringIdsIsLocked)
+{
+    EXPECT_CALL(mockMutex, lock_shared());
+    EXPECT_CALL(mockMutex, unlock_shared());
+
+    cache.stringIds({"foo"});
+}
+
+TEST_F(StringCache, StringIsLocked)
+{
+    auto id = cache.stringId("foo");
+
+    EXPECT_CALL(mockMutex, lock_shared());
+    EXPECT_CALL(mockMutex, unlock_shared());
+
+    cache.string(id);
+}
+
+TEST_F(StringCache, StringsIsLocked)
+{
+    auto ids = cache.stringIds({"foo", "bar"});
+
+    EXPECT_CALL(mockMutex, lock_shared());
+    EXPECT_CALL(mockMutex, unlock_shared());
+
+    cache.strings(ids);
+}
+
+TEST_F(StringCache, StringWithStorageFunctionIsReadAndWriteLockedForUnknownId)
+{
+    InSequence s;
+
+    EXPECT_CALL(mockMutex, lock_shared());
+    EXPECT_CALL(mockMutex, unlock_shared());
+    EXPECT_CALL(mockMutex, lock());
+    EXPECT_CALL(mockStorage, fetchDirectoryPath(Eq(41)));
+    EXPECT_CALL(mockMutex, unlock());
+
+    cache.string(41, mockStorageFetchDirectyPath);
+}
+
+TEST_F(StringCache, StringWithStorageFunctionIsReadLockedForKnownId)
+{
+    InSequence s;
+    cache.string(41, mockStorageFetchDirectyPath);
+
+    EXPECT_CALL(mockMutex, lock_shared());
+    EXPECT_CALL(mockMutex, unlock_shared());
+    EXPECT_CALL(mockMutex, lock()).Times(0);
+    EXPECT_CALL(mockStorage, fetchDirectoryPath(Eq(41))).Times(0);
+    EXPECT_CALL(mockMutex, unlock()).Times(0);
+
+    cache.string(41, mockStorageFetchDirectyPath);
+}
+
+TEST_F(StringCache, StringIdWithStorageFunctionWhichHasNoEntryIsCallingStorageFunction)
+{
+    EXPECT_CALL(mockStorage, fetchDirectoryId(Eq("foo")));
+
+    cache.stringId("foo", mockStorageFetchDirectyId);
+}
+
+TEST_F(StringCache, StringIdWithStorageFunctionWhichHasEntryIsNotCallingStorageFunction)
+{
+    cache.stringId("foo", mockStorageFetchDirectyId);
+
+    EXPECT_CALL(mockStorage, fetchDirectoryId(Eq("foo"))).Times(0);
+
+    cache.stringId("foo", mockStorageFetchDirectyId);
+}
+
+TEST_F(StringCache, IndexOfStringIdWithStorageFunctionWhichHasEntry)
+{
+    cache.stringId("foo", mockStorageFetchDirectyId);
+
+    auto index = cache.stringId("foo", mockStorageFetchDirectyId);
+
+    ASSERT_THAT(index, 42);
+}
+
+TEST_F(StringCache, IndexOfStringIdWithStorageFunctionWhichHasNoEntry)
+{
+    auto index = cache.stringId("foo", mockStorageFetchDirectyId);
+
+    ASSERT_THAT(index, 42);
+}
+
+TEST_F(StringCache, GetEntryByIndexAfterInsertingByCustomIndex)
+{
+    auto index = cache.stringId("foo", mockStorageFetchDirectyId);
+
+    auto string = cache.string(index, mockStorageFetchDirectyPath);
+
+    ASSERT_THAT(string, Eq("foo"));
+}
+
+TEST_F(StringCache, CallFetchDirectoryPathForLowerIndex)
+{
+    auto index = cache.stringId("foo", mockStorageFetchDirectyId);
+
+    EXPECT_CALL(mockStorage, fetchDirectoryPath(Eq(index - 1)));
+
+    cache.string(index - 1, mockStorageFetchDirectyPath);
+}
+
+TEST_F(StringCache, CallFetchDirectoryPathForUnknownIndex)
+{
+    EXPECT_CALL(mockStorage, fetchDirectoryPath(Eq(0)));
+
+    cache.string(0, mockStorageFetchDirectyPath);
+}
+
+TEST_F(StringCache, FetchDirectoryPathForUnknownIndex)
+{
+    auto string = cache.string(41, mockStorageFetchDirectyPath);
+
+    ASSERT_THAT(string, Eq("bar"));
+}
 
 void StringCache::SetUp()
 {
     std::sort(filePaths.begin(), filePaths.end(), [] (auto &f, auto &l) { return compare(f, l) < 0;});
     std::sort(reverseFilePaths.begin(), reverseFilePaths.end(), [] (auto &f, auto &l) { return reverseCompare(f, l) < 0;});
+
+    ON_CALL(mockStorage, fetchDirectoryId(Eq("foo")))
+            .WillByDefault(Return(42));
+    ON_CALL(mockStorage, fetchDirectoryPath(41))
+            .WillByDefault(Return(Utils::PathString("bar")));
 }
 }
 

@@ -25,9 +25,10 @@
 
 #pragma once
 
-#include "stringcache.h"
-
 #include <collectincludespreprocessorcallbacks.h>
+
+#include <filepathcachingfwd.h>
+#include <filepathid.h>
 
 #include <clang/Frontend/FrontendActions.h>
 #include <clang/Frontend/CompilerInstance.h>
@@ -38,31 +39,35 @@ namespace ClangBackEnd {
 class CollectIncludesAction final : public clang::PreprocessOnlyAction
 {
 public:
-    CollectIncludesAction(FilePathIndices &includeIds,
-                          FilePathCache<> &filePathCache,
-                          FilePathIndices &excludedIncludeUID,
-                          FilePathIndices &alreadyIncludedFileUIDs)
+    CollectIncludesAction(FilePathIds &includeIds,
+                          FilePathIds &topIncludeIds,
+                          FilePathCachingInterface &filePathCache,
+                          std::vector<uint> &excludedIncludeUID,
+                          std::vector<uint> &alreadyIncludedFileUIDs)
         : m_includeIds(includeIds),
+          m_topIncludeIds(topIncludeIds),
           m_filePathCache(filePathCache),
           m_excludedIncludeUID(excludedIncludeUID),
           m_alreadyIncludedFileUIDs(alreadyIncludedFileUIDs)
     {
     }
 
-    bool BeginSourceFileAction(clang::CompilerInstance &compilerInstance,
-                               llvm::StringRef filename) override
+    bool BeginSourceFileAction(clang::CompilerInstance &compilerInstance) override
     {
-      if (clang::PreprocessOnlyAction::BeginSourceFileAction(compilerInstance, filename)) {
+      if (clang::PreprocessOnlyAction::BeginSourceFileAction(compilerInstance)) {
           auto &preprocessor = compilerInstance.getPreprocessor();
           auto &headerSearch = preprocessor.getHeaderSearchInfo();
 
           preprocessor.SetSuppressIncludeNotFoundError(true);
 
-          auto macroPreprocessorCallbacks = new CollectIncludesPreprocessorCallbacks(headerSearch,
-                                                                                     m_includeIds,
-                                                                                     m_filePathCache,
-                                                                                     m_excludedIncludeUID,
-                                                                                     m_alreadyIncludedFileUIDs);
+          auto macroPreprocessorCallbacks = new CollectIncludesPreprocessorCallbacks(
+                      headerSearch,
+                      m_includeIds,
+                      m_topIncludeIds,
+                      m_filePathCache,
+                      m_excludedIncludeUID,
+                      m_alreadyIncludedFileUIDs,
+                      compilerInstance.getSourceManager());
 
           preprocessor.addPPCallbacks(std::unique_ptr<clang::PPCallbacks>(macroPreprocessorCallbacks));
 
@@ -78,10 +83,11 @@ public:
     }
 
 private:
-    FilePathIndices &m_includeIds;
-    FilePathCache<> &m_filePathCache;
-    FilePathIndices &m_excludedIncludeUID;
-    FilePathIndices &m_alreadyIncludedFileUIDs;
+    FilePathIds &m_includeIds;
+    FilePathIds &m_topIncludeIds;
+    FilePathCachingInterface &m_filePathCache;
+    std::vector<uint> &m_excludedIncludeUID;
+    std::vector<uint> &m_alreadyIncludedFileUIDs;
 };
 
 } // namespace ClangBackEnd

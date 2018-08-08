@@ -60,9 +60,18 @@ public:
         return operation == other.operation && name == other.name && value == other.value;
     }
 
+    bool operator!=(const EnvironmentItem &other) const
+    {
+        return !(*this == other);
+    }
+
     static void sort(QList<EnvironmentItem> *list);
     static QList<EnvironmentItem> fromStringList(const QStringList &list);
     static QStringList toStringList(const QList<EnvironmentItem> &list);
+    static QList<EnvironmentItem> itemsFromVariantList(const QVariantList &list);
+    static QVariantList toVariantList(const QList<EnvironmentItem> &list);
+    static EnvironmentItem itemFromVariantList(const QVariantList &list);
+    static QVariantList toVariantList(const EnvironmentItem &item);
 
 private:
     void apply(Environment *e, Operation op) const;
@@ -91,6 +100,7 @@ public:
     /// Return the Environment changes necessary to modify this into the other environment.
     QList<EnvironmentItem> diff(const Environment &other, bool checkAppendPrepend = false) const;
     bool hasKey(const QString &key) const;
+    OsType osType() const;
 
     QString userName() const;
 
@@ -101,6 +111,7 @@ public:
     void prependOrSetPath(const QString &value);
 
     void prependOrSetLibrarySearchPath(const QString &value);
+    void prependOrSetLibrarySearchPaths(const QStringList &values);
 
     void clear();
     int size() const;
@@ -112,12 +123,12 @@ public:
     Environment::const_iterator constEnd() const;
     Environment::const_iterator constFind(const QString &name) const;
 
-    using PathFilter = std::function<bool(const QString &)>;
+    using PathFilter = std::function<bool(const FileName &)>;
     FileName searchInPath(const QString &executable,
-                          const QStringList &additionalDirs = QStringList(),
+                          const FileNameList &additionalDirs = FileNameList(),
                           const PathFilter &func = PathFilter()) const;
 
-    QStringList path() const;
+    FileNameList path() const;
     QStringList appendExeExtensions(const QString &executable) const;
 
     bool isSameExecutable(const QString &exe1, const QString &exe2) const;
@@ -129,8 +140,8 @@ public:
     bool operator==(const Environment &other) const;
 
 private:
-    FileName searchInDirectory(const QStringList &execs, QString directory,
-                               QSet<QString> &alreadyChecked) const;
+    FileName searchInDirectory(const QStringList &execs, const FileName &directory,
+                               QSet<FileName> &alreadyChecked) const;
     QMap<QString, QString> m_values;
     OsType m_osType;
 };

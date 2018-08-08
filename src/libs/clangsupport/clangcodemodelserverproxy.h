@@ -24,9 +24,9 @@
 ****************************************************************************/
 
 #pragma once
+
+#include "baseserverproxy.h"
 #include "clangcodemodelserverinterface.h"
-#include "readmessageblock.h"
-#include "writemessageblock.h"
 
 #include <QtGlobal>
 #include <QTimer>
@@ -42,35 +42,30 @@ QT_END_NAMESPACE
 
 namespace ClangBackEnd {
 
-class CLANGSUPPORT_EXPORT ClangCodeModelServerProxy : public ClangCodeModelServerInterface
+class CLANGSUPPORT_EXPORT ClangCodeModelServerProxy : public BaseServerProxy,
+                                                      public ClangCodeModelServerInterface
 {
 public:
     ClangCodeModelServerProxy(ClangCodeModelClientInterface *client, QIODevice *ioDevice);
-    ClangCodeModelServerProxy(const ClangCodeModelServerProxy&) = delete;
-    ClangCodeModelServerProxy &operator=(const ClangCodeModelServerProxy&) = delete;
 
     void end() override;
-    void registerTranslationUnitsForEditor(const RegisterTranslationUnitForEditorMessage &message) override;
-    void updateTranslationUnitsForEditor(const UpdateTranslationUnitsForEditorMessage &message) override;
-    void unregisterTranslationUnitsForEditor(const UnregisterTranslationUnitsForEditorMessage &message) override;
-    void registerProjectPartsForEditor(const RegisterProjectPartsForEditorMessage &message) override;
-    void unregisterProjectPartsForEditor(const UnregisterProjectPartsForEditorMessage &message) override;
-    void registerUnsavedFilesForEditor(const RegisterUnsavedFilesForEditorMessage &message) override;
-    void unregisterUnsavedFilesForEditor(const UnregisterUnsavedFilesForEditorMessage &message) override;
-    void completeCode(const CompleteCodeMessage &message) override;
-    void requestDocumentAnnotations(const RequestDocumentAnnotationsMessage &message) override;
+
+    void documentsOpened(const DocumentsOpenedMessage &message) override;
+    void documentsChanged(const DocumentsChangedMessage &message) override;
+    void documentsClosed(const DocumentsClosedMessage &message) override;
+    void documentVisibilityChanged(const DocumentVisibilityChangedMessage &message) override;
+
+    void projectPartsUpdated(const ProjectPartsUpdatedMessage &message) override;
+    void projectPartsRemoved(const ProjectPartsRemovedMessage &message) override;
+
+    void unsavedFilesUpdated(const UnsavedFilesUpdatedMessage &message) override;
+    void unsavedFilesRemoved(const UnsavedFilesRemovedMessage &message) override;
+
+    void requestCompletions(const RequestCompletionsMessage &message) override;
+    void requestAnnotations(const RequestAnnotationsMessage &message) override;
     void requestReferences(const RequestReferencesMessage &message) override;
     void requestFollowSymbol(const RequestFollowSymbolMessage &message) override;
-    void updateVisibleTranslationUnits(const UpdateVisibleTranslationUnitsMessage &message) override;
-
-    void readMessages();
-
-    void resetCounter();
-
-private:
-    ClangBackEnd::WriteMessageBlock m_writeMessageBlock;
-    ClangBackEnd::ReadMessageBlock m_readMessageBlock;
-    ClangCodeModelClientInterface *m_client;
+    void requestToolTip(const RequestToolTipMessage &message) override;
 };
 
 } // namespace ClangBackEnd

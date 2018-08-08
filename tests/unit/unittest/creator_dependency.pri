@@ -14,12 +14,12 @@ include($$PWD/../../../src/plugins/clangrefactoring/clangrefactoring-source.pri)
 include($$PWD/../../../src/plugins/clangpchmanager/clangpchmanager-source.pri)
 include($$PWD/../../../src/plugins/cpptools/cpptoolsunittestfiles.pri)
 include(cplusplus.pri)
-!isEmpty(LLVM_INSTALL_DIR) {
+!isEmpty(LLVM_VERSION) {
 include($$PWD/../../../src/shared/clang/clang_defines.pri)
 include($$PWD/../../../src/tools/clangbackend/source/clangbackendclangipc-source.pri)
 include($$PWD/../../../src/plugins/clangcodemodel/clangcodemodelunittestfiles.pri)
 } else {
-DEFINES += CLANG_VERSION=\\\"3.9.1\\\"
+DEFINES += CLANG_VERSION=\\\"6.0.0\\\"
 DEFINES += "\"CLANG_RESOURCE_DIR=\\\"/usr/include\\\"\""
 }
 

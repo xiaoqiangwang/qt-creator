@@ -23,11 +23,12 @@
 **
 ****************************************************************************/
 
-#include "locator.h"
 #include "locatorwidget.h"
+
+#include "ilocatorfilter.h"
+#include "locator.h"
 #include "locatorconstants.h"
 #include "locatorsearchutils.h"
-#include "ilocatorfilter.h"
 
 #include <coreplugin/icore.h>
 #include <coreplugin/modemanager.h>
@@ -37,7 +38,6 @@
 #include <coreplugin/mainwindow.h>
 #include <utils/algorithm.h>
 #include <utils/appmainwindow.h>
-#include <utils/asconst.h>
 #include <utils/fancylineedit.h>
 #include <utils/highlightingitemdelegate.h>
 #include <utils/hostosinfo.h>
@@ -84,9 +84,9 @@ public:
         ColumnCount
     };
 
-    LocatorModel(QObject *parent = 0)
+    LocatorModel(QObject *parent = nullptr)
         : QAbstractListModel(parent)
-        , mBackgroundColor(Utils::creatorTheme()->color(Utils::Theme::TextColorHighlightBackground).name())
+        , mBackgroundColor(Utils::creatorTheme()->color(Utils::Theme::TextColorHighlightBackground))
     {}
 
     void clear();
@@ -113,7 +113,7 @@ public:
 class CompletionList : public Utils::TreeView
 {
 public:
-    CompletionList(QWidget *parent = 0);
+    CompletionList(QWidget *parent = nullptr);
 
     void setModel(QAbstractItemModel *model);
 
@@ -193,7 +193,7 @@ QVariant LocatorModel::data(const QModelIndex &index, int role) const
             return QVariant(mEntries.at(index.row()).displayName);
         else
             return QVariant(mEntries.at(index.row()).displayName
-                            + QLatin1String("\n\n") + mEntries.at(index.row()).extraInfo);
+                            + "\n\n" + mEntries.at(index.row()).extraInfo);
         break;
     case Qt::DecorationRole:
         if (index.column() == DisplayNameColumn) {
@@ -341,8 +341,11 @@ bool LocatorPopup::event(QEvent *event)
 {
     if (event->type() == QEvent::ParentChange)
         updateWindow();
-    // completion list resizes after first items are shown --> LayoutRequest
-    else if (event->type() == QEvent::Show || event->type() == QEvent::LayoutRequest)
+    else if (event->type() == QEvent::Show)
+        // make sure the popup has correct position before it becomes visible
+        updateGeometry();
+    else if (event->type() == QEvent::LayoutRequest)
+        // completion list resizes after first items are shown --> LayoutRequest
         QTimer::singleShot(0, this, &LocatorPopup::updateGeometry);
     return QWidget::event(event);
 }
@@ -752,7 +755,7 @@ QList<ILocatorFilter *> LocatorWidget::filtersFor(const QString &text, QString &
     if (whiteSpace >= 0) {
         const QString prefix = text.mid(firstNonSpace, whiteSpace - firstNonSpace).toLower();
         QList<ILocatorFilter *> prefixFilters;
-        foreach (ILocatorFilter *filter, filters) {
+        for (ILocatorFilter *filter : filters) {
             if (prefix == filter->shortcutString()) {
                 searchText = text.mid(whiteSpace).trimmed();
                 prefixFilters << filter;
@@ -798,7 +801,7 @@ void LocatorWidget::updateCompletionList(const QString &text)
     QString searchText;
     const QList<ILocatorFilter *> filters = filtersFor(text, searchText);
 
-    foreach (ILocatorFilter *filter, filters)
+    for (ILocatorFilter *filter : filters)
         filter->prepareSearch(searchText);
     QFuture<LocatorFilterEntry> future = Utils::runAsync(&runSearch, filters, searchText);
     m_entriesWatcher->setFuture(future);

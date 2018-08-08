@@ -32,7 +32,6 @@
 
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/runconfiguration.h>
-#include <projectexplorer/runnables.h>
 
 #include <ssh/sshconnection.h>
 
@@ -40,6 +39,7 @@
 #include <utils/hostosinfo.h>
 #include <utils/portlist.h>
 #include <utils/stringutils.h>
+#include <utils/url.h>
 
 #include <QCoreApplication>
 
@@ -154,7 +154,7 @@ class DesktopPortsGatheringMethod : public PortsGatheringMethod
 
         Q_UNUSED(protocol)
 
-        StandardRunnable runnable;
+        Runnable runnable;
         if (HostOsInfo::isWindowsHost() || HostOsInfo::isMacHost()) {
             runnable.executable = "netstat";
             runnable.commandLineArguments =  "-a -n";
@@ -186,7 +186,7 @@ PortsGatheringMethod::Ptr DesktopDevice::portsGatheringMethod() const
 QUrl DesktopDevice::toolControlChannel(const ControlChannelHint &) const
 {
     QUrl url;
-    url.setScheme(urlTcpScheme());
+    url.setScheme(Utils::urlTcpScheme());
     url.setHost("localhost");
     return url;
 }

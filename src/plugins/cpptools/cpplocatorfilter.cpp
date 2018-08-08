@@ -25,6 +25,7 @@
 
 #include "cpplocatorfilter.h"
 #include "cppmodelmanager.h"
+#include "cpptoolsconstants.h"
 
 #include <coreplugin/editormanager/editormanager.h>
 #include <utils/algorithm.h>
@@ -39,9 +40,9 @@ using namespace CppTools::Internal;
 CppLocatorFilter::CppLocatorFilter(CppLocatorData *locatorData)
     : m_data(locatorData)
 {
-    setId("Classes and Methods");
-    setDisplayName(tr("C++ Classes, Enums and Functions"));
-    setShortcutString(QString(QLatin1Char(':')));
+    setId(Constants::LOCATOR_FILTER_ID);
+    setDisplayName(Constants::LOCATOR_FILTER_DISPLAY_NAME);
+    setShortcutString(":");
     setIncludedByDefault(false);
 }
 

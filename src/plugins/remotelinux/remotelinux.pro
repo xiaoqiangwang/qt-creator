@@ -14,8 +14,6 @@ HEADERS += \
     publickeydeploymentdialog.h \
     genericlinuxdeviceconfigurationwizard.h \
     genericlinuxdeviceconfigurationfactory.h \
-    remotelinuxrunconfigurationwidget.h \
-    remotelinuxrunconfigurationfactory.h \
     remotelinuxdebugsupport.h \
     genericlinuxdeviceconfigurationwizardpages.h \
     abstractremotelinuxdeploystep.h \
@@ -25,8 +23,6 @@ HEADERS += \
     abstractuploadandinstallpackageservice.h \
     genericdirectuploadservice.h \
     remotelinuxdeployconfiguration.h \
-    remotelinuxdeployconfigurationfactory.h \
-    genericremotelinuxdeploystepfactory.h \
     abstractpackagingstep.h \
     tarpackagecreationstep.h \
     remotelinuxpackageinstaller.h \
@@ -42,7 +38,9 @@ HEADERS += \
     genericlinuxdeviceconfigurationwidget.h \
     remotelinuxcheckforfreediskspaceservice.h \
     remotelinuxcheckforfreediskspacestep.h \
-    remotelinuxanalyzesupport.h \
+    remotelinuxkillappservice.h \
+    remotelinuxkillappstep.h \
+    remotelinuxqmltoolingsupport.h \
     linuxdeviceprocess.h \
     remotelinuxcustomrunconfiguration.h \
     remotelinuxsignaloperation.h \
@@ -59,8 +57,6 @@ SOURCES += \
     publickeydeploymentdialog.cpp \
     genericlinuxdeviceconfigurationwizard.cpp \
     genericlinuxdeviceconfigurationfactory.cpp \
-    remotelinuxrunconfigurationwidget.cpp \
-    remotelinuxrunconfigurationfactory.cpp \
     remotelinuxdebugsupport.cpp \
     genericlinuxdeviceconfigurationwizardpages.cpp \
     abstractremotelinuxdeploystep.cpp \
@@ -70,8 +66,6 @@ SOURCES += \
     abstractuploadandinstallpackageservice.cpp \
     genericdirectuploadservice.cpp \
     remotelinuxdeployconfiguration.cpp \
-    remotelinuxdeployconfigurationfactory.cpp \
-    genericremotelinuxdeploystepfactory.cpp \
     abstractpackagingstep.cpp \
     tarpackagecreationstep.cpp \
     remotelinuxpackageinstaller.cpp \
@@ -86,7 +80,9 @@ SOURCES += \
     genericlinuxdeviceconfigurationwidget.cpp \
     remotelinuxcheckforfreediskspaceservice.cpp \
     remotelinuxcheckforfreediskspacestep.cpp \
-    remotelinuxanalyzesupport.cpp \
+    remotelinuxkillappservice.cpp \
+    remotelinuxkillappstep.cpp \
+    remotelinuxqmltoolingsupport.cpp \
     linuxdeviceprocess.cpp \
     remotelinuxcustomrunconfiguration.cpp \
     remotelinuxsignaloperation.cpp \
@@ -95,8 +91,7 @@ SOURCES += \
 FORMS += \
     genericlinuxdeviceconfigurationwizardsetuppage.ui \
     genericlinuxdeviceconfigurationwidget.ui \
-    remotelinuxcheckforfreediskspacestepwidget.ui \
-    remotelinuxcustomrunconfigurationwidget.ui
+    remotelinuxcheckforfreediskspacestepwidget.ui
 
 RESOURCES += remotelinux.qrc
 

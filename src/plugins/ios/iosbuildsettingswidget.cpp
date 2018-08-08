@@ -28,11 +28,15 @@
 #include "iosconfigurations.h"
 #include "iosconstants.h"
 
-#include "utils/utilsicons.h"
-#include "utils/algorithm.h"
-#include "qmakeprojectmanager/qmakeproject.h"
-#include "qmakeprojectmanager/qmakenodes.h"
-#include "utils/detailswidget.h"
+#include <qmakeprojectmanager/qmakeproject.h>
+#include <qmakeprojectmanager/qmakenodes.h>
+
+#include <projectexplorer/runconfiguration.h>
+
+#include <utils/algorithm.h>
+#include <utils/detailswidget.h>
+#include <utils/qtcassert.h>
+#include <utils/utilsicons.h>
 
 #include <QLoggingCategory>
 #include <QVBoxLayout>
@@ -166,17 +170,18 @@ void IosBuildSettingsWidget::configureSigningUi(bool autoManageSigning)
 
 void IosBuildSettingsWidget::populateDevelopmentTeams()
 {
-    // Populate Team id's
-    ui->m_signEntityCombo->blockSignals(true);
-    ui->m_signEntityCombo->clear();
-    ui->m_signEntityCombo->addItem(tr("Default"));
-    foreach (auto team, IosConfigurations::developmentTeams()) {
-        ui->m_signEntityCombo->addItem(team->displayName());
-        const int index = ui->m_signEntityCombo->count() - 1;
-        ui->m_signEntityCombo->setItemData(index, team->identifier(), IdentifierRole);
-        ui->m_signEntityCombo->setItemData(index, team->details(), Qt::ToolTipRole);
+    {
+        QSignalBlocker blocker(ui->m_signEntityCombo);
+        // Populate Team id's
+        ui->m_signEntityCombo->clear();
+        ui->m_signEntityCombo->addItem(tr("Default"));
+        foreach (auto team, IosConfigurations::developmentTeams()) {
+            ui->m_signEntityCombo->addItem(team->displayName());
+            const int index = ui->m_signEntityCombo->count() - 1;
+            ui->m_signEntityCombo->setItemData(index, team->identifier(), IdentifierRole);
+            ui->m_signEntityCombo->setItemData(index, team->details(), Qt::ToolTipRole);
+        }
     }
-    ui->m_signEntityCombo->blockSignals(false);
     // Maintain previous selection.
     setDefaultSigningIdentfier(m_lastTeamSelection);
     updateWarningText();
@@ -184,21 +189,22 @@ void IosBuildSettingsWidget::populateDevelopmentTeams()
 
 void IosBuildSettingsWidget::populateProvisioningProfiles()
 {
-    // Populate Team id's
-    ui->m_signEntityCombo->blockSignals(true);
-    ui->m_signEntityCombo->clear();
-    ProvisioningProfiles profiles = IosConfigurations::provisioningProfiles();
-    if (profiles.count() > 0) {
-        foreach (auto profile, profiles) {
-            ui->m_signEntityCombo->addItem(profile->displayName());
-            const int index = ui->m_signEntityCombo->count() - 1;
-            ui->m_signEntityCombo->setItemData(index, profile->identifier(), IdentifierRole);
-            ui->m_signEntityCombo->setItemData(index, profile->details(), Qt::ToolTipRole);
+    {
+        // Populate Team id's
+        QSignalBlocker blocker(ui->m_signEntityCombo);
+        ui->m_signEntityCombo->clear();
+        ProvisioningProfiles profiles = IosConfigurations::provisioningProfiles();
+        if (profiles.count() > 0) {
+            foreach (auto profile, profiles) {
+                ui->m_signEntityCombo->addItem(profile->displayName());
+                const int index = ui->m_signEntityCombo->count() - 1;
+                ui->m_signEntityCombo->setItemData(index, profile->identifier(), IdentifierRole);
+                ui->m_signEntityCombo->setItemData(index, profile->details(), Qt::ToolTipRole);
+            }
+        } else {
+            ui->m_signEntityCombo->addItem(tr("None"));
         }
-    } else {
-        ui->m_signEntityCombo->addItem(tr("None"));
     }
-    ui->m_signEntityCombo->blockSignals(false);
     // Maintain previous selection.
     setDefaultSigningIdentfier(m_lastProfileSelection);
     updateWarningText();

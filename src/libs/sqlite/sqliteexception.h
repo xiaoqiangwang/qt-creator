@@ -87,11 +87,20 @@ public:
     }
 };
 
-class ContraintPreventsModification : public Exception
+class IoError : public Exception
 {
 public:
-    ContraintPreventsModification(const char *whatErrorHasHappen,
-                                  Utils::SmallString &&sqliteErrorMessage = Utils::SmallString())
+    IoError(const char *whatErrorHasHappen)
+        : Exception(whatErrorHasHappen)
+    {
+    }
+};
+
+class ConstraintPreventsModification : public Exception
+{
+public:
+    ConstraintPreventsModification(const char *whatErrorHasHappen,
+                                   Utils::SmallString &&sqliteErrorMessage = Utils::SmallString())
         : Exception(whatErrorHasHappen, std::move(sqliteErrorMessage))
     {
     }
@@ -125,10 +134,10 @@ public:
     }
 };
 
-class WrongBingingName : public Exception
+class WrongBindingName : public Exception
 {
 public:
-    WrongBingingName(const char *whatErrorHasHappen)
+    WrongBindingName(const char *whatErrorHasHappen)
         : Exception(whatErrorHasHappen)
     {
     }

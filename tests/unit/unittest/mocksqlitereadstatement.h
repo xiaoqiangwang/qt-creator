@@ -25,11 +25,17 @@
 
 #pragma once
 
-#include <stringcachefwd.h>
+#include "googletest.h"
 
 #include <sourcelocations.h>
 
-#include "mocksqlitedatabase.h"
+#include <filepathstoragesources.h>
+#include <stringcachefwd.h>
+#include <projectpartartefact.h>
+#include <projectpartpch.h>
+#include <symbol.h>
+
+#include <cpptools/usages.h>
 
 #include <utils/optional.h>
 #include <utils/smallstring.h>
@@ -39,9 +45,13 @@
 #include <vector>
 
 using std::int64_t;
-using ClangBackEnd::FilePathIndex;
-using Location = ClangRefactoring::SourceLocations::Location;
-using Source = ClangRefactoring::SourceLocations::Source;
+using ClangRefactoring::SourceLocation;
+using ClangRefactoring::SourceLocations;
+namespace Sources = ClangBackEnd::Sources;
+using ClangRefactoring::Symbol;
+using ClangRefactoring::Symbols;
+
+class MockSqliteDatabase;
 
 class MockSqliteReadStatement
 {
@@ -51,23 +61,63 @@ public:
         : sqlStatement(sqlStatement)
     {}
 
-    MOCK_CONST_METHOD1(valuesReturnStdVectorInt,
-                       std::vector<FilePathIndex>(std::size_t));
+    MOCK_METHOD4(valuesReturnSourceLocations,
+                 SourceLocations(std::size_t, int, int, int));
 
-    MOCK_CONST_METHOD4(valuesReturnStdVectorLocation,
-                       std::vector<Location>(std::size_t, Utils::SmallStringView, qint64, qint64));
+    MOCK_METHOD4(valuesReturnSourceUsages,
+                 CppTools::Usages(std::size_t, int, int, int));
 
-    MOCK_CONST_METHOD2(valuesReturnStdVectorSource,
-                       std::vector<Source>(std::size_t, const std::vector<qint64> &));
+    MOCK_METHOD1(valuesReturnStdVectorDirectory,
+                 std::vector<Sources::Directory>(std::size_t));
 
-    MOCK_CONST_METHOD1(valueReturnUInt32,
-                       Utils::optional<uint32_t>(Utils::SmallStringView));
+    MOCK_METHOD1(valuesReturnStdVectorSource,
+                 std::vector<Sources::Source>(std::size_t));
 
+    MOCK_METHOD1(valueReturnInt32,
+                 Utils::optional<int>(Utils::SmallStringView));
+
+    MOCK_METHOD2(valueReturnInt32,
+                 Utils::optional<int>(int, Utils::SmallStringView));
+
+    MOCK_METHOD1(valueReturnInt64,
+                 Utils::optional<long long>(int));
+
+    MOCK_METHOD1(valueReturnPathString,
+                 Utils::optional<Utils::PathString>(int));
+
+    MOCK_METHOD1(valueReturnSmallString,
+                 Utils::optional<Utils::SmallString>(int));
+
+    MOCK_METHOD1(valueReturnProjectPartArtefact,
+                 Utils::optional<ClangBackEnd::ProjectPartArtefact>(int));
+
+    MOCK_METHOD1(valueReturnProjectPartArtefact,
+                 Utils::optional<ClangBackEnd::ProjectPartArtefact>(Utils::SmallStringView));
+
+    MOCK_METHOD1(valueReturnProjectPartPch,
+                 Utils::optional<ClangBackEnd::ProjectPartPch>(int));
+
+    MOCK_METHOD3(valuesReturnSymbols,
+                 Symbols(std::size_t, int, Utils::SmallStringView));
+
+    MOCK_METHOD4(valuesReturnSymbols,
+                 Symbols(std::size_t, int, int, Utils::SmallStringView));
+
+    MOCK_METHOD5(valuesReturnSymbols,
+                 Symbols(std::size_t, int, int, int, Utils::SmallStringView));
+
+    MOCK_METHOD2(valueReturnSourceLocation,
+                 SourceLocation(long long, int));
 
     template <typename ResultType,
               int ResultTypeCount = 1,
               typename... QueryType>
     std::vector<ResultType> values(std::size_t reserveSize, const QueryType&... queryValues);
+
+    template <typename ResultType,
+              int ResultTypeCount = 1,
+              typename... QueryType>
+    std::vector<ResultType> values(std::size_t reserveSize);
 
     template <typename ResultType,
               int ResultTypeCount = 1,
@@ -77,6 +127,7 @@ public:
                                    const QueryContainerType<QueryElementType> &queryValues);
 
     template <typename ResultType,
+              int ResultTypeCount = 1,
               typename... QueryTypes>
     Utils::optional<ResultType> value(const QueryTypes&... queryValues);
 
@@ -85,23 +136,87 @@ public:
 };
 
 template <>
-std::vector<int> MockSqliteReadStatement::values<int>(std::size_t reserveSize);
-
-template <>
-std::vector<Location>
-MockSqliteReadStatement::values<Location, 3>(
+SourceLocations
+MockSqliteReadStatement::values<SourceLocation, 4>(
         std::size_t reserveSize,
-        const Utils::PathString &sourcePath,
-        const uint &line,
-        const uint &column);
+        const int &sourceId,
+        const int &line,
+        const int &column);
 
 template <>
-std::vector<Source>
-MockSqliteReadStatement::values<Source, 2>(
+CppTools::Usages
+MockSqliteReadStatement::values<CppTools::Usage, 3>(
         std::size_t reserveSize,
-        const std::vector<qint64> &);
-
+        const int &sourceId,
+        const int &line,
+        const int &column);
 
 template <>
-Utils::optional<uint32_t>
-MockSqliteReadStatement::value<uint32_t>(const Utils::SmallStringView&);
+Symbols
+MockSqliteReadStatement::values<Symbol, 3>(
+        std::size_t reserveSize,
+        const int&,
+        const Utils::SmallStringView&);
+
+template <>
+Symbols
+MockSqliteReadStatement::values<Symbol, 3>(
+        std::size_t reserveSize,
+        const int&,
+        const int&,
+        const Utils::SmallStringView&);
+
+template <>
+Symbols
+MockSqliteReadStatement::values<Symbol, 3>(
+        std::size_t reserveSize,
+        const int&,
+        const int&,
+        const int&,
+        const Utils::SmallStringView&);
+
+template <>
+std::vector<Sources::Directory> MockSqliteReadStatement::values<Sources::Directory, 2>(std::size_t reserveSize);
+
+template <>
+std::vector<Sources::Source> MockSqliteReadStatement::values<Sources::Source, 2>(std::size_t reserveSize);
+
+template <>
+Utils::optional<int>
+MockSqliteReadStatement::value<int>(const Utils::SmallStringView&);
+
+template <>
+Utils::optional<int>
+MockSqliteReadStatement::value<int>(const Utils::PathString&);
+
+template <>
+Utils::optional<int>
+MockSqliteReadStatement::value<int>(const int&, const Utils::SmallStringView&);
+
+template <>
+Utils::optional<long long>
+MockSqliteReadStatement::value<long long>(const ClangBackEnd::FilePathId&);
+
+template <>
+Utils::optional<Utils::PathString>
+MockSqliteReadStatement::value<Utils::PathString>(const int&);
+
+template <>
+Utils::optional<ClangBackEnd::ProjectPartArtefact>
+MockSqliteReadStatement::value<ClangBackEnd::ProjectPartArtefact, 4>(const int&);
+
+template <>
+Utils::optional<ClangBackEnd::ProjectPartArtefact>
+MockSqliteReadStatement::value<ClangBackEnd::ProjectPartArtefact, 4>(const int&);
+
+template <>
+Utils::optional<ClangBackEnd::ProjectPartPch>
+MockSqliteReadStatement::value<ClangBackEnd::ProjectPartPch, 2>(const int&);
+
+template <>
+Utils::optional<Utils::SmallString>
+MockSqliteReadStatement::value<Utils::SmallString>(const int&);
+
+template <>
+Utils::optional<SourceLocation>
+MockSqliteReadStatement::value<SourceLocation, 4>(const long long &symbolId, const int &locationKind);

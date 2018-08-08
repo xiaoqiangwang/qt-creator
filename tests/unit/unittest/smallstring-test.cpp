@@ -55,24 +55,17 @@ TEST(SmallString, NullSmallStringIsEqualToEmptySmallString)
 
 TEST(SmallString, ShortSmallStringLiteralIsShortSmallString)
 {
-    constexpr SmallStringLiteral shortText("short string");
+    // constexpr
+    SmallStringLiteral shortText("short string");
 
-#if __cpp_constexpr >= 201304
     ASSERT_TRUE(shortText.isShortString());
-#else
-    ASSERT_TRUE(shortText.isReadOnlyReference());
-#endif
 }
 
 TEST(SmallString, ShortSmallStringIsShortSmallString)
 {
     SmallString shortText("short string");
 
-#if __cpp_constexpr >= 201304
     ASSERT_TRUE(shortText.isShortString());
-#else
-    ASSERT_TRUE(shortText.isReadOnlyReference());
-#endif
 }
 
 TEST(SmallString, CreateFromCStringIterators)
@@ -189,11 +182,7 @@ TEST(SmallString, CopyShortConstExpressionSmallStringIsShortSmallString)
 
     auto shortTextCopy = shortText;
 
-#if __cpp_constexpr >= 201304
     ASSERT_TRUE(shortTextCopy.isShortString());
-#else
-    ASSERT_TRUE(shortTextCopy.isReadOnlyReference());
-#endif
 }
 
 TEST(SmallString, CopyLongConstExpressionSmallStringIsLongSmallString)
@@ -677,6 +666,24 @@ TEST(SmallString, MidTwoParameter)
     ASSERT_THAT(midString, Eq(SmallString("text")));
 }
 
+TEST(SmallString, SmallStringViewMidOneParameter)
+{
+    SmallStringView text("some text");
+
+    auto midString = text.mid(5);
+
+    ASSERT_THAT(midString, Eq(SmallStringView("text")));
+}
+
+TEST(SmallString, SmallStringViewMidTwoParameter)
+{
+    SmallStringView text("some text and more");
+
+    auto midString = text.mid(5, 4);
+
+    ASSERT_THAT(midString, Eq(SmallStringView("text")));
+}
+
 TEST(SmallString, SizeOfEmptyStringl)
 {
     SmallString emptyString;
@@ -813,7 +820,7 @@ TEST(SmallString, AppendNullSmallString)
 {
     SmallString text("text");
 
-    text.append(SmallString());
+    text += SmallString();
 
     ASSERT_THAT(text, SmallString("text"));
 }
@@ -822,17 +829,16 @@ TEST(SmallString, AppendEmptySmallString)
 {
     SmallString text("text");
 
-    text.append(SmallString(""));
+    text += SmallString("");
 
     ASSERT_THAT(text, SmallString("text"));
 }
-
 
 TEST(SmallString, AppendShortSmallString)
 {
     SmallString text("some ");
 
-    text.append(SmallString("text"));
+    text += SmallString("text");
 
     ASSERT_THAT(text, SmallString("some text"));
 }
@@ -841,7 +847,7 @@ TEST(SmallString, AppendLongSmallStringToShortSmallString)
 {
     SmallString text("some ");
 
-    text.append(SmallString("very very very very very long string"));
+    text += SmallString("very very very very very long string");
 
     ASSERT_THAT(text, SmallString("some very very very very very long string"));
 }
@@ -849,9 +855,27 @@ TEST(SmallString, AppendLongSmallStringToShortSmallString)
 TEST(SmallString, AppendLongSmallString)
 {
     SmallString longText("some very very very very very very very very very very very long string");
-    longText.append(SmallString(" text"));
+    longText+= SmallString(" text");
 
     ASSERT_THAT(longText, SmallString("some very very very very very very very very very very very long string text"));
+}
+
+TEST(SmallString, AppendInitializerList)
+{
+    SmallString text("some text");
+
+    text += {" and", " some", " other", " text"};
+
+    ASSERT_THAT(text, Eq("some text and some other text"));
+}
+
+TEST(SmallString, AppendEmptyInitializerList)
+{
+    SmallString text("some text");
+
+    text += {};
+
+    ASSERT_THAT(text, Eq("some text"));
 }
 
 TEST(SmallString, ToByteArray)
@@ -1478,7 +1502,7 @@ TEST(SmallString, ShortSmallStringMoveAssignment)
 
     copy = std::move(text);
 
-    ASSERT_THAT(text, SmallString("more text"));
+    ASSERT_THAT(text, IsEmpty());
     ASSERT_THAT(copy, SmallString("text"));
 }
 
@@ -1489,7 +1513,7 @@ TEST(SmallString, LongSmallStringMoveAssignment)
 
     copy = std::move(text);
 
-    ASSERT_THAT(text, SmallString("more text"));
+    ASSERT_THAT(text, IsEmpty());
     ASSERT_THAT(copy, SmallString("this is a very very very very long text"));
 }
 
@@ -1652,7 +1676,7 @@ TEST(SmallString, ToView)
 {
     SmallString text = "text";
 
-    auto view = text.toView();
+    auto view = text.toStringView();
 
     ASSERT_THAT(view, "text");
 
@@ -1660,8 +1684,11 @@ TEST(SmallString, ToView)
 
 TEST(SmallString, Compare)
 {
+    const char longText[] = "textfoo";
+
     ASSERT_THAT(Utils::compare("", ""), Eq(0));
     ASSERT_THAT(Utils::compare("text", "text"), Eq(0));
+    ASSERT_THAT(Utils::compare("text", Utils::SmallStringView(longText, 4)), Eq(0));
     ASSERT_THAT(Utils::compare("", "text"), Le(0));
     ASSERT_THAT(Utils::compare("textx", "text"), Gt(0));
     ASSERT_THAT(Utils::compare("text", "textx"), Le(0));
@@ -1671,8 +1698,11 @@ TEST(SmallString, Compare)
 
 TEST(SmallString, ReverseCompare)
 {
+    const char longText[] = "textfoo";
+
     ASSERT_THAT(Utils::reverseCompare("", ""), Eq(0));
     ASSERT_THAT(Utils::reverseCompare("text", "text"), Eq(0));
+    ASSERT_THAT(Utils::reverseCompare("text", Utils::SmallStringView(longText, 4)), Eq(0));
     ASSERT_THAT(Utils::reverseCompare("", "text"), Le(0));
     ASSERT_THAT(Utils::reverseCompare("textx", "text"), Gt(0));
     ASSERT_THAT(Utils::reverseCompare("text", "textx"), Le(0));

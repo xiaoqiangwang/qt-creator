@@ -31,7 +31,9 @@
 #include <pchmanagerserver.h>
 #include <pchmanagerclientproxy.h>
 #include <projectparts.h>
-#include <stringcache.h>
+#include <filepathcaching.h>
+#include <refactoringdatabaseinitializer.h>
+#include <sqlitedatabase.h>
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
@@ -41,7 +43,10 @@
 #include <QTemporaryDir>
 #include <QTimer>
 
+#include <chrono>
 #include <thread>
+
+using namespace std::chrono_literals;
 
 using ClangBackEnd::ClangPathWatcher;
 using ClangBackEnd::ConnectionServer;
@@ -52,12 +57,34 @@ using ClangBackEnd::PchManagerServer;
 using ClangBackEnd::ProjectParts;
 using ClangBackEnd::FilePathCache;
 
+class PchManagerApplication : public QCoreApplication
+{
+public:
+    using QCoreApplication::QCoreApplication;
+
+    bool notify(QObject *object, QEvent *event) override
+    {
+        try {
+            return QCoreApplication::notify(object, event);
+        } catch (Sqlite::Exception &exception) {
+            exception.printWarning();
+        }
+
+        return false;
+    }
+};
+
 class ApplicationEnvironment : public ClangBackEnd::Environment
 {
 public:
+    ApplicationEnvironment(const QString &pchsPath)
+        : m_pchBuildDirectoryPath(pchsPath)
+    {
+    }
+
     QString pchBuildDirectory() const override
     {
-        return temporaryDirectory.path();
+        return m_pchBuildDirectoryPath;
     }
 
     QString clangCompilerPath() const override
@@ -71,57 +98,67 @@ public:
     }
 
 private:
-    QTemporaryDir temporaryDirectory;
+    QString m_pchBuildDirectoryPath;
 };
 
-QString processArguments(QCoreApplication &application)
+QStringList processArguments(QCoreApplication &application)
 {
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Qt Creator Clang PchManager Backend"));
     parser.addHelpOption();
     parser.addVersionOption();
     parser.addPositionalArgument(QStringLiteral("connection"), QStringLiteral("Connection"));
+    parser.addPositionalArgument(QStringLiteral("databasepath"), QStringLiteral("Database path"));
+    parser.addPositionalArgument(QStringLiteral("pchspath"), QStringLiteral("PCHs path"));
 
     parser.process(application);
 
     if (parser.positionalArguments().isEmpty())
         parser.showHelp(1);
 
-    return parser.positionalArguments().first();
+    return parser.positionalArguments();
 }
 
 int main(int argc, char *argv[])
 {
-    //QLoggingCategory::setFilterRules(QStringLiteral("*.debug=false"));
+    try {
+        //QLoggingCategory::setFilterRules(QStringLiteral("*.debug=false"));
 
-    QCoreApplication::setOrganizationName(QStringLiteral("QtProject"));
-    QCoreApplication::setOrganizationDomain(QStringLiteral("qt-project.org"));
-    QCoreApplication::setApplicationName(QStringLiteral("ClangPchManagerBackend"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("0.1.0"));
+        QCoreApplication::setOrganizationName(QStringLiteral("QtProject"));
+        QCoreApplication::setOrganizationDomain(QStringLiteral("qt-project.org"));
+        QCoreApplication::setApplicationName(QStringLiteral("ClangPchManagerBackend"));
+        QCoreApplication::setApplicationVersion(QStringLiteral("0.1.0"));
 
-    QCoreApplication application(argc, argv);
+        PchManagerApplication application(argc, argv);
 
-    const QString connection =  processArguments(application);
+        const QStringList arguments = processArguments(application);
+        const QString connectionName = arguments[0];
+        const QString databasePath = arguments[1];
+        const QString pchsPath = arguments[2];
 
-    FilePathCache<> filePathCache;
-    ClangPathWatcher<QFileSystemWatcher, QTimer> includeWatcher(filePathCache);
-    ApplicationEnvironment environment;
-    PchGenerator<QProcess> pchGenerator(environment);
-    PchCreator pchCreator(environment, filePathCache);
-    pchCreator.setGenerator(&pchGenerator);
-    ProjectParts projectParts;
-    PchManagerServer clangPchManagerServer(filePathCache,
-                                           includeWatcher,
-                                           pchCreator,
-                                           projectParts);
-    includeWatcher.setNotifier(&clangPchManagerServer);
-    pchGenerator.setNotifier(&clangPchManagerServer);
+        Sqlite::Database database{Utils::PathString{databasePath}, 100000ms};
+        ClangBackEnd::RefactoringDatabaseInitializer<Sqlite::Database> databaseInitializer{database};
+        ClangBackEnd::FilePathCaching filePathCache{database};
+        ClangPathWatcher<QFileSystemWatcher, QTimer> includeWatcher(filePathCache);
+        ApplicationEnvironment environment{pchsPath};
+        PchGenerator<QProcess> pchGenerator(environment);
+        PchCreator pchCreator(environment, filePathCache);
+        pchCreator.setGenerator(&pchGenerator);
+        ProjectParts projectParts;
+        PchManagerServer clangPchManagerServer(includeWatcher,
+                                               pchCreator,
+                                               projectParts);
+        includeWatcher.setNotifier(&clangPchManagerServer);
+        pchGenerator.setNotifier(&clangPchManagerServer);
 
-    ConnectionServer<PchManagerServer, PchManagerClientProxy> connectionServer(connection);
-    connectionServer.start();
-    connectionServer.setServer(&clangPchManagerServer);
+        ConnectionServer<PchManagerServer, PchManagerClientProxy> connectionServer;
+        connectionServer.setServer(&clangPchManagerServer);
+        connectionServer.start(connectionName);
 
-    return application.exec();
+        return application.exec();
+    } catch (const Sqlite::Exception &exception) {
+        exception.printWarning();
+    }
 }
 
 

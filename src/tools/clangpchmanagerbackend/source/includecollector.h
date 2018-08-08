@@ -25,28 +25,30 @@
 
 #pragma once
 
-#include "stringcache.h"
-
 #include <clangtool.h>
+
+#include <filepathcachingfwd.h>
 
 namespace ClangBackEnd {
 
 class IncludeCollector : public ClangTool
 {
 public:
-    IncludeCollector(FilePathCache<> &filePathCache);
+    IncludeCollector(FilePathCachingInterface &filePathCache);
 
     void collectIncludes();
 
     void setExcludedIncludes(Utils::PathStringVector &&excludedIncludes);
 
-    std::vector<FilePathIndex> takeIncludeIds();
+    FilePathIds takeIncludeIds();
+    FilePathIds takeTopIncludeIds();
 
 private:
     Utils::PathStringVector m_excludedIncludes;
-    std::vector<FilePathIndex> m_includeIds;
+    FilePathIds m_includeIds;
+    FilePathIds m_topIncludeIds;
     Utils::SmallStringVector m_directories;
-    FilePathCache<> &m_filePathCache;
+    FilePathCachingInterface &m_filePathCache;
 };
 
 } // namespace ClangBackEnd

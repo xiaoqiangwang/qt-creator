@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2017 The Qt Company Ltd.
+** Copyright (C) 2018 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt Creator documentation.
@@ -25,7 +25,7 @@
 
     /*!
 
-    \contentspage {Qt Creator Manual}
+    \contentspage index.html
     \previouspage creator-deployment.html
     \page creator-deploying-android.html
     \nextpage creator-deployment-embedded-linux.html
@@ -51,13 +51,6 @@
 
     For more information about options that you have for running applications,
     see \l {Specifying Run Settings for Android Devices}.
-
-    \section1 Creating Distributable APK Packages
-
-    To copy Qt libraries and files to the project directory and to bundle them
-    as part of the APK, select the \uicontrol {Bundle Qt libraries in APK} option.
-
-    \note Android 5 devices support only this option.
 
     \section1 Using Ministro to Install Qt Libraries
 

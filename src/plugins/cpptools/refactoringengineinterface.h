@@ -27,11 +27,15 @@
 
 #include "cpptools_global.h"
 #include "cursorineditor.h"
+#include "usages.h"
 
+#include <utils/link.h>
 #include <utils/fileutils.h>
 
 #include <clangsupport/sourcelocationscontainer.h>
 #include <clangsupport/refactoringclientinterface.h>
+
+#include <cplusplus/CppDocument.h>
 
 namespace TextEditor {
 class TextEditorWidget;
@@ -40,6 +44,7 @@ class TextEditorWidget;
 namespace CppTools {
 
 class ProjectPart;
+class SymbolFinder;
 
 enum class CallType
 {
@@ -52,13 +57,25 @@ class CPPTOOLS_EXPORT RefactoringEngineInterface
 {
 public:
     using RenameCallback = ClangBackEnd::RefactoringClientInterface::RenameCallback;
+    using Link = Utils::Link;
+
+    virtual ~RefactoringEngineInterface() {}
 
     virtual void startLocalRenaming(const CursorInEditor &data,
                                     CppTools::ProjectPart *projectPart,
                                     RenameCallback &&renameSymbolsCallback) = 0;
-    virtual void startGlobalRenaming(const CursorInEditor &data) = 0;
-
-    virtual bool isUsable() const = 0;
+    virtual void globalRename(const CursorInEditor &data,
+                              UsagesCallback &&renameCallback,
+                              const QString &replacement) = 0;
+    virtual void findUsages(const CppTools::CursorInEditor &data,
+                            UsagesCallback &&showUsagesCallback) const = 0;
+    virtual void globalFollowSymbol(const CursorInEditor &data,
+                                    Utils::ProcessLinkCallback &&processLinkCallback,
+                                    const CPlusPlus::Snapshot &snapshot,
+                                    const CPlusPlus::Document::Ptr &documentFromSemanticInfo,
+                                    SymbolFinder *symbolFinder,
+                                    bool inNextSplit) const = 0;
+    virtual bool isRefactoringEngineAvailable() const { return true; }
 };
 
 } // namespace CppTools

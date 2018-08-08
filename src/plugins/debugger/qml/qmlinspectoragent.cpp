@@ -70,7 +70,7 @@ QmlInspectorAgent::QmlInspectorAgent(QmlEngine *engine, QmlDebugConnection *conn
     , m_engineQueryId(0)
     , m_rootContextQueryId(0)
     , m_objectToSelect(WatchItem::InvalidId)
-    , m_masterEngine(engine)
+    , m_masterEngine(engine->masterEngine())
     , m_toolsClient(0)
     , m_targetToSync(NoTarget)
     , m_debugIdToSelect(WatchItem::InvalidId)
@@ -91,9 +91,6 @@ QmlInspectorAgent::QmlInspectorAgent(QmlEngine *engine, QmlDebugConnection *conn
     m_delayQueryTimer.setInterval(100);
     connect(&m_delayQueryTimer, &QTimer::timeout,
             this, &QmlInspectorAgent::queryEngineContext);
-
-    if (!m_masterEngine->isMasterEngine())
-        m_masterEngine = m_masterEngine->masterEngine();
 
     auto engineClient1 = new DeclarativeEngineDebugClient(connection);
     connect(engineClient1, &BaseEngineDebugClient::newState,
@@ -384,6 +381,51 @@ void QmlInspectorAgent::newObject(int engineId, int /*objectId*/, int /*parentId
     m_delayQueryTimer.start();
 }
 
+static void sortChildrenIfNecessary(WatchItem *propertiesWatch)
+{
+    if (boolSetting(SortStructMembers)) {
+        propertiesWatch->sortChildren([](const WatchItem *item1, const WatchItem *item2) {
+            return item1->name < item2->name;
+        });
+    }
+}
+
+static bool insertChildren(WatchItem *parent, const QVariant &value)
+{
+    switch (value.type()) {
+    case QVariant::Map: {
+        const QVariantMap map = value.toMap();
+        for (auto it = map.begin(), end = map.end(); it != end; ++it) {
+            WatchItem *child = new WatchItem;
+            child->name = it.key();
+            child->value = it.value().toString();
+            child->type = QLatin1String(it.value().typeName());
+            child->valueEditable = false;
+            child->wantsChildren = insertChildren(child, it.value());
+            parent->appendChild(child);
+        }
+        sortChildrenIfNecessary(parent);
+        return true;
+    }
+    case QVariant::List: {
+        const QVariantList list = value.toList();
+        for (int i = 0, end = list.size(); i != end; ++i) {
+            WatchItem *child = new WatchItem;
+            const QVariant &value = list.at(i);
+            child->arrayIndex = i;
+            child->value = value.toString();
+            child->type = QLatin1String(value.typeName());
+            child->valueEditable = false;
+            child->wantsChildren = insertChildren(child, value);
+            parent->appendChild(child);
+        }
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
 void QmlInspectorAgent::onValueChanged(int debugId, const QByteArray &propertyName,
                                        const QVariant &value)
 {
@@ -395,6 +437,8 @@ void QmlInspectorAgent::onValueChanged(int debugId, const QByteArray &propertyNa
             << value.toString();
     if (WatchItem *item = watchHandler->findItem(iname)) {
         item->value = value.toString();
+        item->removeChildren();
+        item->wantsChildren = insertChildren(item, value);
         item->update();
     }
 }
@@ -537,7 +581,7 @@ void QmlInspectorAgent::insertObjectInTree(const ObjectReference &object)
         m_qmlEngine->watchHandler()->setCurrentItem(iname);
         m_objectToSelect = WatchItem::InvalidId;
     }
-    m_qmlEngine->watchHandler()->updateWatchersWindow();
+    m_qmlEngine->watchHandler()->updateLocalsWindow();
     m_qmlEngine->watchHandler()->reexpandItems();
 }
 
@@ -661,16 +705,11 @@ void QmlInspectorAgent::addWatchData(const ObjectReference &obj,
             propertyWatch->exp = propertyName;
             propertyWatch->type = property.valueTypeName();
             propertyWatch->value = property.value().toString();
-            propertyWatch->wantsChildren = false;
+            propertyWatch->wantsChildren = insertChildren(propertyWatch, property.value());
             propertiesWatch->appendChild(propertyWatch);
         }
 
-        if (boolSetting(SortStructMembers)) {
-            propertiesWatch->sortChildren([](const WatchItem *item1, const WatchItem *item2) {
-                return item1->name < item2->name;
-            });
-        }
-
+        sortChildrenIfNecessary(propertiesWatch);
         m_qmlEngine->watchHandler()->insertItem(propertiesWatch);
     }
 

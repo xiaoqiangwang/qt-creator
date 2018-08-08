@@ -108,7 +108,7 @@ void ResourceHandler::updateResourcesHelper(bool updateProjectResources)
         // Check if the user has chosen to update the lacking resource inside designer
         if (dirty && updateProjectResources) {
             QStringList qrcPathsToBeAdded;
-            foreach (const QString &originalQrcPath, m_originalUiQrcPaths) {
+            for (const QString &originalQrcPath : qAsConst(m_originalUiQrcPaths)) {
                 if (!projectQrcFiles.contains(originalQrcPath) && !qrcPathsToBeAdded.contains(originalQrcPath))
                     qrcPathsToBeAdded.append(originalQrcPath);
             }

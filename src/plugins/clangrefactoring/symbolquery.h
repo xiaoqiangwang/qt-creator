@@ -25,84 +25,103 @@
 
 #pragma once
 
-#include <utils/smallstring.h>
+#include "symbolqueryinterface.h"
 
-#include <sourcelocations.h>
+#include "sourcelocations.h"
+
+#include <filepathid.h>
+
+#include <cpptools/usages.h>
 
 #include <algorithm>
 
 namespace ClangRefactoring {
 
 template <typename StatementFactory>
-class SymbolQuery
+class SymbolQuery final : public SymbolQueryInterface
 {
     using ReadStatement = typename StatementFactory::ReadStatementType;
 
 public:
-    using Location = SourceLocations::Location;
-    using Source = SourceLocations::Source;
-
     SymbolQuery(StatementFactory &statementFactory)
         : m_statementFactory(statementFactory)
     {}
 
-    SourceLocations locationsAt(const Utils::PathString &filePath, uint line, uint utf8Column)
+    SourceLocations locationsAt(ClangBackEnd::FilePathId filePathId,
+                                int line,
+                                int utf8Column) const override
     {
         ReadStatement &locationsStatement = m_statementFactory.selectLocationsForSymbolLocation;
 
         const std::size_t reserveSize = 128;
 
-        auto locations = locationsStatement.template values<Location, 3>(
-                    reserveSize,
-                    filePath,
-                    line,
-                    utf8Column);
-
-        const std::vector<qint64> sourceIds = uniqueSourceIds(locations);
-
-        ReadStatement &sourcesStatement = m_statementFactory.selectSourcePathForId;
-
-        auto sources = sourcesStatement.template values<Source, 2>(
-                    reserveSize,
-                    sourceIds);
-
-        return {locations, sourcesToHashMap(sources)};
+        return locationsStatement.template values<SourceLocation, 4>(reserveSize,
+                                                                     filePathId.filePathId,
+                                                                     line,
+                                                                     utf8Column);
     }
 
-    static
-    qint64 sourceId(const Location &location)
+    CppTools::Usages sourceUsagesAt(ClangBackEnd::FilePathId filePathId,
+                                    int line,
+                                    int utf8Column) const override
     {
-        return location.sourceId;
+        ReadStatement &locationsStatement = m_statementFactory.selectSourceUsagesForSymbolLocation;
+
+        const std::size_t reserveSize = 128;
+
+        return locationsStatement.template values<CppTools::Usage, 3>(reserveSize,
+                                                                      filePathId.filePathId,
+                                                                      line,
+                                                                      utf8Column);
     }
 
-    static
-    std::vector<qint64> uniqueSourceIds(const std::vector<Location> &locations)
+    Symbols symbolsWithOneSymbolKinds(ClangBackEnd::SymbolKind symbolKind,
+                                      Utils::SmallStringView searchTerm) const
     {
-        std::vector<qint64> ids;
-        ids.reserve(locations.size());
+        ReadStatement &statement = m_statementFactory.selectSymbolsForKindAndStartsWith;
 
-        std::transform(locations.begin(),
-                       locations.end(),
-                       std::back_inserter(ids),
-                       sourceId);
-
-        auto newEnd = std::unique(ids.begin(), ids.end());
-        ids.erase(newEnd, ids.end());
-
-        return ids;
+        return statement.template values<Symbol, 3>(100, int(symbolKind), searchTerm);
     }
 
-    static
-    std::unordered_map<qint64, Utils::PathString> sourcesToHashMap(const std::vector<Source> &sources)
+    Symbols symbolsWithTwoSymbolKinds(ClangBackEnd::SymbolKind symbolKind1,
+                                      ClangBackEnd::SymbolKind symbolKind2,
+                                      Utils::SmallStringView searchTerm) const
     {
-        std::unordered_map<qint64, Utils::PathString> dictonary;
+        ReadStatement &statement = m_statementFactory.selectSymbolsForKindAndStartsWith2;
 
-        for (const Source &source : sources)
-            dictonary.emplace(source.sourceId, std::move(source.sourcePath));
-
-        return dictonary;
+        return statement.template values<Symbol, 3>(100, int(symbolKind1), int(symbolKind2), searchTerm);
     }
 
+    Symbols symbolsWithThreeSymbolKinds(ClangBackEnd::SymbolKind symbolKind1,
+                                        ClangBackEnd::SymbolKind symbolKind2,
+                                        ClangBackEnd::SymbolKind symbolKind3,
+                                        Utils::SmallStringView searchTerm) const
+    {
+        ReadStatement &statement = m_statementFactory.selectSymbolsForKindAndStartsWith3;
+
+        return statement.template values<Symbol, 3>(100, int(symbolKind1), int(symbolKind2), int(symbolKind3), searchTerm);
+    }
+
+    Symbols symbols(const ClangBackEnd::SymbolKinds &symbolKinds,
+                    Utils::SmallStringView searchTerm) const override
+    {
+        switch (symbolKinds.size())
+        {
+        case 1: return symbolsWithOneSymbolKinds(symbolKinds[0], searchTerm);
+        case 2: return symbolsWithTwoSymbolKinds(symbolKinds[0], symbolKinds[1], searchTerm);
+        case 3: return symbolsWithThreeSymbolKinds(symbolKinds[0], symbolKinds[1], symbolKinds[2], searchTerm);
+        }
+
+        return Symbols();
+    }
+
+    Utils::optional<SourceLocation> locationForSymbolId(SymbolId symbolId,
+                                                        ClangBackEnd::SourceLocationKind kind) const override
+    {
+        ReadStatement &statement = m_statementFactory.selectLocationOfSymbol;
+
+        return statement.template value<SourceLocation, 4>(symbolId, int(kind));
+    }
 private:
     StatementFactory &m_statementFactory;
 };

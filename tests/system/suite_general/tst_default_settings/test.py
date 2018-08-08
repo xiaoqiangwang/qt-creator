@@ -25,10 +25,6 @@
 
 source("../../shared/qtcreator.py")
 
-import re
-import tempfile
-import __builtin__
-
 currentSelectedTreeItem = None
 warningOrError = re.compile('<p><b>((Error|Warning).*?)</p>')
 
@@ -40,7 +36,7 @@ def main():
     if not startedWithoutPluginError():
         return
     invokeMenuItem("Tools", "Options...")
-    __checkBuildAndRun__()
+    __checkKits__()
     clickButton(waitForObject(":Options.Cancel_QPushButton"))
     invokeMenuItem("File", "Exit")
     __checkCreatedSettings__(emptySettings)
@@ -53,9 +49,9 @@ def __createMinimumIni__(emptyParent):
     iniFile.write("OverrideLanguage=C\n")
     iniFile.close()
 
-def __checkBuildAndRun__():
-    waitForObjectItem(":Options_QListView", "Build & Run")
-    clickItem(":Options_QListView", "Build & Run", 14, 15, 0, Qt.LeftButton)
+def __checkKits__():
+    waitForObjectItem(":Options_QListView", "Kits")
+    clickItem(":Options_QListView", "Kits", 14, 15, 0, Qt.LeftButton)
     # check compilers
     expectedCompilers = __getExpectedCompilers__()
     foundCompilers = []
@@ -188,9 +184,10 @@ def __getExpectedCompilers__():
         compilers.extend(findAllFilesInPATH("*g++*"))
         compilers.extend(findAllFilesInPATH("*gcc*"))
     if platform.system() == 'Darwin':
-        xcodeClang = getOutputFromCmdline(["xcrun", "--find", "clang++"]).strip("\n")
-        if xcodeClang and os.path.exists(xcodeClang) and xcodeClang not in expected:
-            expected.append(xcodeClang)
+        for compilerExe in ('clang++', 'clang'):
+            xcodeClang = getOutputFromCmdline(["xcrun", "--find", compilerExe]).strip("\n")
+            if xcodeClang and os.path.exists(xcodeClang) and xcodeClang not in expected:
+                expected.append(xcodeClang)
     for compiler in compilers:
         compilerPath = which(compiler)
         if compilerPath:

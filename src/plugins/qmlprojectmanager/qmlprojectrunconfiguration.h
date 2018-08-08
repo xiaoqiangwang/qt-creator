@@ -27,15 +27,9 @@
 
 #include "qmlprojectmanager_global.h"
 
-#include <projectexplorer/runnables.h>
-
-#include <QPointer>
-
-QT_FORWARD_DECLARE_CLASS(QStringListModel)
+#include <projectexplorer/runconfiguration.h>
 
 namespace Core { class IEditor; }
-
-namespace QtSupport { class BaseQtVersion; }
 
 namespace QmlProjectManager {
 class QmlProject;
@@ -45,16 +39,13 @@ namespace Internal { class QmlProjectRunConfigurationWidget; }
 class QMLPROJECTMANAGER_EXPORT QmlProjectRunConfiguration : public ProjectExplorer::RunConfiguration
 {
     Q_OBJECT
-    friend class ProjectExplorer::IRunConfigurationFactory;
     friend class Internal::QmlProjectRunConfigurationWidget;
     friend class QmlProject; // to call updateEnabled()
 
 public:
-    explicit QmlProjectRunConfiguration(ProjectExplorer::Target *target);
+    QmlProjectRunConfiguration(ProjectExplorer::Target *target, Core::Id id);
 
     ProjectExplorer::Runnable runnable() const override;
-
-    QtSupport::BaseQtVersion *qtVersion() const;
 
     enum MainScriptSource {
         FileInEditor,
@@ -66,18 +57,16 @@ public:
 
     QString mainScript() const;
 
-    // RunConfiguration
     QString disabledReason() const override;
-    virtual QWidget *createConfigurationWidget() override;
-    Utils::OutputFormatter *createOutputFormatter() const override;
+    QWidget *createConfigurationWidget() override;
     QVariantMap toMap() const override;
 
     ProjectExplorer::Abi abi() const override;
+
 signals:
     void scriptSourceChanged();
 
 private:
-    void initialize(Core::Id id);
     bool fromMap(const QVariantMap &map) override;
 
     void changeCurrentFile(Core::IEditor* = 0);
@@ -85,10 +74,6 @@ private:
 
     QString executable() const;
     QString commandLineArguments() const;
-
-    static bool isValidVersion(QtSupport::BaseQtVersion *version);
-
-    static QString canonicalCapsPath(const QString &filePath);
 
     // absolute path to current file (if being used)
     QString m_currentFileFilename;
@@ -99,4 +84,13 @@ private:
     QString m_qmlViewerArgs;
 };
 
+namespace Internal {
+
+class QmlProjectRunConfigurationFactory : public ProjectExplorer::FixedRunConfigurationFactory
+{
+public:
+    QmlProjectRunConfigurationFactory();
+};
+
+} // namespace Internal
 } // namespace QmlProjectManager

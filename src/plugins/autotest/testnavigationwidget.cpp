@@ -117,7 +117,6 @@ void TestNavigationWidget::contextMenuEvent(QContextMenuEvent *event)
     const bool enabled = !ProjectExplorer::BuildManager::isBuilding()
             && !TestRunner::instance()->isTestRunning()
             && m_model->parser()->state() == TestCodeParser::Idle;
-    const bool hasTests = m_model->hasTests();
 
     QMenu menu;
     QAction *runThisTest = nullptr;
@@ -171,10 +170,6 @@ void TestNavigationWidget::contextMenuEvent(QContextMenuEvent *event)
 
     connect(selectAll, &QAction::triggered, m_view, &TestTreeView::selectAll);
     connect(deselectAll, &QAction::triggered, m_view, &TestTreeView::deselectAll);
-
-    selectAll->setEnabled(enabled && hasTests);
-    deselectAll->setEnabled(enabled && hasTests);
-    rescan->setEnabled(enabled);
 
     if (runThisTest) {
         menu.addAction(runThisTest);
@@ -236,8 +231,7 @@ QList<QToolButton *> TestNavigationWidget::createToolButtons()
 
 void TestNavigationWidget::onItemActivated(const QModelIndex &index)
 {
-    const TextEditor::TextEditorWidget::Link link
-            = index.data(LinkRole).value<TextEditor::TextEditorWidget::Link>();
+    const Utils::Link link = index.data(LinkRole).value<Utils::Link>();
     if (link.hasValidTarget()) {
         Core::EditorManager::openEditorAt(link.targetFileName, link.targetLine,
             link.targetColumn);

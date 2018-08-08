@@ -37,6 +37,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QFutureWatcher>
 
 using namespace Utils;
 
@@ -55,6 +56,9 @@ QbsProjectParser::QbsProjectParser(QbsProject *project, QFutureInterface<bool> *
 {
     m_project = project->qbsProject();
     m_projectFilePath = project->projectFilePath().toString();
+    auto * const watcher = new QFutureWatcher<bool>(this);
+    connect(watcher, &QFutureWatcher<bool>::canceled, this, &QbsProjectParser::cancel);
+    watcher->setFuture(fi->future());
 }
 
 QbsProjectParser::~QbsProjectParser()
@@ -108,7 +112,7 @@ void QbsProjectParser::parse(const QVariantMap &config, const Environment &env, 
     params.setLibexecPath(libExecDirectory());
     params.setProductErrorMode(qbs::ErrorHandlingMode::Relaxed);
     params.setPropertyCheckingMode(qbs::ErrorHandlingMode::Relaxed);
-    params.setLogElapsedTime(!qgetenv(Constants::QBS_PROFILING_ENV).isEmpty());
+    params.setLogElapsedTime(!qEnvironmentVariableIsEmpty(Constants::QBS_PROFILING_ENV));
 
     m_qbsSetupProjectJob = m_project.setupProject(params, QbsManager::logSink(), 0);
 

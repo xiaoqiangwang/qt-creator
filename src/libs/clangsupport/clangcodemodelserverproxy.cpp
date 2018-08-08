@@ -29,30 +29,12 @@
 #include <clangcodemodelservermessages.h>
 #include <messageenvelop.h>
 
-#include <QLocalServer>
-#include <QLocalSocket>
-#include <QProcess>
-
 namespace ClangBackEnd {
 
-ClangCodeModelServerProxy::ClangCodeModelServerProxy(ClangCodeModelClientInterface *client, QIODevice *ioDevice)
-    : m_writeMessageBlock(ioDevice),
-      m_readMessageBlock(ioDevice),
-      m_client(client)
+ClangCodeModelServerProxy::ClangCodeModelServerProxy(ClangCodeModelClientInterface *client,
+                                                     QIODevice *ioDevice)
+    : BaseServerProxy(client, ioDevice)
 {
-    QObject::connect(ioDevice, &QIODevice::readyRead, [this] () {ClangCodeModelServerProxy::readMessages();});
-}
-
-void ClangCodeModelServerProxy::readMessages()
-{
-    for (const auto &message : m_readMessageBlock.readAll())
-        m_client->dispatch(message);
-}
-
-void ClangCodeModelServerProxy::resetCounter()
-{
-    m_writeMessageBlock.resetCounter();
-    m_readMessageBlock.resetCounter();
 }
 
 void ClangCodeModelServerProxy::end()
@@ -60,47 +42,47 @@ void ClangCodeModelServerProxy::end()
     m_writeMessageBlock.write(EndMessage());
 }
 
-void ClangCodeModelServerProxy::registerTranslationUnitsForEditor(const RegisterTranslationUnitForEditorMessage &message)
+void ClangCodeModelServerProxy::documentsOpened(const DocumentsOpenedMessage &message)
 {
     m_writeMessageBlock.write(message);
 }
 
-void ClangCodeModelServerProxy::updateTranslationUnitsForEditor(const ClangBackEnd::UpdateTranslationUnitsForEditorMessage &message)
+void ClangCodeModelServerProxy::documentsChanged(const DocumentsChangedMessage &message)
 {
     m_writeMessageBlock.write(message);
 }
 
-void ClangCodeModelServerProxy::unregisterTranslationUnitsForEditor(const UnregisterTranslationUnitsForEditorMessage &message)
+void ClangCodeModelServerProxy::documentsClosed(const DocumentsClosedMessage &message)
 {
     m_writeMessageBlock.write(message);
 }
 
-void ClangCodeModelServerProxy::registerProjectPartsForEditor(const RegisterProjectPartsForEditorMessage &message)
+void ClangCodeModelServerProxy::projectPartsUpdated(const ProjectPartsUpdatedMessage &message)
 {
     m_writeMessageBlock.write(message);
 }
 
-void ClangCodeModelServerProxy::unregisterProjectPartsForEditor(const UnregisterProjectPartsForEditorMessage &message)
+void ClangCodeModelServerProxy::projectPartsRemoved(const ProjectPartsRemovedMessage &message)
 {
     m_writeMessageBlock.write(message);
 }
 
-void ClangBackEnd::ClangCodeModelServerProxy::registerUnsavedFilesForEditor(const ClangBackEnd::RegisterUnsavedFilesForEditorMessage &message)
+void ClangCodeModelServerProxy::unsavedFilesUpdated(const UnsavedFilesUpdatedMessage &message)
 {
     m_writeMessageBlock.write(message);
 }
 
-void ClangBackEnd::ClangCodeModelServerProxy::unregisterUnsavedFilesForEditor(const ClangBackEnd::UnregisterUnsavedFilesForEditorMessage &message)
+void ClangCodeModelServerProxy::unsavedFilesRemoved(const UnsavedFilesRemovedMessage &message)
 {
     m_writeMessageBlock.write(message);
 }
 
-void ClangCodeModelServerProxy::completeCode(const CompleteCodeMessage &message)
+void ClangCodeModelServerProxy::requestCompletions(const RequestCompletionsMessage &message)
 {
     m_writeMessageBlock.write(message);
 }
 
-void ClangCodeModelServerProxy::requestDocumentAnnotations(const RequestDocumentAnnotationsMessage &message)
+void ClangCodeModelServerProxy::requestAnnotations(const RequestAnnotationsMessage &message)
 {
     m_writeMessageBlock.write(message);
 }
@@ -115,7 +97,13 @@ void ClangCodeModelServerProxy::requestFollowSymbol(const RequestFollowSymbolMes
     m_writeMessageBlock.write(message);
 }
 
-void ClangCodeModelServerProxy::updateVisibleTranslationUnits(const UpdateVisibleTranslationUnitsMessage &message)
+void ClangCodeModelServerProxy::requestToolTip(const RequestToolTipMessage &message)
+{
+    m_writeMessageBlock.write(message);
+}
+
+void ClangCodeModelServerProxy::documentVisibilityChanged(
+    const DocumentVisibilityChangedMessage &message)
 {
     m_writeMessageBlock.write(message);
 }

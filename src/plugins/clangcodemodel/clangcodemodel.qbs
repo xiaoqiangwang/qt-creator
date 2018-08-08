@@ -27,6 +27,7 @@ QtcPlugin {
         var resourceDir = FileInfo.joinPaths(libclang.llvmLibDir, "clang", libclang.llvmVersion,
                                              "include");
         defines.push('CLANG_RESOURCE_DIR="' + resourceDir + '"');
+        defines.push('CLANG_BINDIR="' + libclang.llvmBinDir + '"');
         return defines;
     }
 
@@ -51,7 +52,6 @@ QtcPlugin {
         "clangbackendsender.h",
         "clangcodemodelplugin.cpp",
         "clangcodemodelplugin.h",
-        "clangcodemodel.qrc",
         "clangcompletionassistinterface.cpp",
         "clangcompletionassistinterface.h",
         "clangcompletionassistprocessor.cpp",
@@ -63,6 +63,8 @@ QtcPlugin {
         "clangcompletioncontextanalyzer.cpp",
         "clangcompletioncontextanalyzer.h",
         "clangconstants.h",
+        "clangcurrentdocumentfilter.cpp",
+        "clangcurrentdocumentfilter.h",
         "clangdiagnosticfilter.cpp",
         "clangdiagnosticfilter.h",
         "clangdiagnosticmanager.cpp",
@@ -81,11 +83,15 @@ QtcPlugin {
         "clangfollowsymbol.h",
         "clangfunctionhintmodel.cpp",
         "clangfunctionhintmodel.h",
-        "clanghighlightingmarksreporter.cpp",
-        "clanghighlightingmarksreporter.h",
+        "clanghighlightingresultreporter.cpp",
+        "clanghighlightingresultreporter.h",
+        "clanghoverhandler.cpp",
+        "clanghoverhandler.h",
         "clangisdiagnosticrelatedtolocation.h",
         "clangmodelmanagersupport.cpp",
         "clangmodelmanagersupport.h",
+        "clangoverviewmodel.cpp",
+        "clangoverviewmodel.h",
         "clangpreprocessorassistproposalitem.cpp",
         "clangpreprocessorassistproposalitem.h",
         "clangprojectsettings.cpp",
@@ -93,6 +99,8 @@ QtcPlugin {
         "clangprojectsettingswidget.cpp",
         "clangprojectsettingswidget.h",
         "clangprojectsettingswidget.ui",
+        "clangrefactoringengine.cpp",
+        "clangrefactoringengine.h",
         "clangtextmark.cpp",
         "clangtextmark.h",
         "clanguiheaderondiskmanager.cpp",

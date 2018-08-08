@@ -25,17 +25,62 @@
 
 #include "compileroptionsbuilder.h"
 
+#include <coreplugin/icore.h>
+#include <coreplugin/vcsmanager.h>
+
+#include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorerconstants.h>
-#include <utils/qtcfallthrough.h>
+
+#include <utils/fileutils.h>
+#include <utils/qtcassert.h>
 
 #include <QDir>
 #include <QRegularExpression>
 
 namespace CppTools {
 
-CompilerOptionsBuilder::CompilerOptionsBuilder(const ProjectPart &projectPart)
+static constexpr char SYSTEM_INCLUDE_PREFIX[] = "-isystem";
+
+CompilerOptionsBuilder::CompilerOptionsBuilder(const ProjectPart &projectPart,
+                                               const QString &clangVersion,
+                                               const QString &clangResourceDirectory)
     : m_projectPart(projectPart)
+    , m_clangVersion(clangVersion)
+    , m_clangResourceDirectory(clangResourceDirectory)
 {
+}
+
+QStringList CompilerOptionsBuilder::build(CppTools::ProjectFile::Kind fileKind, PchUsage pchUsage)
+{
+    m_options.clear();
+
+    if (fileKind == ProjectFile::CHeader || fileKind == ProjectFile::CSource) {
+        QTC_ASSERT(m_projectPart.languageVersion <= ProjectPart::LatestCVersion,
+                   return QStringList(););
+    }
+
+    addWordWidth();
+    addTargetTriple();
+    addExtraCodeModelFlags();
+    addLanguageOption(fileKind);
+    addOptionsForLanguage(/*checkForBorlandExtensions*/ true);
+    enableExceptions();
+
+    addToolchainAndProjectMacros();
+    undefineClangVersionMacrosForMsvc();
+    undefineCppLanguageFeatureMacrosForMsvc2015();
+    addDefineFunctionMacrosMsvc();
+
+    addPredefinedHeaderPathsOptions();
+    addPrecompiledHeaderOptions(pchUsage);
+    addHeaderPathOptions();
+    addProjectConfigFileInclude();
+
+    addMsvcCompatibilityVersion();
+
+    addExtraOptions();
+
+    return options();
 }
 
 QStringList CompilerOptionsBuilder::options() const
@@ -69,9 +114,18 @@ void CompilerOptionsBuilder::addTargetTriple()
     }
 }
 
+void CompilerOptionsBuilder::addExtraCodeModelFlags()
+{
+    // extraCodeModelFlags keep build architecture for cross-compilation.
+    // In case of iOS build target triple has aarch64 archtecture set which makes
+    // code model fail with CXError_Failure. To fix that we explicitly provide architecture.
+    m_options.append(m_projectPart.extraCodeModelFlags);
+}
+
 void CompilerOptionsBuilder::enableExceptions()
 {
-    add(QLatin1String("-fcxx-exceptions"));
+    if (m_projectPart.languageVersion > ProjectPart::LatestCVersion)
+        add(QLatin1String("-fcxx-exceptions"));
     add(QLatin1String("-fexceptions"));
 }
 
@@ -90,6 +144,7 @@ void CompilerOptionsBuilder::addHeaderPathOptions()
             continue;
 
         QString prefix;
+        Utils::FileName path;
         switch (headerPath.type) {
         case HeaderPath::FrameworkPath:
             prefix = QLatin1String("-F");
@@ -101,7 +156,8 @@ void CompilerOptionsBuilder::addHeaderPathOptions()
             break;
         }
 
-        result.append(prefix + QDir::toNativeSeparators(headerPath.path));
+        result.append(prefix);
+        result.append(QDir::toNativeSeparators(headerPath.path));
     }
 
     m_options.append(result);
@@ -220,6 +276,7 @@ void CompilerOptionsBuilder::addOptionsForLanguage(bool checkForBorlandExtension
     QStringList opts;
     const ProjectPart::LanguageExtensions languageExtensions = m_projectPart.languageExtensions;
     const bool gnuExtensions = languageExtensions & ProjectPart::GnuExtensions;
+
     switch (m_projectPart.languageVersion) {
     case ProjectPart::C89:
         opts << (gnuExtensions ? QLatin1String("-std=gnu89") : QLatin1String("-std=c89"));
@@ -237,15 +294,13 @@ void CompilerOptionsBuilder::addOptionsForLanguage(bool checkForBorlandExtension
         opts << (gnuExtensions ? QLatin1String("-std=gnu++98") : QLatin1String("-std=c++98"));
         break;
     case ProjectPart::CXX03:
-        // Clang 3.6 does not know -std=gnu++03.
-        opts << QLatin1String("-std=c++03");
+        opts << (gnuExtensions ? QLatin1String("-std=gnu++03") : QLatin1String("-std=c++03"));
         break;
     case ProjectPart::CXX14:
         opts << (gnuExtensions ? QLatin1String("-std=gnu++14") : QLatin1String("-std=c++14"));
         break;
     case ProjectPart::CXX17:
-        // TODO: Change to (probably) "gnu++17"/"c++17" at some point in the future.
-        opts << (gnuExtensions ? QLatin1String("-std=gnu++1z") : QLatin1String("-std=c++1z"));
+        opts << (gnuExtensions ? QLatin1String("-std=gnu++17") : QLatin1String("-std=c++17"));
         break;
     }
 
@@ -292,24 +347,39 @@ void CompilerOptionsBuilder::addMsvcCompatibilityVersion()
 static QStringList languageFeatureMacros()
 {
     // CLANG-UPGRADE-CHECK: Update known language features macros.
-    // Collected with:
-    //  $ CALL "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" x86
-    //  $ D:\usr\llvm-3.8.0\bin\clang++.exe -fms-compatibility-version=19 -std=c++1y -dM -E D:\empty.cpp | grep __cpp_
+    // Collected with the following command line.
+    //   * Use latest -fms-compatibility-version and -std possible.
+    //   * Compatibility version 19 vs 1910 did not matter.
+    //  $ clang++ -fms-compatibility-version=19 -std=c++1z -dM -E D:\empty.cpp | grep __cpp_
     static QStringList macros{
+        QLatin1String("__cpp_aggregate_bases"),
         QLatin1String("__cpp_aggregate_nsdmi"),
         QLatin1String("__cpp_alias_templates"),
+        QLatin1String("__cpp_aligned_new"),
         QLatin1String("__cpp_attributes"),
         QLatin1String("__cpp_binary_literals"),
+        QLatin1String("__cpp_capture_star_this"),
         QLatin1String("__cpp_constexpr"),
         QLatin1String("__cpp_decltype"),
         QLatin1String("__cpp_decltype_auto"),
+        QLatin1String("__cpp_deduction_guides"),
         QLatin1String("__cpp_delegating_constructors"),
         QLatin1String("__cpp_digit_separators"),
+        QLatin1String("__cpp_enumerator_attributes"),
+        QLatin1String("__cpp_exceptions"),
+        QLatin1String("__cpp_fold_expressions"),
         QLatin1String("__cpp_generic_lambdas"),
+        QLatin1String("__cpp_hex_float"),
+        QLatin1String("__cpp_if_constexpr"),
         QLatin1String("__cpp_inheriting_constructors"),
         QLatin1String("__cpp_init_captures"),
         QLatin1String("__cpp_initializer_lists"),
+        QLatin1String("__cpp_inline_variables"),
         QLatin1String("__cpp_lambdas"),
+        QLatin1String("__cpp_namespace_attributes"),
+        QLatin1String("__cpp_nested_namespace_definitions"),
+        QLatin1String("__cpp_noexcept_function_type"),
+        QLatin1String("__cpp_nontype_template_args"),
         QLatin1String("__cpp_nsdmi"),
         QLatin1String("__cpp_range_based_for"),
         QLatin1String("__cpp_raw_strings"),
@@ -318,11 +388,15 @@ static QStringList languageFeatureMacros()
         QLatin1String("__cpp_rtti"),
         QLatin1String("__cpp_rvalue_references"),
         QLatin1String("__cpp_static_assert"),
+        QLatin1String("__cpp_structured_bindings"),
+        QLatin1String("__cpp_template_auto"),
+        QLatin1String("__cpp_threadsafe_static_init"),
         QLatin1String("__cpp_unicode_characters"),
         QLatin1String("__cpp_unicode_literals"),
         QLatin1String("__cpp_user_defined_literals"),
         QLatin1String("__cpp_variable_templates"),
         QLatin1String("__cpp_variadic_templates"),
+        QLatin1String("__cpp_variadic_using"),
     };
 
     return macros;
@@ -332,8 +406,8 @@ void CompilerOptionsBuilder::undefineCppLanguageFeatureMacrosForMsvc2015()
 {
     if (m_projectPart.toolchainType == ProjectExplorer::Constants::MSVC_TOOLCHAIN_TYPEID
             && m_projectPart.isMsvc2015Toolchain) {
-        // Undefine the language feature macros that are pre-defined in clang-cl 3.8.0,
-        // but not in MSVC2015's cl.exe.
+        // Undefine the language feature macros that are pre-defined in clang-cl,
+        // but not in MSVC's cl.exe.
         foreach (const QString &macroName, languageFeatureMacros())
             m_options.append(undefineOption() + macroName);
     }
@@ -343,14 +417,6 @@ void CompilerOptionsBuilder::addDefineFunctionMacrosMsvc()
 {
     if (m_projectPart.toolchainType == ProjectExplorer::Constants::MSVC_TOOLCHAIN_TYPEID)
         addMacros({{"__FUNCSIG__", "\"\""}, {"__FUNCTION__", "\"\""}, {"__FUNCDNAME__", "\"\""}});
-}
-
-void CompilerOptionsBuilder::addDefineFloat128ForMingw()
-{
-    // CLANG-UPGRADE-CHECK: Workaround still needed?
-    // https://llvm.org/bugs/show_bug.cgi?id=30685
-    if (m_projectPart.toolchainType == ProjectExplorer::Constants::MINGW_TOOLCHAIN_TYPEID)
-        addDefine({"__float128", "short", ProjectExplorer::MacroType::Define});
 }
 
 QString CompilerOptionsBuilder::includeDirOption() const
@@ -394,29 +460,12 @@ QString CompilerOptionsBuilder::includeOption() const
     return QLatin1String("-include");
 }
 
-static bool isGccOrMinGwToolchain(const Core::Id &toolchainType)
-{
-    return toolchainType == ProjectExplorer::Constants::GCC_TOOLCHAIN_TYPEID
-        || toolchainType == ProjectExplorer::Constants::MINGW_TOOLCHAIN_TYPEID;
-}
-
 bool CompilerOptionsBuilder::excludeDefineDirective(const ProjectExplorer::Macro &macro) const
 {
-    // This is a quick fix for QTCREATORBUG-11501.
-    // TODO: do a proper fix, see QTCREATORBUG-11709.
-    if (macro.key == "__cplusplus")
+    // Ignore for all compiler toolchains since LLVM has it's own implementation for
+    // __has_include(STR) and __has_include_next(STR)
+    if (macro.key.startsWith("__has_include"))
         return true;
-
-    // gcc 4.9 has:
-    //    #define __has_include(STR) __has_include__(STR)
-    //    #define __has_include_next(STR) __has_include_next__(STR)
-    // The right-hand sides are gcc built-ins that clang does not understand, and they'd
-    // override clang's own (non-macro, it seems) definitions of the symbols on the left-hand
-    // side.
-    if (isGccOrMinGwToolchain(m_projectPart.toolchainType)
-            && macro.key.contains("has_include")) {
-        return true;
-    }
 
     // If _FORTIFY_SOURCE is defined (typically in release mode), it will
     // enable the inclusion of extra headers to help catching buffer overflows
@@ -447,6 +496,75 @@ bool CompilerOptionsBuilder::excludeHeaderPath(const QString &headerPath) const
     static QRegularExpression clangIncludeDir(
                 QLatin1String("\\A.*/lib/clang/\\d+\\.\\d+(\\.\\d+)?/include\\z"));
     return clangIncludeDir.match(headerPath).hasMatch();
+}
+
+void CompilerOptionsBuilder::addPredefinedHeaderPathsOptions()
+{
+    add("-nostdinc");
+    add("-nostdlibinc");
+
+    // In case of MSVC we need builtin clang defines to correctly handle clang includes
+    if (m_projectPart.toolchainType != ProjectExplorer::Constants::MSVC_TOOLCHAIN_TYPEID)
+        add("-undef");
+
+    addClangIncludeFolder();
+}
+
+void CompilerOptionsBuilder::addClangIncludeFolder()
+{
+    QTC_CHECK(!m_clangVersion.isEmpty());
+    add(includeDirOption());
+    add(clangIncludeDirectory(m_clangVersion, m_clangResourceDirectory));
+}
+
+void CompilerOptionsBuilder::addProjectConfigFileInclude()
+{
+    if (!m_projectPart.projectConfigFile.isEmpty()) {
+        add("-include");
+        add(QDir::toNativeSeparators(m_projectPart.projectConfigFile));
+    }
+}
+
+static QString creatorLibexecPath()
+{
+#ifndef UNIT_TESTS
+    return Core::ICore::instance()->libexecPath();
+#else
+    return QString();
+#endif
+}
+
+QString clangIncludeDirectory(const QString &clangVersion, const QString &clangResourceDirectory)
+{
+    QDir dir(creatorLibexecPath() + "/clang" + clangIncludePath(clangVersion));
+    if (!dir.exists() || !QFileInfo(dir, "stdint.h").exists())
+        dir = QDir(clangResourceDirectory);
+    return QDir::toNativeSeparators(dir.canonicalPath());
+}
+
+QString clangExecutable(const QString &clangBinDirectory)
+{
+    const QString hostExeSuffix(QTC_HOST_EXE_SUFFIX);
+    QFileInfo executable(creatorLibexecPath() + "/clang/bin/clang" + hostExeSuffix);
+    if (!executable.exists())
+        executable = QFileInfo(clangBinDirectory + "/clang" + hostExeSuffix);
+    return QDir::toNativeSeparators(executable.canonicalFilePath());
+}
+
+void CompilerOptionsBuilder::undefineClangVersionMacrosForMsvc()
+{
+    if (m_projectPart.toolchainType == ProjectExplorer::Constants::MSVC_TOOLCHAIN_TYPEID) {
+        static QStringList macroNames {
+            "__clang__",
+            "__clang_major__",
+            "__clang_minor__",
+            "__clang_patchlevel__",
+            "__clang_version__"
+        };
+
+        foreach (const QString &macroName, macroNames)
+            add(undefineOption() + macroName);
+    }
 }
 
 } // namespace CppTools

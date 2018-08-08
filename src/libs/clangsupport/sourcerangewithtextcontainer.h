@@ -35,7 +35,7 @@ class SourceRangeWithTextContainer : public V2::SourceRangeContainer
 {
 public:
     SourceRangeWithTextContainer() = default;
-    SourceRangeWithTextContainer(uint fileHash,
+    SourceRangeWithTextContainer(FilePathId filePathId,
                                  uint startLine,
                                  uint startColumn,
                                  uint startOffset,
@@ -43,36 +43,31 @@ public:
                                  uint endColumn,
                                  uint endOffset,
                                  Utils::SmallString &&text)
-        : V2::SourceRangeContainer(fileHash,
+        : V2::SourceRangeContainer(filePathId,
                                    startLine,
                                    startColumn,
                                    startOffset,
                                    endLine,
                                    endColumn,
                                    endOffset),
-          m_text(std::move(text))
+          text(std::move(text))
     {}
 
     SourceRangeWithTextContainer(V2::SourceRangeContainer &&base,
-                         Utils::SmallString &&text)
+                                 Utils::SmallString &&text)
         : V2::SourceRangeContainer(std::move(base)),
-          m_text(std::move(text))
+          text(std::move(text))
     {
-    }
-
-    const Utils::SmallString &text() const
-    {
-        return m_text;
     }
 
     using V2::SourceRangeContainer::start;
     using V2::SourceRangeContainer::end;
-    using V2::SourceRangeContainer::fileHash;
+    using V2::SourceRangeContainer::filePathId;
 
     friend QDataStream &operator<<(QDataStream &out, const SourceRangeWithTextContainer &container)
     {
         out << container.base();
-        out << container.m_text;
+        out << container.text;
 
         return out;
     }
@@ -80,7 +75,7 @@ public:
     friend QDataStream &operator>>(QDataStream &in, SourceRangeWithTextContainer &container)
     {
         in >> container.base();
-        in >> container.m_text;
+        in >> container.text;
 
         return in;
     }
@@ -88,7 +83,7 @@ public:
     friend bool operator==(const SourceRangeWithTextContainer &first,
                            const SourceRangeWithTextContainer &second)
     {
-        return first.base() == second.base() && first.m_text == second.m_text;
+        return first.base() == second.base() && first.text == second.text;
     }
 
     V2::SourceRangeContainer &base()
@@ -106,13 +101,12 @@ public:
         return *this;
     }
 
-private:
-    Utils::SmallString m_text;
+public:
+    Utils::SmallString text;
 };
 
 using SourceRangeWithTextContainers = std::vector<SourceRangeWithTextContainer>;
 
 CLANGSUPPORT_EXPORT QDebug operator<<(QDebug debug, const SourceRangeWithTextContainer &container);
-std::ostream &operator<<(std::ostream &os, const SourceRangeWithTextContainer &container);
 } // namespace ClangBackEnd
 

@@ -27,39 +27,39 @@
 
 #include <utils/smallstring.h>
 
-#include <cstdint>
+#include <filepathid.h>
+
+#include <utils/linecolumn.h>
+
 #include <vector>
-#include <tuple>
-#include <unordered_map>
 
 namespace ClangRefactoring {
 
-class SourceLocations
+class SourceLocation
 {
 public:
-    struct Location
+    SourceLocation() = default;
+    SourceLocation(ClangBackEnd::FilePathId filePathId, Utils::LineColumn lineColumn)
+        : filePathId{filePathId}, lineColumn{lineColumn}
+    {}
+    SourceLocation(ClangBackEnd::FilePathId filePathId, int line, int column)
+        : filePathId{filePathId}, lineColumn{line, column}
+    {}
+    SourceLocation(int directoryId, int sourceId, int line, int column)
+        : filePathId{directoryId, sourceId}, lineColumn{line, column}
+    {}
+
+    friend bool operator==(SourceLocation first, SourceLocation second)
     {
-        Location(qint64 sourceId, qint64 line, qint64 column)
-            : sourceId(sourceId), line(line), column(column)
-        {}
+        return first.filePathId == second.filePathId
+            && first.lineColumn == second.lineColumn;
+    }
 
-        qint64 sourceId;
-        qint64 line;
-        qint64 column;
-    };
-
-    struct Source
-    {
-        Source(qint64 sourceId, Utils::PathString &&sourcePath)
-            : sourceId(sourceId), sourcePath(std::move(sourcePath))
-        {}
-
-        qint64 sourceId;
-        Utils::PathString sourcePath;
-    };
-
-    std::vector<Location> locations;
-    std::unordered_map<qint64, Utils::PathString> sources;
+public:
+    ClangBackEnd::FilePathId filePathId;
+    Utils::LineColumn lineColumn;
 };
+
+using SourceLocations = std::vector<SourceLocation>;
 
 } // namespace ClangRefactoring

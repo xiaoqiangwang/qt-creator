@@ -34,6 +34,7 @@
 #include <QList>
 #include <QObject>
 #include <QSharedPointer>
+#include <QUrl>
 #include <QVariantMap>
 
 #include <functional>
@@ -152,14 +153,14 @@ public:
     virtual IDeviceWidget *createWidget() = 0;
     virtual QList<Core::Id> actionIds() const = 0;
     virtual QString displayNameForActionId(Core::Id actionId) const = 0;
-    virtual void executeAction(Core::Id actionId, QWidget *parent = 0) = 0;
+    virtual void executeAction(Core::Id actionId, QWidget *parent = nullptr) = 0;
 
     // Devices that can auto detect ports need not return a ports gathering method. Such devices can
     // obtain a free port on demand. eg: Desktop device.
     virtual bool canAutoDetectPorts() const { return false; }
     virtual PortsGatheringMethod::Ptr portsGatheringMethod() const;
     virtual bool canCreateProcessModel() const { return false; }
-    virtual DeviceProcessList *createProcessListModel(QObject *parent = 0) const;
+    virtual DeviceProcessList *createProcessListModel(QObject *parent = nullptr) const;
     virtual bool hasDeviceTester() const { return false; }
     virtual DeviceTester *createDeviceTester() const;
     virtual Utils::OsType osType() const;
@@ -200,6 +201,9 @@ public:
     QString debugServerPath() const;
     void setDebugServerPath(const QString &path);
 
+    QString qmlsceneCommand() const;
+    void setQmlsceneCommand(const QString &path);
+
 protected:
     IDevice();
     IDevice(Core::Id type, Origin origin, MachineType machineType, Core::Id id = Core::Id());
@@ -231,7 +235,7 @@ signals:
     void finished(ProjectExplorer::DeviceTester::TestResult result);
 
 protected:
-    explicit DeviceTester(QObject *parent = 0);
+    explicit DeviceTester(QObject *parent = nullptr);
 };
 
 } // namespace ProjectExplorer

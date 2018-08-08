@@ -73,7 +73,6 @@ AutotoolsProject::AutotoolsProject(const Utils::FileName &fileName) :
     m_cppCodeModelUpdater(new CppTools::CppProjectUpdater(this))
 {
     setId(Constants::AUTOTOOLS_PROJECT_ID);
-    setProjectContext(Core::Context(Constants::PROJECT_CONTEXT));
     setProjectLanguages(Core::Context(ProjectExplorer::Constants::CXX_LANGUAGE_ID));
     setDisplayName(projectDirectory().fileName());
 }
@@ -207,12 +206,13 @@ void AutotoolsProject::makefileParsingFinished()
         m_watchedFiles.append(absConfigureAc);
     }
 
-    auto newRoot = new AutotoolsProjectNode(projectDirectory());
+    auto newRoot = std::make_unique<AutotoolsProjectNode>(projectDirectory());
     for (const QString &f : m_files) {
         const Utils::FileName path = Utils::FileName::fromString(f);
-        newRoot->addNestedNode(new FileNode(path, FileNode::fileTypeForFileName(path), false));
+        newRoot->addNestedNode(std::make_unique<FileNode>(path, FileNode::fileTypeForFileName(path),
+                                                          false));
     }
-    setRootProjectNode(newRoot);
+    setRootProjectNode(std::move(newRoot));
 
     updateCppCodeModel();
 

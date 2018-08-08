@@ -36,7 +36,8 @@
 #include "environmentwidget.h"
 
 #include <coreplugin/icore.h>
-#include <extensionsystem/pluginmanager.h>
+#include <coreplugin/variablechooser.h>
+
 #include <utils/algorithm.h>
 #include <utils/fancylineedit.h>
 #include <utils/environment.h>
@@ -44,6 +45,7 @@
 #include <utils/pathchooser.h>
 #include <utils/environmentdialog.h>
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -260,9 +262,7 @@ int ToolChainInformationConfigWidget::indexOf(QComboBox *cb, const ToolChain *tc
 DeviceTypeInformationConfigWidget::DeviceTypeInformationConfigWidget(Kit *workingCopy, const KitInformation *ki) :
     KitConfigWidget(workingCopy, ki), m_comboBox(new QComboBox)
 {
-    QList<IDeviceFactory *> factories
-            = ExtensionSystem::PluginManager::getObjects<IDeviceFactory>();
-    foreach (IDeviceFactory *factory, factories) {
+    for (IDeviceFactory *factory : IDeviceFactory::allDeviceFactories()) {
         foreach (Id id, factory->availableCreationIds())
             m_comboBox->addItem(factory->displayNameForId(id), id.toSetting());
     }
@@ -413,8 +413,16 @@ void DeviceInformationConfigWidget::currentDeviceChanged()
 KitEnvironmentConfigWidget::KitEnvironmentConfigWidget(Kit *workingCopy, const KitInformation *ki) :
     KitConfigWidget(workingCopy, ki),
     m_summaryLabel(new QLabel),
-    m_manageButton(new QPushButton)
+    m_manageButton(new QPushButton),
+    m_mainWidget(new QWidget)
 {
+    auto *layout = new QVBoxLayout;
+    layout->addWidget(m_summaryLabel);
+    if (Utils::HostOsInfo::isWindowsHost())
+        initMSVCOutputSwitch(layout);
+
+    m_mainWidget->setLayout(layout);
+
     refresh();
     m_manageButton->setText(tr("Change..."));
     connect(m_manageButton, &QAbstractButton::clicked,
@@ -423,7 +431,7 @@ KitEnvironmentConfigWidget::KitEnvironmentConfigWidget(Kit *workingCopy, const K
 
 QWidget *KitEnvironmentConfigWidget::mainWidget() const
 {
-    return m_summaryLabel;
+    return m_mainWidget;
 }
 
 QString KitEnvironmentConfigWidget::displayName() const
@@ -453,6 +461,15 @@ void KitEnvironmentConfigWidget::makeReadOnly()
 QList<Utils::EnvironmentItem> KitEnvironmentConfigWidget::currentEnvironment() const
 {
     QList<Utils::EnvironmentItem> changes = EnvironmentKitInformation::environmentChanges(m_kit);
+
+    if (Utils::HostOsInfo::isWindowsHost()) {
+        const Utils::EnvironmentItem forceMSVCEnglishItem("VSLANG", "1033");
+        if (changes.indexOf(forceMSVCEnglishItem) >= 0) {
+            m_vslangCheckbox->setCheckState(Qt::Checked);
+            changes.removeAll(forceMSVCEnglishItem);
+        }
+    }
+
     Utils::sort(changes, [](const Utils::EnvironmentItem &lhs, const Utils::EnvironmentItem &rhs)
                          { return QString::localeAwareCompare(lhs.name, rhs.name) < 0; });
     return changes;
@@ -461,11 +478,24 @@ QList<Utils::EnvironmentItem> KitEnvironmentConfigWidget::currentEnvironment() c
 void KitEnvironmentConfigWidget::editEnvironmentChanges()
 {
     bool ok;
-    const QList<Utils::EnvironmentItem> changes = Utils::EnvironmentDialog::getEnvironmentItems(&ok,
-                                                                 m_summaryLabel,
-                                                                 currentEnvironment());
+    Utils::MacroExpander *expander = m_kit->macroExpander();
+    Utils::EnvironmentDialog::Polisher polisher = [expander](QWidget *w) {
+        Core::VariableChooser::addSupportForChildWidgets(w, expander);
+    };
+    QList<Utils::EnvironmentItem>
+            changes = Utils::EnvironmentDialog::getEnvironmentItems(&ok,
+                                                                    m_summaryLabel,
+                                                                    currentEnvironment(),
+                                                                    QString(),
+                                                                    polisher);
     if (!ok)
         return;
+
+    if (Utils::HostOsInfo::isWindowsHost()) {
+        const Utils::EnvironmentItem forceMSVCEnglishItem("VSLANG", "1033");
+        if (m_vslangCheckbox->isChecked() && changes.indexOf(forceMSVCEnglishItem) < 0)
+            changes.append(forceMSVCEnglishItem);
+    }
 
     EnvironmentKitInformation::setEnvironmentChanges(m_kit, changes);
 }
@@ -473,6 +503,25 @@ void KitEnvironmentConfigWidget::editEnvironmentChanges()
 QWidget *KitEnvironmentConfigWidget::buttonWidget() const
 {
     return m_manageButton;
+}
+
+void KitEnvironmentConfigWidget::initMSVCOutputSwitch(QVBoxLayout *layout)
+{
+    m_vslangCheckbox = new QCheckBox(tr("Force UTF-8 MSVC compiler output"));
+    layout->addWidget(m_vslangCheckbox);
+    m_vslangCheckbox->setToolTip(tr("Either switches MSVC to English or keeps the language and "
+                                    "just forces UTF-8 output (may vary depending on the used MSVC "
+                                    "compiler)."));
+    connect(m_vslangCheckbox, &QCheckBox::toggled, this, [this](bool checked) {
+        QList<Utils::EnvironmentItem> changes
+                = EnvironmentKitInformation::environmentChanges(m_kit);
+        const Utils::EnvironmentItem forceMSVCEnglishItem("VSLANG", "1033");
+        if (!checked && changes.indexOf(forceMSVCEnglishItem) >= 0)
+            changes.removeAll(forceMSVCEnglishItem);
+        if (checked && changes.indexOf(forceMSVCEnglishItem) < 0)
+            changes.append(forceMSVCEnglishItem);
+        EnvironmentKitInformation::setEnvironmentChanges(m_kit, changes);
+    });
 }
 
 } // namespace Internal

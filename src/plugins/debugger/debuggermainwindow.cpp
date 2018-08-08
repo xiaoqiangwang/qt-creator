@@ -34,6 +34,7 @@
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/findplaceholder.h>
 #include <coreplugin/icore.h>
+#include <coreplugin/modemanager.h>
 #include <coreplugin/navigationwidget.h>
 #include <coreplugin/outputpane.h>
 #include <coreplugin/rightpane.h>
@@ -43,6 +44,7 @@
 #include <utils/styledbar.h>
 #include <utils/qtcassert.h>
 #include <utils/proxyaction.h>
+#include <utils/utilsicons.h>
 
 #include <QAction>
 #include <QComboBox>
@@ -51,6 +53,7 @@
 #include <QMenu>
 #include <QStackedWidget>
 #include <QStandardItemModel>
+#include <QTimer>
 #include <QToolButton>
 
 using namespace Debugger;
@@ -127,6 +130,16 @@ QDockWidget *DebuggerMainWindow::dockWidget(const QByteArray &dockId) const
     return m_dockForDockId.value(dockId);
 }
 
+void DebuggerMainWindow::raiseDock(const QByteArray &dockId)
+{
+    QDockWidget *dock = m_dockForDockId.value(dockId);
+    QTC_ASSERT(dock, return);
+    QAction *act = dock->toggleViewAction();
+    if (!act->isChecked())
+        QTimer::singleShot(1, act, [act] { act->trigger(); });
+    dock->raise();
+}
+
 void DebuggerMainWindow::onModeChanged(Core::Id mode)
 {
     if (mode == Debugger::Constants::MODE_DEBUG) {
@@ -174,6 +187,10 @@ void DebuggerMainWindow::finalizeSetup()
     auto viewButton = new QToolButton;
     viewButton->setText(tr("&Views"));
 
+    auto closeButton = new QToolButton();
+    closeButton->setIcon(Utils::Icons::CLOSE_SPLIT_BOTTOM.icon());
+    closeButton->setToolTip(tr("Leave Debug Mode"));
+
     auto toolbar = new Utils::StyledBar;
     toolbar->setProperty("topBorder", true);
     auto hbox = new QHBoxLayout(toolbar);
@@ -185,11 +202,16 @@ void DebuggerMainWindow::finalizeSetup()
     hbox->addStretch(1);
     hbox->addWidget(new Utils::StyledSeparator);
     hbox->addWidget(viewButton);
+    hbox->addWidget(closeButton);
 
     connect(viewButton, &QAbstractButton::clicked, [this, viewButton] {
         QMenu menu;
         addDockActionsToMenu(&menu);
         menu.exec(viewButton->mapToGlobal(QPoint()));
+    });
+
+    connect(closeButton, &QAbstractButton::clicked, [] {
+        ModeManager::activateMode(Core::Constants::MODE_EDIT);
     });
 
     Context debugcontext(Debugger::Constants::C_DEBUGMODE);

@@ -35,7 +35,6 @@
 #include <extensionsystem/pluginmanager.h>
 
 #include <utils/algorithm.h>
-#include <utils/asconst.h>
 #include <utils/qtcassert.h>
 #include <utils/persistentsettings.h>
 
@@ -47,19 +46,12 @@ namespace Internal {
 const char dataKeyC[] = "GdbServerProvider.";
 const char countKeyC[] = "GdbServerProvider.Count";
 const char fileVersionKeyC[] = "Version";
-const char fileNameKeyC[] = "/qtcreator/gdbserverproviders.xml";
-
-static Utils::FileName settingsFileName(const QString &path)
-{
-    const QFileInfo settingsLocation(Core::ICore::settings()->fileName());
-    return Utils::FileName::fromString(settingsLocation.absolutePath() + path);
-}
+const char fileNameKeyC[] = "/gdbserverproviders.xml";
 
 static GdbServerProviderManager *m_instance = 0;
 
-GdbServerProviderManager::GdbServerProviderManager(QObject *parent)
-    : QObject(parent)
-    , m_configFile(settingsFileName(QLatin1String(fileNameKeyC)))
+GdbServerProviderManager::GdbServerProviderManager()
+    : m_configFile(Utils::FileName::fromString(Core::ICore::userResourcePath() + fileNameKeyC))
     , m_factories({new DefaultGdbServerProviderFactory,
                    new OpenOcdGdbServerProviderFactory,
                    new StLinkUtilGdbServerProviderFactory})
@@ -187,7 +179,7 @@ bool GdbServerProviderManager::registerProvider(GdbServerProvider *provider)
 {
     if (!provider || m_instance->m_providers.contains(provider))
         return true;
-    for (const GdbServerProvider *current : Utils::asConst(m_instance->m_providers)) {
+    for (const GdbServerProvider *current : qAsConst(m_instance->m_providers)) {
         if (*provider == *current)
             return false;
         QTC_ASSERT(current->id() != provider->id(), return false);

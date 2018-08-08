@@ -63,9 +63,10 @@ class HeaderPath;
 class IOutputParser;
 class ToolChainConfigWidget;
 class ToolChainFactory;
-class ToolChainManager;
 class Task;
 class Kit;
+
+namespace Internal { class ToolChainSettingsAccessor; }
 
 // --------------------------------------------------------------------------
 // ToolChain (documentation inside)
@@ -100,6 +101,7 @@ public:
     virtual Abi targetAbi() const = 0;
     virtual QList<Abi> supportedAbis() const;
     virtual QString originalTargetTriple() const { return QString(); }
+    virtual QStringList extraCodeModelFlags() const { return QStringList(); }
 
     virtual bool isValid() const = 0;
 
@@ -168,7 +170,7 @@ private:
 
     Internal::ToolChainPrivate *const d;
 
-    friend class ToolChainManager;
+    friend class Internal::ToolChainSettingsAccessor;
     friend class ToolChainFactory;
 };
 
@@ -177,6 +179,11 @@ class PROJECTEXPLORER_EXPORT ToolChainFactory : public QObject
     Q_OBJECT
 
 public:
+    ToolChainFactory();
+    ~ToolChainFactory() override;
+
+    static const QList<ToolChainFactory *> allToolChainFactories();
+
     QString displayName() const { return m_displayName; }
 
     virtual QList<ToolChain *> autoDetect(const QList<ToolChain *> &alreadyKnown);

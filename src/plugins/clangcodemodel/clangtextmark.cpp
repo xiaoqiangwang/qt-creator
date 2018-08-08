@@ -27,14 +27,17 @@
 
 #include "clangconstants.h"
 #include "clangdiagnostictooltipwidget.h"
+#include "clangutils.h"
 
-#include <utils/icon.h>
+#include <utils/utilsicons.h>
 #include <utils/qtcassert.h>
 #include <utils/theme/theme.h>
 
 #include <QApplication>
 #include <QLayout>
 #include <QString>
+
+using namespace Utils;
 
 namespace ClangCodeModel {
 
@@ -54,7 +57,7 @@ bool isWarningOrNote(ClangBackEnd::DiagnosticSeverity severity)
     Q_UNREACHABLE();
 }
 
-Core::Id cartegoryForSeverity(ClangBackEnd::DiagnosticSeverity severity)
+static Core::Id categoryForSeverity(ClangBackEnd::DiagnosticSeverity severity)
 {
     return isWarningOrNote(severity) ? Constants::CLANG_WARNING : Constants::CLANG_ERROR;
 }
@@ -62,47 +65,36 @@ Core::Id cartegoryForSeverity(ClangBackEnd::DiagnosticSeverity severity)
 } // anonymous namespace
 
 
-ClangTextMark::ClangTextMark(const QString &fileName,
+ClangTextMark::ClangTextMark(const FileName &fileName,
                              const ClangBackEnd::DiagnosticContainer &diagnostic,
                              const RemovedFromEditorHandler &removedHandler,
-                             bool showLineAnnotations)
+                             bool fullVisualization)
     : TextEditor::TextMark(fileName,
-                           int(diagnostic.location().line()),
-                           cartegoryForSeverity(diagnostic.severity()))
+                           int(diagnostic.location.line),
+                           categoryForSeverity(diagnostic.severity))
     , m_diagnostic(diagnostic)
     , m_removedFromEditorHandler(removedHandler)
 {
-    const bool warning = isWarningOrNote(diagnostic.severity());
-    setColor(warning ? Utils::Theme::ClangCodeModel_Warning_TextMarkColor
-                     : Utils::Theme::ClangCodeModel_Error_TextMarkColor);
+    const bool warning = isWarningOrNote(diagnostic.severity);
     setDefaultToolTip(warning ? QApplication::translate("Clang Code Model Marks", "Code Model Warning")
                               : QApplication::translate("Clang Code Model Marks", "Code Model Error"));
     setPriority(warning ? TextEditor::TextMark::NormalPriority
                         : TextEditor::TextMark::HighPriority);
     updateIcon();
-    if (showLineAnnotations)
-        setLineAnnotation(diagnostic.text().toString());
+    if (fullVisualization) {
+        setLineAnnotation(Utils::diagnosticCategoryPrefixRemoved(diagnostic.text.toString()));
+        setColor(warning ? ::Utils::Theme::CodeModel_Warning_TextMarkColor
+                         : ::Utils::Theme::CodeModel_Error_TextMarkColor);
+    }
 }
 
 void ClangTextMark::updateIcon(bool valid)
 {
-    static const QIcon errorIcon = Utils::Icon(
-        {{":/clangcodemodel/images/error.png", Utils::Theme::IconsErrorColor}},
-        Utils::Icon::Tint).icon();
-    static const QIcon warningIcon = Utils::Icon(
-        {{":/clangcodemodel/images/warning.png", Utils::Theme::IconsWarningColor}},
-        Utils::Icon::Tint).icon();
-    static const QIcon invalidErrorIcon = Utils::Icon(
-        {{":/clangcodemodel/images/error.png", Utils::Theme::IconsDisabledColor}},
-        Utils::Icon::Tint).icon();
-    static const QIcon invalidWarningIcon = Utils::Icon(
-        {{":/clangcodemodel/images/warning.png", Utils::Theme::IconsDisabledColor}},
-        Utils::Icon::Tint).icon();
-
-    if (isWarningOrNote(m_diagnostic.severity()))
-        setIcon(valid ? warningIcon : invalidWarningIcon);
+    using namespace ::Utils::Icons;
+    if (isWarningOrNote(m_diagnostic.severity))
+        setIcon(valid ? CODEMODEL_WARNING.icon() : CODEMODEL_DISABLED_WARNING.icon());
     else
-        setIcon(valid ? errorIcon : invalidErrorIcon);
+        setIcon(valid ? CODEMODEL_ERROR.icon() : CODEMODEL_DISABLED_ERROR.icon());
 }
 
 bool ClangTextMark::addToolTipContent(QLayout *target) const

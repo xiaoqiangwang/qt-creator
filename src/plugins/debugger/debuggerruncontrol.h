@@ -49,7 +49,7 @@ public:
     explicit DebuggerRunTool(ProjectExplorer::RunControl *runControl,
                              ProjectExplorer::Kit *kit = nullptr,
                              bool allowTerminal = true);
-    ~DebuggerRunTool();
+    ~DebuggerRunTool() override;
 
     Internal::DebuggerEngine *engine() const { return m_engine; }
     Internal::DebuggerEngine *activeEngine() const;
@@ -107,6 +107,7 @@ public:
     void setSymbolFile(const QString &symbolFile);
     void setRemoteChannel(const QString &channel);
     void setRemoteChannel(const QString &host, int port);
+    void setRemoteChannel(const QUrl &url);
 
     void setUseExtendedRemote(bool on);
     void setUseContinueInsteadOfRun(bool on);
@@ -135,9 +136,6 @@ public:
 
     Internal::TerminalRunner *terminalRunner() const;
 
-signals:
-    void aboutToNotifyInferiorSetupOk();
-
 private:
     bool fixupParameters();
 
@@ -147,35 +145,29 @@ private:
     bool m_isDying = false;
 };
 
-class DEBUGGER_EXPORT GdbServerPortsGatherer : public ProjectExplorer::RunWorker
+class DEBUGGER_EXPORT GdbServerPortsGatherer : public ProjectExplorer::ChannelProvider
 {
     Q_OBJECT
 
 public:
     explicit GdbServerPortsGatherer(ProjectExplorer::RunControl *runControl);
-    ~GdbServerPortsGatherer();
+    ~GdbServerPortsGatherer() override;
 
     void setUseGdbServer(bool useIt) { m_useGdbServer = useIt; }
     bool useGdbServer() const { return m_useGdbServer; }
-    Utils::Port gdbServerPort() const { return m_gdbServerPort; }
-    QString gdbServerChannel() const;
+    Utils::Port gdbServerPort() const;
+    QUrl gdbServer() const;
 
     void setUseQmlServer(bool useIt) { m_useQmlServer = useIt; }
     bool useQmlServer() const { return m_useQmlServer; }
-    Utils::Port qmlServerPort() const { return m_qmlServerPort; }
+    Utils::Port qmlServerPort() const;
     QUrl qmlServer() const;
 
     void setDevice(ProjectExplorer::IDevice::ConstPtr device);
 
 private:
-    void start() override;
-    void handlePortListReady();
-
-    ProjectExplorer::DeviceUsedPortsGatherer m_portsGatherer;
     bool m_useGdbServer = false;
     bool m_useQmlServer = false;
-    Utils::Port m_gdbServerPort;
-    Utils::Port m_qmlServerPort;
     ProjectExplorer::IDevice::ConstPtr m_device;
 };
 
@@ -187,9 +179,9 @@ public:
     explicit GdbServerRunner(ProjectExplorer::RunControl *runControl,
                              GdbServerPortsGatherer *portsGatherer);
 
-    ~GdbServerRunner();
+    ~GdbServerRunner() override;
 
-    void setRunnable(const ProjectExplorer::StandardRunnable &runnable);
+    void setRunnable(const ProjectExplorer::Runnable &runnable);
     void setUseMulti(bool on);
     void setAttachPid(Utils::ProcessHandle pid);
 
@@ -197,7 +189,7 @@ private:
     void start() override;
 
     GdbServerPortsGatherer *m_portsGatherer;
-    ProjectExplorer::StandardRunnable m_runnable;
+    ProjectExplorer::Runnable m_runnable;
     Utils::ProcessHandle m_pid;
     bool m_useMulti = true;
 };

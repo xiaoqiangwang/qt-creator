@@ -33,7 +33,6 @@
 #include <coreplugin/icore.h>
 #include <utils/qtcassert.h>
 #include <utils/fileutils.h>
-#include <utils/qtcfallthrough.h>
 #include "utils/runextensions.h"
 #include "utils/synchronousprocess.h"
 
@@ -153,7 +152,7 @@ struct ParserState {
     QString key;
     QString value;
     QMap<QString,QString> info;
-    int progress, maxProgress;
+    int progress = 0, maxProgress = 0;
     int gdbPort, qmlPort;
     bool collectChars() {
         switch (kind) {
@@ -215,7 +214,7 @@ protected:
     IosToolHandler *q;
     QString m_deviceId;
     QString m_bundlePath;
-    IosToolHandler::RunKind m_runKind;
+    IosToolHandler::RunKind m_runKind = IosToolHandler::NormalRun;
     IosDeviceType m_devType;
 };
 

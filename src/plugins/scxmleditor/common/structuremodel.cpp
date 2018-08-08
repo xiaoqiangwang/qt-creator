@@ -27,8 +27,6 @@
 #include "scxmldocument.h"
 #include "scxmltag.h"
 
-#include <utils/qtcfallthrough.h>
-
 #include <QMimeData>
 #include <QUndoStack>
 
@@ -96,6 +94,7 @@ QVariant StructureModel::data(const QModelIndex &index, int role) const
         case State:
         case Parallel:
         case Initial:
+        case Data:
         case Final:
             if (tag->hasAttribute("id"))
                 return tag->attribute("id");
@@ -271,6 +270,9 @@ void StructureModel::updateData()
 
 void StructureModel::beginTagChange(ScxmlDocument::TagChange change, ScxmlTag *tag, const QVariant &value)
 {
+    if (!tag)
+        return;
+
     switch (change) {
     case ScxmlDocument::TagAddChild:
     case ScxmlDocument::TagChangeParentAddChild:
@@ -297,6 +299,9 @@ void StructureModel::beginTagChange(ScxmlDocument::TagChange change, ScxmlTag *t
 
 void StructureModel::endTagChange(ScxmlDocument::TagChange change, ScxmlTag *tag, const QVariant &value)
 {
+    if (!tag)
+        return;
+
     switch (change) {
     case ScxmlDocument::TagAttributesChanged: {
         emit dataChanged(QModelIndex(), QModelIndex());
@@ -321,8 +326,7 @@ void StructureModel::endTagChange(ScxmlDocument::TagChange change, ScxmlTag *tag
         break;
     }
     case ScxmlDocument::TagCurrentChanged: {
-        if (tag)
-            emit selectIndex(createIndex(tag->index(), 0, tag));
+        emit selectIndex(createIndex(tag->index(), 0, tag));
         break;
     }
     default:

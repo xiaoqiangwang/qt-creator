@@ -24,6 +24,7 @@
 ****************************************************************************/
 
 #include "googletest.h"
+#include "mocksqlitestatement.h"
 #include "sqliteteststatement.h"
 
 #include <sqlitedatabase.h>
@@ -60,7 +61,8 @@ MATCHER_P3(HasValues, value1, value2, rowid,
 
     statement.next();
 
-    return statement.text(0) == value1 && statement.text(1) == value2;
+    return statement.fetchSmallStringViewValue(0) == value1
+        && statement.fetchSmallStringViewValue(1) == value2;
 }
 
 class SqliteStatement : public ::testing::Test
@@ -70,12 +72,12 @@ protected:
      void TearDown() override;
 
 protected:
-    Database database;
+     Database database{":memory:", Sqlite::JournalMode::Memory};
 };
 
 struct Output
 {
-    Output(Utils::SmallString name, Utils::SmallString number, long long value)
+    Output(Utils::SmallStringView name, Utils::SmallStringView number, long long value)
         : name(name), number(number), value(value)
     {}
 
@@ -131,11 +133,15 @@ TEST_F(SqliteStatement, Value)
     ASSERT_THAT(statement.fetchValue<int>(0), 0);
     ASSERT_THAT(statement.fetchValue<int64_t>(0), 0);
     ASSERT_THAT(statement.fetchValue<double>(0), 0.0);
-    ASSERT_THAT(statement.text(0), "foo");
+    ASSERT_THAT(statement.fetchValue<Utils::SmallString>(0), "foo");
+    ASSERT_THAT(statement.fetchValue<Utils::PathString>(0), "foo");
+    ASSERT_THAT(statement.fetchSmallStringViewValue(0), "foo");
     ASSERT_THAT(statement.fetchValue<int>(1), 23);
     ASSERT_THAT(statement.fetchValue<int64_t>(1), 23);
     ASSERT_THAT(statement.fetchValue<double>(1), 23.3);
-    ASSERT_THAT(statement.text(1), "23.3");
+    ASSERT_THAT(statement.fetchValue<Utils::SmallString>(1), "23.3");
+    ASSERT_THAT(statement.fetchValue<Utils::PathString>(1), "23.3");
+    ASSERT_THAT(statement.fetchSmallStringViewValue(1), "23.3");
 }
 
 TEST_F(SqliteStatement, ThrowNoValuesToFetchForNotSteppedStatement)
@@ -209,7 +215,7 @@ TEST_F(SqliteStatement, BindString)
 
     statement.next();
 
-    ASSERT_THAT(statement.text(0), "foo");
+    ASSERT_THAT(statement.fetchSmallStringViewValue(0), "foo");
     ASSERT_THAT(statement.fetchValue<double>(1), 23.3);
 }
 
@@ -220,7 +226,7 @@ TEST_F(SqliteStatement, BindInteger)
     statement.bind(1, 40);
     statement.next();
 
-    ASSERT_THAT(statement.text(0),"poo");
+    ASSERT_THAT(statement.fetchSmallStringViewValue(0),"poo");
 }
 
 TEST_F(SqliteStatement, BindLongInteger)
@@ -230,7 +236,7 @@ TEST_F(SqliteStatement, BindLongInteger)
     statement.bind(1, int64_t(40));
     statement.next();
 
-    ASSERT_THAT(statement.text(0), "poo");
+    ASSERT_THAT(statement.fetchSmallStringViewValue(0), "poo");
 }
 
 TEST_F(SqliteStatement, BindDouble)
@@ -240,7 +246,7 @@ TEST_F(SqliteStatement, BindDouble)
     statement.bind(1, 23.3);
     statement.next();
 
-    ASSERT_THAT(statement.text(0), "foo");
+    ASSERT_THAT(statement.fetchSmallStringViewValue(0), "foo");
 }
 
 TEST_F(SqliteStatement, BindIntegerByParameter)
@@ -250,7 +256,7 @@ TEST_F(SqliteStatement, BindIntegerByParameter)
     statement.bind("@number", 40);
     statement.next();
 
-    ASSERT_THAT(statement.text(0), "poo");
+    ASSERT_THAT(statement.fetchSmallStringViewValue(0), "poo");
 }
 
 TEST_F(SqliteStatement, BindLongIntegerByParameter)
@@ -260,7 +266,7 @@ TEST_F(SqliteStatement, BindLongIntegerByParameter)
     statement.bind("@number", int64_t(40));
     statement.next();
 
-    ASSERT_THAT(statement.text(0), "poo");
+    ASSERT_THAT(statement.fetchSmallStringViewValue(0), "poo");
 }
 
 TEST_F(SqliteStatement, BindDoubleByIndex)
@@ -270,7 +276,7 @@ TEST_F(SqliteStatement, BindDoubleByIndex)
     statement.bind(statement.bindingIndexForName("@number"), 23.3);
     statement.next();
 
-    ASSERT_THAT(statement.text(0), "foo");
+    ASSERT_THAT(statement.fetchSmallStringViewValue(0), "foo");
 }
 
 TEST_F(SqliteStatement, BindIndexIsZeroIsThrowingBindingIndexIsOutOfBound)
@@ -291,14 +297,7 @@ TEST_F(SqliteStatement, WrongBindingNameThrowingBindingIndexIsOutOfBound)
 {
     SqliteTestStatement statement("SELECT name, number FROM test WHERE number=@name", database);
 
-    ASSERT_THROW(statement.bind("@name2", 40), Sqlite::WrongBingingName);
-}
-
-TEST_F(SqliteStatement, RequestBindingNamesFromStatement)
-{
-    SqliteTestStatement statement("UPDATE test SET name=@name, number=@number WHERE rowid=@id", database);
-
-    ASSERT_THAT(statement.bindingColumnNames(), ElementsAre("name", "number", "id"));
+    ASSERT_THROW(statement.bind("@name2", 40), Sqlite::WrongBindingName);
 }
 
 TEST_F(SqliteStatement, BindValues)
@@ -524,11 +523,158 @@ TEST_F(SqliteStatement, GetOptionalTupleValueAndMultipleQueryValue)
     ASSERT_THAT(value.value(), Eq(Tuple{"bar", "blah", 1}));
 }
 
+TEST_F(SqliteStatement, GetOptionalValueCallsReset)
+{
+    MockSqliteStatement mockStatement;
+
+    EXPECT_CALL(mockStatement, reset());
+
+    mockStatement.value<int>("bar");
+}
+
+TEST_F(SqliteStatement, GetOptionalValueCallsResetIfExceptionIsThrown)
+{
+    MockSqliteStatement mockStatement;
+    ON_CALL(mockStatement, next()).WillByDefault(Throw(Sqlite::StatementHasError("")));
+
+    EXPECT_CALL(mockStatement, reset());
+
+    EXPECT_THROW(mockStatement.value<int>("bar"), Sqlite::StatementHasError);
+}
+
+TEST_F(SqliteStatement, GetValuesWithoutArgumentsCallsReset)
+{
+    MockSqliteStatement mockStatement;
+
+    EXPECT_CALL(mockStatement, reset());
+
+    mockStatement.values<int>(3);
+}
+
+TEST_F(SqliteStatement, GetValuesWithoutArgumentsCallsResetIfExceptionIsThrown)
+{
+    MockSqliteStatement mockStatement;
+    ON_CALL(mockStatement, next()).WillByDefault(Throw(Sqlite::StatementHasError("")));
+
+    EXPECT_CALL(mockStatement, reset());
+
+    EXPECT_THROW(mockStatement.values<int>(3), Sqlite::StatementHasError);
+}
+
+TEST_F(SqliteStatement, GetValuesWithSimpleArgumentsCallsReset)
+{
+    MockSqliteStatement mockStatement;
+
+    EXPECT_CALL(mockStatement, reset());
+
+    mockStatement.values<int>(3, "foo", "bar");
+}
+
+TEST_F(SqliteStatement, GetValuesWithSimpleArgumentsCallsResetIfExceptionIsThrown)
+{
+    MockSqliteStatement mockStatement;
+    ON_CALL(mockStatement, next()).WillByDefault(Throw(Sqlite::StatementHasError("")));
+
+    EXPECT_CALL(mockStatement, reset());
+
+    EXPECT_THROW(mockStatement.values<int>(3, "foo", "bar"), Sqlite::StatementHasError);
+}
+
+TEST_F(SqliteStatement, GetValuesWithVectorArgumentsCallsReset)
+{
+    MockSqliteStatement mockStatement;
+
+    EXPECT_CALL(mockStatement, reset()).Times(2);
+
+    mockStatement.values<int>(3, std::vector<Utils::SmallString>{"bar", "foo"});
+}
+
+TEST_F(SqliteStatement, GetValuesWithVectorArgumentCallsResetIfExceptionIsThrown)
+{
+    MockSqliteStatement mockStatement;
+    ON_CALL(mockStatement, next()).WillByDefault(Throw(Sqlite::StatementHasError("")));
+
+    EXPECT_CALL(mockStatement, reset());
+
+    EXPECT_THROW(mockStatement.values<int>(3, std::vector<Utils::SmallString>{"bar", "foo"}),
+                 Sqlite::StatementHasError);
+}
+
+TEST_F(SqliteStatement, GetValuesWithTupleArgumentsCallsReset)
+{
+    MockSqliteStatement mockStatement;
+
+    EXPECT_CALL(mockStatement, reset()).Times(2);
+
+    mockStatement.values<int>(3, std::vector<std::tuple<int>>{{1}, {2}});
+}
+
+TEST_F(SqliteStatement, GetValuesWithTupleArgumentsCallsResetIfExceptionIsThrown)
+{
+    MockSqliteStatement mockStatement;
+    ON_CALL(mockStatement, next()).WillByDefault(Throw(Sqlite::StatementHasError("")));
+
+    EXPECT_CALL(mockStatement, reset());
+
+    EXPECT_THROW(mockStatement.values<int>(3, std::vector<std::tuple<int>>{{1}, {2}}),
+                 Sqlite::StatementHasError);
+}
+
+TEST_F(SqliteStatement, DoubleThrowExceptionsInReset)
+{
+    MockSqliteStatement mockStatement;
+    ON_CALL(mockStatement, next()).WillByDefault(Throw(Sqlite::StatementHasError("")));
+    ON_CALL(mockStatement, reset()).WillByDefault(Throw(Sqlite::StatementHasError("")));
+
+    ASSERT_THROW(mockStatement.values<int>(3, std::vector<std::tuple<int>>{{1}, {2}}),
+                 Sqlite::StatementHasError);
+}
+
+TEST_F(SqliteStatement, ThrowExceptionOnlyInReset)
+{
+    MockSqliteStatement mockStatement;
+    ON_CALL(mockStatement, reset()).WillByDefault(Throw(Sqlite::StatementHasError("")));
+
+    ASSERT_THROW(mockStatement.values<int>(3, std::vector<std::tuple<int>>{{1}, {2}}),
+                 Sqlite::StatementHasError);
+}
+
+TEST_F(SqliteStatement, ResetIfWriteIsThrowingException)
+{
+    MockSqliteStatement mockStatement;
+
+    EXPECT_CALL(mockStatement, bind(1, TypedEq<Utils::SmallStringView>("bar")))
+            .WillOnce(Throw(Sqlite::StatementIsBusy("")));
+    EXPECT_CALL(mockStatement, reset());
+
+    ASSERT_ANY_THROW(mockStatement.write("bar"));
+}
+
+TEST_F(SqliteStatement, ResetIfWriteNamedIsThrowingException)
+{
+    MockSqliteStatement mockStatement;
+
+    EXPECT_CALL(mockStatement, bindingIndexForName(TypedEq<Utils::SmallStringView>("@foo")))
+            .WillOnce(Return(1));
+    EXPECT_CALL(mockStatement, bind(1, TypedEq<Utils::SmallStringView>("bar")))
+            .WillOnce(Throw(Sqlite::StatementIsBusy("")));
+    EXPECT_CALL(mockStatement, reset());
+
+    ASSERT_ANY_THROW(mockStatement.writeNamed("@foo", "bar"));
+}
+
+TEST_F(SqliteStatement, ResetIfExecuteThrowsException)
+{
+    MockSqliteStatement mockStatement;
+
+    EXPECT_CALL(mockStatement, next()).WillOnce(Throw(Sqlite::StatementIsBusy("")));
+    EXPECT_CALL(mockStatement, reset());
+
+    ASSERT_ANY_THROW(mockStatement.execute());
+}
 
 void SqliteStatement::SetUp()
 {
-    database.setJournalMode(JournalMode::Memory);
-    database.open(":memory:");
     database.execute("CREATE TABLE test(name TEXT UNIQUE, number NUMERIC, value NUMERIC)");
     database.execute("INSERT INTO  test VALUES ('bar', 'blah', 1)");
     database.execute("INSERT INTO  test VALUES ('foo', 23.3, 2)");

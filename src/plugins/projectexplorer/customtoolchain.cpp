@@ -36,7 +36,6 @@
 #include "toolchainmanager.h"
 
 #include <utils/algorithm.h>
-#include <utils/asconst.h>
 #include <utils/detailswidget.h>
 #include <utils/environment.h>
 #include <utils/pathchooser.h>
@@ -123,7 +122,6 @@ ToolChain::PredefinedMacrosRunner CustomToolChain::createPredefinedMacrosRunner(
 
     // This runner must be thread-safe!
     return [theMacros](const QStringList &cxxflags){
-        QByteArray result;
         Macros macros = theMacros;
         for (const QString &cxxFlag : cxxflags) {
             if (cxxFlag.startsWith(QLatin1String("-D")))
@@ -568,6 +566,7 @@ CustomToolChainConfigWidget::CustomToolChainConfigWidget(CustomToolChain *tc) :
     auto parserLayoutWidget = new QWidget;
     auto parserLayout = new QHBoxLayout(parserLayoutWidget);
     parserLayout->setContentsMargins(0, 0, 0, 0);
+    m_predefinedMacros->setPlaceholderText(tr("MACRO[=VALUE]"));
     m_predefinedMacros->setTabChangesFocus(true);
     m_predefinedMacros->setToolTip(tr("Each line defines a macro. Format is MACRO[=VALUE]."));
     m_headerPaths->setTabChangesFocus(true);
@@ -669,7 +668,7 @@ void CustomToolChainConfigWidget::applyImpl()
 void CustomToolChainConfigWidget::setFromToolchain()
 {
     // subwidgets are not yet connected!
-    bool blocked = blockSignals(true);
+    QSignalBlocker blocker(this);
     auto tc = static_cast<CustomToolChain *>(toolChain());
     m_compilerCommand->setFileName(tc->compilerCommand());
     m_makeCommand->setFileName(FileName::fromString(tc->makeCommand(Environment())));
@@ -684,7 +683,6 @@ void CustomToolChainConfigWidget::setFromToolchain()
     int index = m_errorParserComboBox->findData(tc->outputParserId().toSetting());
     m_errorParserComboBox->setCurrentIndex(index);
     m_customParserSettings = tc->customParserSettings();
-    blockSignals(blocked);
 }
 
 bool CustomToolChainConfigWidget::isDirtyImpl() const

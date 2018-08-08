@@ -28,7 +28,7 @@
 #include <coreplugin/icore.h>
 #include <projectexplorer/kitchooser.h>
 #include <projectexplorer/kitinformation.h>
-#include <projectexplorer/runnables.h>
+#include <projectexplorer/runconfiguration.h>
 #include <ssh/sshconnection.h>
 
 #include <QDialogButtonBox>
@@ -64,7 +64,7 @@ StartRemoteDialog::StartRemoteDialog(QWidget *parent)
     d->kitChooser = new KitChooser(this);
     d->kitChooser->setKitPredicate([](const Kit *kit) {
         const IDevice::ConstPtr device = DeviceKitInformation::device(kit);
-        return kit->isValid() && device && !device->sshParameters().host.isEmpty();
+        return kit->isValid() && device && !device->sshParameters().host().isEmpty();
     });
     d->executable = new QLineEdit(this);
     d->arguments = new QLineEdit(this);
@@ -128,10 +128,10 @@ void StartRemoteDialog::validate()
     d->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(valid);
 }
 
-StandardRunnable StartRemoteDialog::runnable() const
+Runnable StartRemoteDialog::runnable() const
 {
     Kit *kit = d->kitChooser->currentKit();
-    StandardRunnable r;
+    Runnable r;
     r.device = DeviceKitInformation::device(kit);
     r.executable = d->executable->text();
     r.commandLineArguments = d->arguments->text();

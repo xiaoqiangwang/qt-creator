@@ -30,7 +30,7 @@
 
 #include <texteditor/completionsettings.h>
 #include <texteditor/texteditor_global.h>
-#include <utils/camelhumpmatcher.h>
+#include <utils/fuzzymatcher.h>
 
 #include <QHash>
 #include <QList>
@@ -45,7 +45,7 @@ class TEXTEDITOR_EXPORT GenericProposalModel : public IAssistProposalModel
 {
 public:
     GenericProposalModel();
-    ~GenericProposalModel();
+    ~GenericProposalModel() override;
 
     void reset() override;
     int size() const override;
@@ -72,7 +72,7 @@ public:
     bool isPrefiltered(const QString &prefix) const;
     void setPrefilterPrefix(const QString &prefix);
 
-    CamelHumpMatcher::CaseSensitivity convertCaseSensitivity(TextEditor::CaseSensitivity textEditorCaseSensitivity);
+    FuzzyMatcher::CaseSensitivity convertCaseSensitivity(TextEditor::CaseSensitivity textEditorCaseSensitivity);
 
 protected:
     QList<AssistProposalItemInterface *> m_currentItems;
@@ -83,4 +83,7 @@ private:
     QString m_prefilterPrefix;
     bool m_duplicatesRemoved = false;
 };
+
+using GenericProposalModelPtr = QSharedPointer<GenericProposalModel>;
+
 } // TextEditor

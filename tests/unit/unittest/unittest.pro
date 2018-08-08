@@ -48,11 +48,12 @@ SOURCES += \
     cppprojectinfogenerator-test.cpp \
     cppprojectpartchooser-test.cpp \
     fakeprocess.cpp \
-    faketimer.cpp \
     filepath-test.cpp \
+    filepathview-test.cpp \
     gtest-creator-printing.cpp \
     gtest-qt-printing.cpp \
     lineprefixer-test.cpp \
+    locatorfilter-test.cpp \
     matchingtext-test.cpp \
     mimedatabase-utilities.cpp \
     pchgenerator-test.cpp \
@@ -68,17 +69,30 @@ SOURCES += \
     sourcerangefilter-test.cpp \
     spydummy.cpp \
     symbolindexer-test.cpp \
+    symbolsfindfilter-test.cpp \
     stringcache-test.cpp \
+    eventspy.cpp \
     unittests-main.cpp \
     utf8-test.cpp \
     symbolstorage-test.cpp \
     mocksqlitereadstatement.cpp \
     symbolquery-test.cpp \
     storagesqlitestatementfactory-test.cpp \
-    querysqlitestatementfactory-test.cpp \
     sqliteindex-test.cpp \
     sqlitetransaction-test.cpp \
-    refactoringdatabaseinitializer-test.cpp
+    refactoringdatabaseinitializer-test.cpp \
+    filepathcache-test.cpp \
+    filepathstorage-test.cpp \
+    filepathstoragesqlitestatementfactory-test.cpp \
+    processcreator-test.cpp \
+    nativefilepath-test.cpp \
+    nativefilepathview-test.cpp \
+    mocktimer.cpp \
+    tokenprocessor-test.cpp \
+    projectpartartefact-test.cpp \
+    filestatuscache-test.cpp \
+    highlightingresultreporter-test.cpp \
+    precompiledheaderstorage-test.cpp
 
 !isEmpty(LIBCLANG_LIBS) {
 SOURCES += \
@@ -90,7 +104,6 @@ SOURCES += \
     clangcodemodelserver-test.cpp \
     clangcompletecodejob-test.cpp \
     clangcompletioncontextanalyzer-test.cpp \
-    clangcreateinitialdocumentpreamblejob-test.cpp \
     clangdiagnosticfilter-test.cpp \
     clangdocumentprocessors-test.cpp \
     clangdocumentprocessor-test.cpp \
@@ -104,16 +117,16 @@ SOURCES += \
     clangjobs-test.cpp \
     clangparsesupportivetranslationunitjob-test.cpp \
     clangreferencescollector-test.cpp \
-    clangreparsesupportivetranslationunitjob-test.cpp \
-    clangrequestdocumentannotationsjob-test.cpp \
+    clangrequestannotationsjob-test.cpp \
     clangrequestreferencesjob-test.cpp \
     clangresumedocumentjob-test.cpp \
     clangstring-test.cpp \
     clangsupportivetranslationunitinitializer-test.cpp \
     clangsuspenddocumentjob-test.cpp \
+    clangtooltipinfo-test.cpp \
     clangtranslationunits-test.cpp \
     clangtranslationunit-test.cpp \
-    clangupdatedocumentannotationsjob-test.cpp \
+    clangupdateannotationsjob-test.cpp \
     codecompleter-test.cpp \
     codecompletionsextractor-test.cpp \
     completionchunkstotextconverter-test.cpp \
@@ -122,8 +135,6 @@ SOURCES += \
     diagnosticset-test.cpp \
     diagnostic-test.cpp \
     fixit-test.cpp \
-    highlightingmarksreporter-test.cpp \
-    highlightingmarks-test.cpp \
     projectpart-test.cpp \
     senddocumenttracker-test.cpp \
     skippedsourceranges-test.cpp \
@@ -171,14 +182,13 @@ HEADERS += \
     conditionally-disabled-tests.h \
     dummyclangipcclient.h \
     dynamicastmatcherdiagnosticcontainer-matcher.h \
+    eventspy.h \
     fakeprocess.h \
-    faketimer.h \
     filesystem-utilities.h \
     googletest.h \
     gtest-creator-printing.h \
     gtest-qt-printing.h \
     mimedatabase-utilities.h \
-    mockchangedfilepathcompressor.h \
     mockclangcodemodelclient.h \
     mockclangcodemodelserver.h \
     mockclangpathwatcher.h \
@@ -206,8 +216,19 @@ HEADERS += \
     google-using-declarations.h \
     mocksymbolindexing.h \
     sqliteteststatement.h \
-    mockmutex.h
-
+    mockmutex.h \
+    mockfilepathstorage.h \
+    mockfilepathcaching.h \
+    mocksqlitestatement.h \
+    unittest-utility-functions.h \
+    mocksymbolquery.h \
+    runprojectcreateorupdate-utility.h \
+    rundocumentparse-utility.h \
+    mocktimer.h \
+    mocksqlitetransactionbackend.h \
+    mockprojectpartprovider.h \
+    mockprecompiledheaderstorage.h \
+    mockeditormanager.h
 !isEmpty(LIBCLANG_LIBS) {
 HEADERS += \
     chunksreportedmonitor.h \
@@ -219,7 +240,6 @@ HEADERS += \
 !isEmpty(LIBTOOLING_LIBS) {
 HEADERS += \
     gtest-clang-printing.h \
-    mockrefactoringclientcallback.h \
     mockrefactoringclient.h \
     mockrefactoringserver.h \
     testclangtool.h \

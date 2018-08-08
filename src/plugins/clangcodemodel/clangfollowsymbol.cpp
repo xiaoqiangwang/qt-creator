@@ -26,9 +26,10 @@
 #include "clangeditordocumentprocessor.h"
 #include "clangfollowsymbol.h"
 
+#include <cpptools/cppmodelmanager.h>
 #include <texteditor/texteditor.h>
 
-#include <clangsupport/highlightingmarkcontainer.h>
+#include <clangsupport/tokeninfocontainer.h>
 
 #include <utils/textutils.h>
 #include <utils/algorithm.h>
@@ -37,18 +38,18 @@ namespace ClangCodeModel {
 namespace Internal {
 
 // Returns invalid Mark if it is not found at (line, column)
-static bool findMark(const QVector<ClangBackEnd::HighlightingMarkContainer> &marks,
+static bool findMark(const QVector<ClangBackEnd::TokenInfoContainer> &marks,
                      uint line,
                      uint column,
-                     ClangBackEnd::HighlightingMarkContainer &mark)
+                     ClangBackEnd::TokenInfoContainer &mark)
 {
     mark = Utils::findOrDefault(marks,
-        [line, column](const ClangBackEnd::HighlightingMarkContainer &curMark) {
-            if (curMark.line() != line)
+        [line, column](const ClangBackEnd::TokenInfoContainer &curMark) {
+            if (curMark.line != line)
                 return false;
-            if (curMark.column() == column)
+            if (curMark.column == column)
                 return true;
-            if (curMark.column() < column && curMark.column() + curMark.length() >= column)
+            if (curMark.column < column && curMark.column + curMark.length > column)
                 return true;
             return false;
         });
@@ -57,51 +58,108 @@ static bool findMark(const QVector<ClangBackEnd::HighlightingMarkContainer> &mar
     return true;
 }
 
-static int getMarkPos(QTextCursor cursor, const ClangBackEnd::HighlightingMarkContainer &mark)
+static int getMarkPos(QTextCursor cursor, const ClangBackEnd::TokenInfoContainer &mark)
 {
     cursor.setPosition(0);
-    cursor.movePosition(QTextCursor::NextBlock, QTextCursor::MoveAnchor, mark.line() - 1);
-    cursor.movePosition(QTextCursor::NextCharacter, QTextCursor::MoveAnchor, mark.column() - 1);
+    cursor.movePosition(QTextCursor::NextBlock, QTextCursor::MoveAnchor, mark.line - 1);
+    cursor.movePosition(QTextCursor::NextCharacter, QTextCursor::MoveAnchor, mark.column - 1);
     return cursor.position();
 }
 
-static TextEditor::TextEditorWidget::Link linkAtCursor(QTextCursor cursor,
-                                                       const QString &filePath,
-                                                       uint line,
-                                                       uint column,
-                                                       ClangEditorDocumentProcessor *processor)
+static bool isValidIncludePathToken(const ClangBackEnd::TokenInfoContainer &token)
 {
-    using Link = TextEditor::TextEditorWidget::Link;
+    if (!token.extraInfo.includeDirectivePath)
+        return false;
+    const Utf8String &tokenName = token.extraInfo.token;
+    return !tokenName.startsWith("include") && tokenName != "<" && tokenName != ">"
+            && tokenName != "#";
+}
 
-    const QVector<ClangBackEnd::HighlightingMarkContainer> &marks
-            = processor->highlightingMarks();
-    ClangBackEnd::HighlightingMarkContainer mark;
+static int includePathStartIndex(const QVector<ClangBackEnd::TokenInfoContainer> &marks,
+                                 int currentIndex)
+{
+    int startIndex = currentIndex - 1;
+    while (startIndex >= 0 && isValidIncludePathToken(marks[startIndex]))
+        --startIndex;
+    return startIndex + 1;
+}
+
+static int includePathEndIndex(const QVector<ClangBackEnd::TokenInfoContainer> &marks,
+                                 int currentIndex)
+{
+    int endIndex = currentIndex + 1;
+    while (isValidIncludePathToken(marks[endIndex]))
+        ++endIndex;
+    return endIndex - 1;
+}
+
+static Utils::Link linkAtCursor(const QTextCursor &cursor,
+                                const QString &filePath,
+                                uint line,
+                                uint column,
+                                ClangEditorDocumentProcessor *processor)
+{
+    using Link = Utils::Link;
+
+    const QVector<ClangBackEnd::TokenInfoContainer> &marks
+            = processor->tokenInfos();
+    ClangBackEnd::TokenInfoContainer mark;
     if (!findMark(marks, line, column, mark))
         return Link();
 
-    cursor.movePosition(QTextCursor::EndOfWord, QTextCursor::KeepAnchor);
-    const QString tokenStr = cursor.selectedText();
-
-    Link token(filePath, mark.line(), mark.column());
-    token.linkTextStart = getMarkPos(cursor, mark);
-    token.linkTextEnd = token.linkTextStart + mark.length();
-    if (mark.isIncludeDirectivePath()) {
-        if (tokenStr != "include" && tokenStr != "#" && tokenStr != "<")
-            return token;
+    if (mark.extraInfo.includeDirectivePath && !isValidIncludePathToken(mark))
         return Link();
+
+    Link token(filePath, mark.line, mark.column);
+    token.linkTextStart = getMarkPos(cursor, mark);
+    token.linkTextEnd = token.linkTextStart + mark.length;
+
+    if (mark.extraInfo.includeDirectivePath) {
+        // Tweak include paths to cover everything between "" or <>.
+        if (mark.extraInfo.token.startsWith("\"")) {
+            token.linkTextStart++;
+            token.linkTextEnd--;
+        } else {
+            // '#include <path/file.h>' case. Clang gives us a separate token for each part of
+            // the path. We want to have the full range instead therefore we search for < and >
+            // tokens around the current token.
+            const int index = marks.indexOf(mark);
+            const int startIndex = includePathStartIndex(marks, index);
+            const int endIndex = includePathEndIndex(marks, index);
+
+            if (startIndex != index)
+                token.linkTextStart = getMarkPos(cursor, marks[startIndex]);
+            if (endIndex != index)
+                token.linkTextEnd = getMarkPos(cursor, marks[endIndex]) + marks[endIndex].length;
+        }
+        return token;
     }
-    if (mark.isIdentifier() || tokenStr == "operator")
+
+    if (mark.extraInfo.identifier || mark.extraInfo.token == "operator")
         return token;
     return Link();
 }
 
-TextEditor::TextEditorWidget::Link ClangFollowSymbol::findLink(
-        const CppTools::CursorInEditor &data,
-        bool resolveTarget,
-        const CPlusPlus::Snapshot &,
-        const CPlusPlus::Document::Ptr &,
-        CppTools::SymbolFinder *,
-        bool)
+static ::Utils::ProcessLinkCallback extendedCallback(::Utils::ProcessLinkCallback &&callback,
+                                                     const CppTools::SymbolInfo &result)
+{
+    // If globalFollowSymbol finds nothing follow to the declaration.
+    return [original_callback = std::move(callback), result](const ::Utils::Link &link) {
+        if (link.linkTextStart < 0 && result.isResultOnlyForFallBack) {
+            return original_callback(::Utils::Link(result.fileName, result.startLine,
+                                          result.startColumn - 1));
+        }
+        return original_callback(link);
+    };
+}
+
+void ClangFollowSymbol::findLink(const CppTools::CursorInEditor &data,
+                                 ::Utils::ProcessLinkCallback &&processLinkCallback,
+                                 bool resolveTarget,
+                                 const CPlusPlus::Snapshot &snapshot,
+                                 const CPlusPlus::Document::Ptr &documentFromSemanticInfo,
+                                 CppTools::SymbolFinder *symbolFinder,
+                                 bool inNextSplit)
 {
     int lineNumber = 0, positionInBlock = 0;
     QTextCursor cursor = Utils::Text::wordStartCursor(data.cursor());
@@ -114,30 +172,47 @@ TextEditor::TextEditorWidget::Link ClangFollowSymbol::findLink(
     ClangEditorDocumentProcessor *processor = ClangEditorDocumentProcessor::get(
                 data.filePath().toString());
     if (!processor)
-        return Link();
+        return processLinkCallback(Utils::Link());
 
-    if (!resolveTarget)
-        return linkAtCursor(cursor, data.filePath().toString(), line, column, processor);
+    if (!resolveTarget) {
+        processLinkCallback(linkAtCursor(cursor, data.filePath().toString(), line, column,
+                                         processor));
+        return;
+    }
 
-    QFuture<CppTools::SymbolInfo> info
+    QFuture<CppTools::SymbolInfo> infoFuture
             = processor->requestFollowSymbol(static_cast<int>(line),
                                              static_cast<int>(column));
 
-    if (info.isCanceled())
-        return Link();
+    if (infoFuture.isCanceled())
+        return processLinkCallback(Utils::Link());
 
-    while (!info.isFinished()) {
-        if (info.isCanceled())
-            return Link();
-        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-    }
-    CppTools::SymbolInfo result = info.result();
+    if (m_watcher)
+        m_watcher->cancel();
 
-    // We did not fail but the result is empty
-    if (result.fileName.isEmpty())
-        return Link();
+    m_watcher.reset(new FutureSymbolWatcher());
 
-    return Link(result.fileName, result.startLine, result.startColumn - 1);
+    QObject::connect(m_watcher.get(), &FutureSymbolWatcher::finished,
+                     [=, callback=std::move(processLinkCallback)]() mutable {
+        if (m_watcher->isCanceled())
+            return callback(Utils::Link());
+        CppTools::SymbolInfo result = m_watcher->result();
+        // We did not fail but the result is empty
+        if (result.fileName.isEmpty() || result.isResultOnlyForFallBack) {
+            const CppTools::RefactoringEngineInterface &refactoringEngine
+                    = *CppTools::CppModelManager::instance();
+            refactoringEngine.globalFollowSymbol(data,
+                                                 extendedCallback(std::move(callback), result),
+                                                 snapshot,
+                                                 documentFromSemanticInfo,
+                                                 symbolFinder,
+                                                 inNextSplit);
+        } else {
+            callback(Link(result.fileName, result.startLine, result.startColumn - 1));
+        }
+    });
+
+    m_watcher->setFuture(infoFuture);
 }
 
 } // namespace Internal

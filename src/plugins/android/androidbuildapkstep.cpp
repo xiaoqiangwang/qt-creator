@@ -44,6 +44,7 @@
 
 #include <qtsupport/qtkitinformation.h>
 
+#include <utils/algorithm.h>
 #include <utils/synchronousprocess.h>
 #include <utils/utilsicons.h>
 
@@ -62,10 +63,10 @@ namespace Android {
 using namespace Internal;
 
 const QVersionNumber gradleScriptRevokedSdkVersion(25, 3, 0);
-const char DeployActionKey[] = "Qt4ProjectManager.AndroidDeployQtStep.DeployQtAction";
 const char KeystoreLocationKey[] = "KeystoreLocation";
 const char BuildTargetSdkKey[] = "BuildTargetSdk";
 const char VerboseOutputKey[] = "VerboseOutput";
+const char UseMinistroKey[] = "UseMinistro";
 
 class PasswordInputDialog : public QDialog
 {
@@ -94,25 +95,13 @@ private:
                                                        this);
 };
 
-AndroidBuildApkStep::AndroidBuildApkStep(ProjectExplorer::BuildStepList *parent, const Core::Id id)
+AndroidBuildApkStep::AndroidBuildApkStep(ProjectExplorer::BuildStepList *parent, Core::Id id)
     : ProjectExplorer::AbstractProcessStep(parent, id),
       m_buildTargetSdk(AndroidConfig::apiLevelNameFor(AndroidConfigurations::
                                          sdkManager()->latestAndroidSdkPlatform()))
 {
     //: AndroidBuildApkStep default display name
     setDefaultDisplayName(tr("Build Android APK"));
-}
-
-AndroidBuildApkStep::AndroidBuildApkStep(ProjectExplorer::BuildStepList *parent,
-    AndroidBuildApkStep *other)
-    : ProjectExplorer::AbstractProcessStep(parent, other),
-      m_deployAction(other->deployAction()),
-      m_signPackage(other->signPackage()),
-      m_verbose(other->m_verbose),
-      m_openPackageLocation(other->m_openPackageLocation),
-      // leave m_openPackageLocationForRun at false
-      m_buildTargetSdk(other->m_buildTargetSdk)
-{
 }
 
 bool AndroidBuildApkStep::init(QList<const BuildStep *> &earlierSteps)
@@ -143,7 +132,7 @@ bool AndroidBuildApkStep::init(QList<const BuildStep *> &earlierSteps)
             return false;
         }
     } else if (version->qtVersion() < QtSupport::QtVersionNumber(5, 4, 0)) {
-        emit addOutput(tr("The minimum Qt version required for Gradle build to work is %2. "
+        emit addOutput(tr("The minimum Qt version required for Gradle build to work is %1. "
                           "It is recommended to install the latest Qt version.")
                        .arg("5.4.0"), OutputFormat::Stderr);
         return false;
@@ -157,8 +146,10 @@ bool AndroidBuildApkStep::init(QList<const BuildStep *> &earlierSteps)
     }
 
     JavaParser *parser = new JavaParser;
-    parser->setProjectFileList(target()->project()->files(ProjectExplorer::Project::AllFiles));
-    parser->setSourceDirectory(androidPackageSourceDir());
+    parser->setProjectFileList(Utils::transform(target()->project()->files(ProjectExplorer::Project::AllFiles),
+                                                &Utils::FileName::toString));
+
+    parser->setSourceDirectory(AndroidManager::androidQtSupport(target())->packageSourceDir(target()));
     parser->setBuildDirectory(Utils::FileName::fromString(bc->buildDirectory().appendPath(Constants::ANDROID_BUILDDIRECTORY).toString()));
     setOutputParser(parser);
 
@@ -174,7 +165,7 @@ bool AndroidBuildApkStep::init(QList<const BuildStep *> &earlierSteps)
 
 void AndroidBuildApkStep::showInGraphicalShell()
 {
-    Core::FileUtils::showInGraphicalShell(Core::ICore::instance()->mainWindow(), m_apkPath);
+    Core::FileUtils::showInGraphicalShell(Core::ICore::mainWindow(), m_apkPath);
 }
 
 ProjectExplorer::BuildStepConfigWidget *AndroidBuildApkStep::createConfigWidget()
@@ -235,9 +226,6 @@ bool AndroidBuildApkStep::verifyCertificatePassword()
 
 bool AndroidBuildApkStep::fromMap(const QVariantMap &map)
 {
-    m_deployAction = AndroidDeployAction(map.value(DeployActionKey, BundleLibrariesDeployment).toInt());
-    if (m_deployAction > BundleLibrariesDeployment)
-        m_deployAction = BundleLibrariesDeployment; // BundleLibrariesDeployment used to be 2
     m_keystorePath = Utils::FileName::fromString(map.value(KeystoreLocationKey).toString());
     m_signPackage = false; // don't restore this
     m_buildTargetSdk = map.value(BuildTargetSdkKey).toString();
@@ -246,16 +234,17 @@ bool AndroidBuildApkStep::fromMap(const QVariantMap &map)
                                                           sdkManager()->latestAndroidSdkPlatform());
     }
     m_verbose = map.value(VerboseOutputKey).toBool();
+    m_useMinistro = map.value(UseMinistroKey).toBool();
     return ProjectExplorer::BuildStep::fromMap(map);
 }
 
 QVariantMap AndroidBuildApkStep::toMap() const
 {
     QVariantMap map = ProjectExplorer::AbstractProcessStep::toMap();
-    map.insert(DeployActionKey, m_deployAction);
     map.insert(KeystoreLocationKey, m_keystorePath.toString());
     map.insert(BuildTargetSdkKey, m_buildTargetSdk);
     map.insert(VerboseOutputKey, m_verbose);
+    map.insert(UseMinistroKey, m_useMinistro);
     return map;
 }
 
@@ -273,16 +262,6 @@ void AndroidBuildApkStep::setBuildTargetSdk(const QString &sdk)
 {
     m_buildTargetSdk = sdk;
     AndroidManager::updateGradleProperties(target());
-}
-
-AndroidBuildApkStep::AndroidDeployAction AndroidBuildApkStep::deployAction() const
-{
-    return m_deployAction;
-}
-
-void AndroidBuildApkStep::setDeployAction(AndroidDeployAction deploy)
-{
-    m_deployAction = deploy;
 }
 
 void AndroidBuildApkStep::setKeystorePath(const Utils::FileName &path)
@@ -330,6 +309,16 @@ void AndroidBuildApkStep::setOpenPackageLocation(bool open)
 void AndroidBuildApkStep::setVerboseOutput(bool verbose)
 {
     m_verbose = verbose;
+}
+
+bool AndroidBuildApkStep::useMinistro() const
+{
+    return m_useMinistro;
+}
+
+void AndroidBuildApkStep::setUseMinistro(bool useMinistro)
+{
+    m_useMinistro = useMinistro;
 }
 
 bool AndroidBuildApkStep::addDebugger() const

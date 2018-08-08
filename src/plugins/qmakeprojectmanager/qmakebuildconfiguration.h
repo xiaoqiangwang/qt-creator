@@ -47,9 +47,10 @@ class QMAKEPROJECTMANAGER_EXPORT QmakeBuildConfiguration : public ProjectExplore
     Q_OBJECT
 
 public:
-    explicit QmakeBuildConfiguration(ProjectExplorer::Target *target);
-    ~QmakeBuildConfiguration();
+    QmakeBuildConfiguration(ProjectExplorer::Target *target, Core::Id id);
+    ~QmakeBuildConfiguration() override;
 
+    void initialize(const ProjectExplorer::BuildInfo *info) override;
     ProjectExplorer::NamedWidget *createConfigWidget() override;
     bool isShadowBuild() const;
 
@@ -85,15 +86,15 @@ public:
     QString makefile() const;
 
     enum MakefileState { MakefileMatches, MakefileForWrongProject, MakefileIncompatible, MakefileMissing };
-    MakefileState compareToImportFrom(const QString &makefile, QString *errorString = 0);
-    static Utils::FileName extractSpecFromArguments(QString *arguments,
-                                            const QString &directory, const QtSupport::BaseQtVersion *version,
-                                            QStringList *outArgs = 0);
+    MakefileState compareToImportFrom(const QString &makefile, QString *errorString = nullptr);
+    static Utils::FileName extractSpecFromArguments(
+            QString *arguments, const QString &directory, const QtSupport::BaseQtVersion *version,
+            QStringList *outArgs = nullptr);
 
     QVariantMap toMap() const override;
 
-    virtual bool isEnabled() const override;
-    virtual QString disabledReason() const override;
+    bool isEnabled() const override;
+    QString disabledReason() const override;
     /// \internal For QmakeProject, since that manages the parsing information
     void setEnabled(bool enabled);
 
@@ -110,18 +111,13 @@ signals:
     void qmakeBuildConfigurationChanged();
     void shadowBuildChanged();
 
+protected:
+    bool fromMap(const QVariantMap &map) override;
+
 private:
     void kitChanged();
     void toolChainUpdated(ProjectExplorer::ToolChain *tc);
     void qtVersionsChanged(const QList<int> &, const QList<int> &, const QList<int> &changed);
-
-protected:
-    QmakeBuildConfiguration(ProjectExplorer::Target *target, QmakeBuildConfiguration *source);
-    QmakeBuildConfiguration(ProjectExplorer::Target *target, Core::Id id);
-    bool fromMap(const QVariantMap &map) override;
-
-private:
-    void ctor();
 
     class LastKitState
     {
@@ -140,7 +136,7 @@ private:
 
     bool m_shadowBuild = true;
     bool m_isEnabled = true;
-    QtSupport::BaseQtVersion::QmakeBuildConfigs m_qmakeBuildConfiguration = 0;
+    QtSupport::BaseQtVersion::QmakeBuildConfigs m_qmakeBuildConfiguration = nullptr;
     QmakeProFileNode *m_subNodeBuild = nullptr;
     ProjectExplorer::FileNode *m_fileNodeBuild = nullptr;
 
@@ -153,27 +149,12 @@ class QMAKEPROJECTMANAGER_EXPORT QmakeBuildConfigurationFactory : public Project
     Q_OBJECT
 
 public:
-    explicit QmakeBuildConfigurationFactory(QObject *parent = 0);
+    QmakeBuildConfigurationFactory();
 
-    int priority(const ProjectExplorer::Target *parent) const override;
     QList<ProjectExplorer::BuildInfo *> availableBuilds(const ProjectExplorer::Target *parent) const override;
-    int priority(const ProjectExplorer::Kit *k, const QString &projectPath) const override;
     QList<ProjectExplorer::BuildInfo *> availableSetups(const ProjectExplorer::Kit *k,
                                                         const QString &projectPath) const override;
-    ProjectExplorer::BuildConfiguration *create(ProjectExplorer::Target *parent,
-                                                const ProjectExplorer::BuildInfo *info) const override;
-
-    bool canClone(const ProjectExplorer::Target *parent, ProjectExplorer::BuildConfiguration *source) const override;
-    ProjectExplorer::BuildConfiguration *clone(ProjectExplorer::Target *parent, ProjectExplorer::BuildConfiguration *source) override;
-    bool canRestore(const ProjectExplorer::Target *parent, const QVariantMap &map) const override;
-    ProjectExplorer::BuildConfiguration *restore(ProjectExplorer::Target *parent, const QVariantMap &map) override;
-protected:
-    void configureBuildConfiguration(ProjectExplorer::Target *parent, QmakeBuildConfiguration *bc, const QmakeBuildInfo *info) const;
-
 private:
-    void update();
-
-    bool canHandle(const ProjectExplorer::Target *t) const;
     QmakeBuildInfo *createBuildInfo(const ProjectExplorer::Kit *k, const QString &projectPath,
                                     ProjectExplorer::BuildConfiguration::BuildType type) const;
 };

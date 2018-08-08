@@ -365,10 +365,10 @@ static Utils::FileName findLocalCompiler(const Utils::FileName &compilerPath,
     if (!compilerDirString.contains("icecc") && !compilerDirString.contains("distcc"))
         return compilerPath;
 
-    QStringList pathComponents = env.path();
+    FileNameList pathComponents = env.path();
     auto it = std::find_if(pathComponents.begin(), pathComponents.end(),
-                           [compilerDir](const QString &p) {
-        return Utils::FileName::fromString(p) == compilerDir;
+                           [compilerDir](const FileName &p) {
+        return p == compilerDir;
     });
     if (it != pathComponents.end()) {
         std::rotate(pathComponents.begin(), it, pathComponents.end());
@@ -579,6 +579,46 @@ WarningFlags GccToolChain::warningFlags(const QStringList &cflags) const
     return flags;
 }
 
+QStringList GccToolChain::gccPrepareArguments(const QStringList &flags,
+                                              const QString &sysRoot,
+                                              const QStringList &platformCodeGenFlags,
+                                              Core::Id languageId,
+                                              OptionsReinterpreter reinterpretOptions)
+{
+    QStringList arguments;
+    const bool hasKitSysroot = !sysRoot.isEmpty();
+    if (hasKitSysroot)
+        arguments.append(QString::fromLatin1("--sysroot=%1").arg(sysRoot));
+
+    QStringList allFlags;
+    allFlags << platformCodeGenFlags << flags;
+    for (int i = 0; i < allFlags.size(); ++i) {
+        const QString &flag = allFlags.at(i);
+        if (flag.startsWith("-stdlib=") || flag.startsWith("--gcctoolchain=")) {
+            arguments << flag;
+        } else if (!hasKitSysroot) {
+            // pass build system's sysroot to compiler, if we didn't pass one from kit
+            if (flag.startsWith("--sysroot=")) {
+                arguments << flag;
+            } else if ((flag.startsWith("-isysroot") || flag.startsWith("--sysroot"))
+                       && i < flags.size() - 1) {
+                arguments << flag << allFlags.at(i + 1);
+                ++i;
+            }
+        }
+    }
+    arguments << languageOption(languageId) << "-E" << "-v" << "-";
+    arguments = reinterpretOptions(arguments);
+
+    return arguments;
+}
+
+// NOTE: extraHeaderPathsFunction must NOT capture this or it's members!!!
+void GccToolChain::initExtraHeaderPathsFunction(ExtraHeaderPathsFunction &&extraHeaderPathsFunction) const
+{
+    m_extraHeaderPathsFunction = std::move(extraHeaderPathsFunction);
+}
+
 ToolChain::SystemHeaderPathsRunner GccToolChain::createSystemHeaderPathsRunner() const
 {
     // Using a clean environment breaks ccache/distcc/etc.
@@ -593,42 +633,21 @@ ToolChain::SystemHeaderPathsRunner GccToolChain::createSystemHeaderPathsRunner()
     Core::Id languageId = language();
 
     // This runner must be thread-safe!
-    return [env, compilerCommand, platformCodeGenFlags, reinterpretOptions, headerCache, languageId]
+    return [env, compilerCommand, platformCodeGenFlags, reinterpretOptions, headerCache, languageId,
+            extraHeaderPathsFunction = m_extraHeaderPathsFunction]
             (const QStringList &flags, const QString &sysRoot) {
-        // Prepare arguments
-        QStringList arguments;
-        const bool hasKitSysroot = !sysRoot.isEmpty();
-        if (hasKitSysroot)
-            arguments.append(QString::fromLatin1("--sysroot=%1").arg(sysRoot));
 
-        QStringList allFlags;
-        allFlags << platformCodeGenFlags << flags;
-        for (int i = 0; i < allFlags.size(); ++i) {
-            const QString &flag = allFlags.at(i);
-            if (flag.startsWith("-stdlib=") || flag.startsWith("--gcctoolchain=")) {
-                arguments << flag;
-            } else if (!hasKitSysroot) {
-                // pass build system's sysroot to compiler, if we didn't pass one from kit
-                if (flag.startsWith("--sysroot=")) {
-                    arguments << flag;
-                } else if ((flag.startsWith("-isysroot") || flag.startsWith("--sysroot"))
-                           && i < flags.size() - 1) {
-                    arguments << flag << allFlags.at(i + 1);
-                    ++i;
-                }
-            }
-        }
-
-        arguments << languageOption(languageId) << "-E" << "-v" << "-";
-        arguments = reinterpretOptions(arguments);
+        QStringList arguments = gccPrepareArguments(flags, sysRoot, platformCodeGenFlags,
+                                                    languageId, reinterpretOptions);
 
         const Utils::optional<QList<HeaderPath>> cachedPaths = headerCache->check(arguments);
         if (cachedPaths)
             return cachedPaths.value();
 
-        const QList<HeaderPath> paths = gccHeaderPaths(findLocalCompiler(compilerCommand, env),
-                                                       arguments,
-                                                       env.toStringList());
+        QList<HeaderPath> paths = gccHeaderPaths(findLocalCompiler(compilerCommand, env),
+                                                 arguments,
+                                                 env.toStringList());
+        extraHeaderPathsFunction(paths);
         headerCache->insert(arguments, paths);
 
         qCDebug(gccLog) << "Reporting header paths to code model:";
@@ -753,6 +772,11 @@ void GccToolChain::setPlatformCodeGenFlags(const QStringList &flags)
         m_platformCodeGenFlags = flags;
         toolChainUpdated();
     }
+}
+
+QStringList GccToolChain::extraCodeModelFlags() const
+{
+    return platformCodeGenFlags();
 }
 
 /*!
@@ -1112,7 +1136,7 @@ void GccToolChainConfigWidget::applyImpl()
 void GccToolChainConfigWidget::setFromToolchain()
 {
     // subwidgets are not yet connected!
-    bool blocked = blockSignals(true);
+    QSignalBlocker blocker(this);
     auto tc = static_cast<GccToolChain *>(toolChain());
     m_compilerCommand->setFileName(tc->compilerCommand());
     m_platformCodeGenFlagsLineEdit->setText(QtcProcess::joinArgs(tc->platformCodeGenFlags()));
@@ -1120,7 +1144,6 @@ void GccToolChainConfigWidget::setFromToolchain()
     m_abiWidget->setAbis(tc->supportedAbis(), tc->targetAbi());
     if (!m_isReadOnly && !m_compilerCommand->path().isEmpty())
         m_abiWidget->setEnabled(true);
-    blockSignals(blocked);
 }
 
 bool GccToolChainConfigWidget::isDirtyImpl() const
@@ -1162,7 +1185,7 @@ void GccToolChainConfigWidget::handleCompilerCommandChange()
 {
     bool haveCompiler = false;
     Abi currentAbi = m_abiWidget->currentAbi();
-    bool customAbi = m_abiWidget->isCustomAbi();
+    bool customAbi = m_abiWidget->isCustomAbi() && m_abiWidget->isEnabled();
     FileName path = m_compilerCommand->fileName();
     QList<Abi> abiList;
 
@@ -1602,11 +1625,11 @@ void ProjectExplorerPlugin::testGccAbiGuessing_data()
     QTest::newRow("broken input -- 64bit")
             << QString::fromLatin1("arm-none-foo-gnueabi")
             << QByteArray("#define __SIZEOF_SIZE_T__ 8\n#define __Something\n")
-            << QStringList({"arm-unknown-unknown-unknown-64bit"});
+            << QStringList({"arm-unknown-unknown-elf-64bit"});
     QTest::newRow("broken input -- 32bit")
             << QString::fromLatin1("arm-none-foo-gnueabi")
             << QByteArray("#define __SIZEOF_SIZE_T__ 4\n#define __Something\n")
-            << QStringList({"arm-unknown-unknown-unknown-32bit"});
+            << QStringList({"arm-unknown-unknown-elf-32bit"});
     QTest::newRow("totally broken input -- 32bit")
             << QString::fromLatin1("foo-bar-foo")
             << QByteArray("#define __SIZEOF_SIZE_T__ 4\n#define __Something\n")

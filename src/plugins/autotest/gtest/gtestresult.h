@@ -33,8 +33,8 @@ namespace Internal {
 class GTestResult : public TestResult
 {
 public:
-    GTestResult(const QString &projectFile, const QString &name = QString());
-    GTestResult(const QString &executable, const QString &projectFile, const QString &name);
+    explicit GTestResult(const QString &projectFile, const QString &name = QString());
+    GTestResult(const QString &id, const QString &projectFile, const QString &name);
     const QString outputString(bool selected) const override;
 
     void setTestSetName(const QString &testSetName) { m_testSetName = testSetName; }
@@ -46,9 +46,9 @@ private:
     bool isTest() const { return m_testSetName.isEmpty(); }
     bool isTestSet() const { return !m_testSetName.isEmpty(); }
 
-    bool matches(const TestTreeItem &item) const;
-    bool matchesTestFunctionOrSet(const TestTreeItem &treeItem) const;
-    bool matchesTestCase(const TestTreeItem &treeItem) const;
+    bool matches(const TestTreeItem *item) const;
+    bool matchesTestFunctionOrSet(const TestTreeItem *treeItem) const;
+    bool matchesTestCase(const TestTreeItem *treeItem) const;
 
     QString m_testSetName;
     QString m_projectFile;

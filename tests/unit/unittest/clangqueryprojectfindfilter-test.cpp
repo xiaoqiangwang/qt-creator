@@ -34,22 +34,22 @@
 
 #include <clangrefactoringservermessages.h>
 
-#include <cpptools/clangcompileroptionsbuilder.h>
+#include <cpptools/compileroptionsbuilder.h>
 #include <cpptools/projectpart.h>
 
 namespace {
 
 using testing::_;
 using testing::AllOf;
+using testing::Field;
 using testing::NiceMock;
 using testing::NotNull;
-using testing::Property;
 using testing::Return;
 using testing::ReturnNew;
 using testing::DefaultValue;
 using testing::ByMove;
 
-using CppTools::ClangCompilerOptionsBuilder;
+using CppTools::CompilerOptionsBuilder;
 using ClangBackEnd::V2::FileContainer;
 
 class ClangQueryProjectFindFilter : public ::testing::Test
@@ -82,25 +82,25 @@ TEST_F(ClangQueryProjectFindFilter, SupportedFindFlags)
 
 TEST_F(ClangQueryProjectFindFilter, IsNotUsableForUnusableServer)
 {
-    auto isUsable = findFilter.isUsable();
+    auto isUsable = findFilter.isAvailable();
 
     ASSERT_FALSE(isUsable);
 }
 
 TEST_F(ClangQueryProjectFindFilter, IsUsableForUsableServer)
 {
-    mockRefactoringServer.setUsable(true);
+    mockRefactoringServer.setAvailable(true);
 
-    auto isUsable = findFilter.isUsable();
+    auto isUsable = findFilter.isAvailable();
 
     ASSERT_TRUE(isUsable);
 }
 
 TEST_F(ClangQueryProjectFindFilter, ServerIsUsableForUsableFindFilter)
 {
-    findFilter.setUsable(true);
+    findFilter.setAvailable(true);
 
-    auto isUsable = mockRefactoringServer.isUsable();
+    auto isUsable = mockRefactoringServer.isAvailable();
 
     ASSERT_TRUE(isUsable);
 }
@@ -166,9 +166,9 @@ TEST_F(ClangQueryProjectFindFilter, CallingRequestSourceRangesAndDiagnostics)
     EXPECT_CALL(mockRefactoringServer,
                 requestSourceRangesAndDiagnosticsForQueryMessage(
                     AllOf(
-                        Property(&Message::source,
-                                Property(&FileContainer::unsavedFileContent, exampleContent)),
-                        Property(&Message::query, queryText))));
+                        Field(&Message::source,
+                              Field(&FileContainer::unsavedFileContent, exampleContent)),
+                        Field(&Message::query, queryText))));
 
     findFilter.requestSourceRangesAndDiagnostics(QString(queryText), QString(exampleContent));
 }
@@ -223,7 +223,7 @@ void ClangQueryProjectFindFilter::SetUp()
 
 std::unique_ptr<ClangRefactoring::SearchHandle> ClangQueryProjectFindFilter::createSearchHandle()
 {
-    std::unique_ptr<ClangRefactoring::SearchHandle> handle(new NiceMock<MockSearchHandle>);
+    auto handle = std::make_unique<NiceMock<MockSearchHandle>>();
     handle->setRefactoringServer(&mockRefactoringServer);
 
     return handle;

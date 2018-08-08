@@ -11,7 +11,17 @@ HEADERS += \
     $$PWD/symbolstorage.h \
     $$PWD/storagesqlitestatementfactory.h \
     $$PWD/symbolindexing.h \
-    $$PWD/symbolindexinginterface.h
+    $$PWD/symbolindexinginterface.h \
+    $$PWD/collectmacrospreprocessorcallbacks.h \
+    $$PWD/projectpartentry.h \
+    $$PWD/symbolsvisitorbase.h \
+    $$PWD/usedmacro.h \
+    $$PWD/sourcedependency.h \
+    $$PWD/filestatus.h \
+    $$PWD/projectpartartefactexception.h \
+    $$PWD/projectpartartefact.h \
+    $$PWD/filestatuscache.h \
+    $$PWD/indexdataconsumer.h
 
 !isEmpty(LIBTOOLING_LIBS) {
 SOURCES += \
@@ -29,8 +39,8 @@ SOURCES += \
     $$PWD/collectmacrossourcefilecallbacks.cpp \
     $$PWD/symbolscollector.cpp \
     $$PWD/clangquerygatherer.cpp \
-    $$PWD/symbolstorage.cpp \
-    $$PWD/symbolindexing.cpp
+    $$PWD/symbolindexing.cpp \
+    $$PWD/indexdataconsumer.cpp
 
 HEADERS += \
     $$PWD/refactoringcompilationdatabase.h \
@@ -46,9 +56,7 @@ HEADERS += \
     $$PWD/clangtool.h \
     $$PWD/sourcerangeextractor.h \
     $$PWD/locationsourcefilecallbacks.h \
-    $$PWD/collectsymbolsconsumer.h \
     $$PWD/collectsymbolsaction.h \
-    $$PWD/collectsymbolsastvisitor.h \
     $$PWD/collectmacrossourcefilecallbacks.h \
     $$PWD/symbolscollector.h \
     $$PWD/clangquerygatherer.h
@@ -57,5 +65,5 @@ HEADERS += \
 SOURCES += \
     $$PWD/sourcerangefilter.cpp \
     $$PWD/symbolindexer.cpp \
-    $$PWD/symbolentry.cpp \
-    $$PWD/sourcelocationentry.cpp
+    $$PWD/projectpartartefact.cpp \
+    $$PWD/filestatuscache.cpp

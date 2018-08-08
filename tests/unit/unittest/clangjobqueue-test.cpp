@@ -66,6 +66,8 @@ protected:
                                 PreferredTranslationUnit preferredTranslationUnit
                                     = PreferredTranslationUnit::RecentlyParsed) const;
 
+    void pretendParsedTranslationUnit();
+
     void updateDocumentRevision();
     void updateUnsavedFiles();
     void updateProject();
@@ -88,7 +90,7 @@ protected:
 TEST_F(JobQueue, AddJob)
 {
     const JobRequest jobRequest = createJobRequest(filePath1,
-                                                   JobRequest::Type::UpdateDocumentAnnotations);
+                                                   JobRequest::Type::UpdateAnnotations);
 
     jobQueue.add(jobRequest);
 
@@ -98,7 +100,7 @@ TEST_F(JobQueue, AddJob)
 TEST_F(JobQueue, DoNotAddDuplicate)
 {
     const JobRequest request = createJobRequest(filePath1,
-                                                JobRequest::Type::UpdateDocumentAnnotations);
+                                                JobRequest::Type::UpdateAnnotations);
     jobQueue.add(request);
 
     const bool added = jobQueue.add(request);
@@ -113,7 +115,7 @@ TEST_F(JobQueue, DoNotAddDuplicateForWhichAJobIsAlreadyRunning)
     });
 
     const bool added = jobQueue.add(createJobRequest(filePath1,
-                                                     JobRequest::Type::UpdateDocumentAnnotations));
+                                                     JobRequest::Type::UpdateAnnotations));
 
     ASSERT_FALSE(added);
 }
@@ -125,7 +127,7 @@ TEST_F(JobQueue, DoNotAddForNotExistingDocument)
     });
 
     const bool added = jobQueue.add(createJobRequest(Utf8StringLiteral("notExistingDocument.cpp"),
-                                                     JobRequest::Type::UpdateDocumentAnnotations));
+                                                     JobRequest::Type::UpdateAnnotations));
 
     ASSERT_FALSE(added);
 }
@@ -134,7 +136,7 @@ TEST_F(JobQueue, DoNotAddForNotIntactDocument)
 {
     document.setHasParseOrReparseFailed(true);
     const bool added = jobQueue.add(createJobRequest(filePath1,
-                                                     JobRequest::Type::UpdateDocumentAnnotations));
+                                                     JobRequest::Type::UpdateAnnotations));
 
     ASSERT_FALSE(added);
 }
@@ -148,7 +150,7 @@ TEST_F(JobQueue, CancelDuringAddForNotIntactDocument)
     });
 
 
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
 
     ASSERT_TRUE(canceled);
 }
@@ -162,7 +164,7 @@ TEST_F(JobQueue, ProcessEmpty)
 
 TEST_F(JobQueue, ProcessSingleJob)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
 
     const JobRequests jobsToRun = jobQueue.processQueue();
 
@@ -172,8 +174,8 @@ TEST_F(JobQueue, ProcessSingleJob)
 
 TEST_F(JobQueue, ProcessUntilEmpty)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::CreateInitialDocumentPreamble));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::ParseSupportiveTranslationUnit));
 
     JobRequests jobsToRun;
     ASSERT_THAT(jobQueue.size(), Eq(2));
@@ -189,7 +191,7 @@ TEST_F(JobQueue, ProcessUntilEmpty)
 
 TEST_F(JobQueue, RemoveRequestsForClosedDocuments)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
     removeDocument();
 
     const JobRequests jobsToRun = jobQueue.processQueue();
@@ -200,7 +202,7 @@ TEST_F(JobQueue, RemoveRequestsForClosedDocuments)
 
 TEST_F(JobQueue, RemoveRequestsForClosedProject)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
     removeProject();
 
     const JobRequests jobsToRun = jobQueue.processQueue();
@@ -211,7 +213,7 @@ TEST_F(JobQueue, RemoveRequestsForClosedProject)
 
 TEST_F(JobQueue, RemoveRequestsForOudatedUnsavedFiles)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
     updateUnsavedFiles();
 
     const JobRequests jobsToRun = jobQueue.processQueue();
@@ -222,7 +224,7 @@ TEST_F(JobQueue, RemoveRequestsForOudatedUnsavedFiles)
 
 TEST_F(JobQueue, RemoveRequestsForChangedDocumentRevision)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
     updateDocumentRevision();
 
     const JobRequests jobsToRun = jobQueue.processQueue();
@@ -233,7 +235,7 @@ TEST_F(JobQueue, RemoveRequestsForChangedDocumentRevision)
 
 TEST_F(JobQueue, RemoveRequestsForOudatedProject)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
     updateProject();
 
     const JobRequests jobsToRun = jobQueue.processQueue();
@@ -245,7 +247,7 @@ TEST_F(JobQueue, RemoveRequestsForOudatedProject)
 TEST_F(JobQueue, RemoveRequestsForNotIntactDocuments)
 {
     const Utf8String filePath = createTranslationUnitForDeletedFile();
-    jobQueue.add(createJobRequest(filePath, JobRequest::Type::UpdateDocumentAnnotations));
+    jobQueue.add(createJobRequest(filePath, JobRequest::Type::UpdateAnnotations));
 
     const JobRequests jobsToRun = jobQueue.processQueue();
 
@@ -255,7 +257,7 @@ TEST_F(JobQueue, RemoveRequestsForNotIntactDocuments)
 
 TEST_F(JobQueue, CancelRequestsForNotIntactDocuments)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
     document.setHasParseOrReparseFailed(true);
     bool canceled = false;
     jobQueue.setCancelJobRequest([&canceled](const JobRequest &) {
@@ -270,8 +272,8 @@ TEST_F(JobQueue, CancelRequestsForNotIntactDocuments)
 TEST_F(JobQueue, PrioritizeCurrentDocumentOverNotCurrent)
 {
     resetVisibilityAndCurrentEditor();
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
-    jobQueue.add(createJobRequest(filePath2, JobRequest::Type::UpdateDocumentAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
+    jobQueue.add(createJobRequest(filePath2, JobRequest::Type::UpdateAnnotations));
     documents.setUsedByCurrentEditor(filePath2);
 
     jobQueue.prioritizeRequests();
@@ -282,8 +284,8 @@ TEST_F(JobQueue, PrioritizeCurrentDocumentOverNotCurrent)
 TEST_F(JobQueue, PrioritizeVisibleDocumentsOverNotVisible)
 {
     resetVisibilityAndCurrentEditor();
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
-    jobQueue.add(createJobRequest(filePath2, JobRequest::Type::UpdateDocumentAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
+    jobQueue.add(createJobRequest(filePath2, JobRequest::Type::UpdateAnnotations));
     documents.setVisibleInEditors({filePath2});
 
     jobQueue.prioritizeRequests();
@@ -294,8 +296,8 @@ TEST_F(JobQueue, PrioritizeVisibleDocumentsOverNotVisible)
 TEST_F(JobQueue, PrioritizeCurrentDocumentOverVisible)
 {
     resetVisibilityAndCurrentEditor();
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
-    jobQueue.add(createJobRequest(filePath2, JobRequest::Type::UpdateDocumentAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
+    jobQueue.add(createJobRequest(filePath2, JobRequest::Type::UpdateAnnotations));
     documents.setVisibleInEditors({filePath1, filePath2});
     documents.setUsedByCurrentEditor(filePath2);
 
@@ -306,8 +308,7 @@ TEST_F(JobQueue, PrioritizeCurrentDocumentOverVisible)
 
 TEST_F(JobQueue, RunNothingForNotCurrentOrVisibleDocument)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::CreateInitialDocumentPreamble));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
     documents.setVisibleInEditors({});
     documents.setUsedByCurrentEditor(Utf8StringLiteral("aNonExistingFilePath"));
 
@@ -318,8 +319,8 @@ TEST_F(JobQueue, RunNothingForNotCurrentOrVisibleDocument)
 
 TEST_F(JobQueue, RunOnlyOneJobPerTranslationUnitIfMultipleAreInQueue)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::CreateInitialDocumentPreamble));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::RequestAnnotations));
 
     const JobRequests jobsToRun = jobQueue.processQueue();
 
@@ -330,14 +331,14 @@ TEST_F(JobQueue, RunOnlyOneJobPerTranslationUnitIfMultipleAreInQueue)
 TEST_F(JobQueue, RunJobsForDistinctTranslationUnits)
 {
     const TranslationUnit initialTu = document.translationUnit();
-    document.translationUnits().updateParseTimePoint(initialTu.id(), std::chrono::steady_clock::now());
+    document.translationUnits().updateParseTimePoint(initialTu.id(), Clock::now());
     const TranslationUnit alternativeTu = document.translationUnits().createAndAppend();
-    document.translationUnits().updateParseTimePoint(alternativeTu.id(), std::chrono::steady_clock::now());
+    document.translationUnits().updateParseTimePoint(alternativeTu.id(), Clock::now());
     jobQueue.add(createJobRequest(filePath1,
-                                  JobRequest::Type::UpdateDocumentAnnotations,
+                                  JobRequest::Type::UpdateAnnotations,
                                   PreferredTranslationUnit::RecentlyParsed));
     jobQueue.add(createJobRequest(filePath1,
-                                  JobRequest::Type::UpdateDocumentAnnotations,
+                                  JobRequest::Type::UpdateAnnotations,
                                   PreferredTranslationUnit::PreviouslyParsed));
 
     const JobRequests jobsToRun = jobQueue.processQueue();
@@ -347,8 +348,7 @@ TEST_F(JobQueue, RunJobsForDistinctTranslationUnits)
 }
 TEST_F(JobQueue, DoNotRunJobForTranslationUnittThatIsBeingProcessed)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::CreateInitialDocumentPreamble));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
     JobRequests jobsToRun = jobQueue.processQueue();
     jobQueue.setIsJobRunningForTranslationUnitHandler([](const Utf8String &) {
        return true;
@@ -359,9 +359,9 @@ TEST_F(JobQueue, DoNotRunJobForTranslationUnittThatIsBeingProcessed)
     ASSERT_THAT(jobsToRun.size(), Eq(0));
 }
 
-TEST_F(JobQueue, RequestUpdateDocumentAnnotationsOutdatableByUnsavedFileChange)
+TEST_F(JobQueue, RequestUpdateAnnotationsOutdatableByUnsavedFileChange)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
     updateUnsavedFiles();
 
     const JobRequests jobsToStart = jobQueue.processQueue();
@@ -369,9 +369,9 @@ TEST_F(JobQueue, RequestUpdateDocumentAnnotationsOutdatableByUnsavedFileChange)
     ASSERT_THAT(jobsToStart.size(), Eq(0));
 }
 
-TEST_F(JobQueue, RequestUpdateDocumentAnnotationsOutdatableByProjectRemoval)
+TEST_F(JobQueue, RequestUpdateAnnotationsOutdatableByProjectRemoval)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
     removeProject();
 
     const JobRequests jobsToStart = jobQueue.processQueue();
@@ -379,9 +379,9 @@ TEST_F(JobQueue, RequestUpdateDocumentAnnotationsOutdatableByProjectRemoval)
     ASSERT_THAT(jobsToStart.size(), Eq(0));
 }
 
-TEST_F(JobQueue, RequestUpdateDocumentAnnotationsOutdatableByProjectChange)
+TEST_F(JobQueue, RequestUpdateAnnotationsOutdatableByProjectChange)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
     updateProject();
 
     const JobRequests jobsToStart = jobQueue.processQueue();
@@ -389,9 +389,9 @@ TEST_F(JobQueue, RequestUpdateDocumentAnnotationsOutdatableByProjectChange)
     ASSERT_THAT(jobsToStart.size(), Eq(0));
 }
 
-TEST_F(JobQueue, RequestUpdateDocumentAnnotationsOutdatableByDocumentClose)
+TEST_F(JobQueue, RequestUpdateAnnotationsOutdatableByDocumentClose)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
     removeDocument();
 
     const JobRequests jobsToStart = jobQueue.processQueue();
@@ -399,9 +399,9 @@ TEST_F(JobQueue, RequestUpdateDocumentAnnotationsOutdatableByDocumentClose)
     ASSERT_THAT(jobsToStart.size(), Eq(0));
 }
 
-TEST_F(JobQueue, RequestUpdateDocumentAnnotationsOutdatableByNotIntactDocument)
+TEST_F(JobQueue, RequestUpdateAnnotationsOutdatableByNotIntactDocument)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateDocumentAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::UpdateAnnotations));
     document.setHasParseOrReparseFailed(true);
 
     const JobRequests jobsToStart = jobQueue.processQueue();
@@ -411,7 +411,7 @@ TEST_F(JobQueue, RequestUpdateDocumentAnnotationsOutdatableByNotIntactDocument)
 
 TEST_F(JobQueue, RequestCompleteCodeOutdatableByDocumentClose)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::CompleteCode));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::RequestCompletions));
     removeDocument();
 
     const JobRequests jobsToStart = jobQueue.processQueue();
@@ -421,7 +421,8 @@ TEST_F(JobQueue, RequestCompleteCodeOutdatableByDocumentClose)
 
 TEST_F(JobQueue, RequestCompleteCodeNotOutdatableByUnsavedFilesChange)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::CompleteCode));
+    pretendParsedTranslationUnit();
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::RequestCompletions));
     updateUnsavedFiles();
 
     const JobRequests jobsToStart = jobQueue.processQueue();
@@ -431,7 +432,8 @@ TEST_F(JobQueue, RequestCompleteCodeNotOutdatableByUnsavedFilesChange)
 
 TEST_F(JobQueue, RequestCompleteCodeNotOutdatableByDocumentRevisionChange)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::CompleteCode));
+    pretendParsedTranslationUnit();
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::RequestCompletions));
     updateDocumentRevision();
 
     const JobRequests jobsToStart = jobQueue.processQueue();
@@ -439,19 +441,9 @@ TEST_F(JobQueue, RequestCompleteCodeNotOutdatableByDocumentRevisionChange)
     ASSERT_THAT(jobsToStart.size(), Eq(1));
 }
 
-TEST_F(JobQueue, RequestCreateInitialDocumentPreambleOutdatableByDocumentClose)
-{
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::CreateInitialDocumentPreamble));
-    removeDocument();
-
-    const JobRequests jobsToStart = jobQueue.processQueue();
-
-    ASSERT_THAT(jobsToStart.size(), Eq(0));
-}
-
 TEST_F(JobQueue, RequestCompleteCodeOutdatableByDocumentRevisionChange)
 {
-    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::RequestDocumentAnnotations));
+    jobQueue.add(createJobRequest(filePath1, JobRequest::Type::RequestAnnotations));
     updateDocumentRevision();
 
     const JobRequests jobsToStart = jobQueue.processQueue();
@@ -461,6 +453,7 @@ TEST_F(JobQueue, RequestCompleteCodeOutdatableByDocumentRevisionChange)
 
 TEST_F(JobQueue, RequestReferencesRunsForCurrentDocumentRevision)
 {
+    pretendParsedTranslationUnit();
     jobQueue.add(createJobRequest(filePath1, JobRequest::Type::RequestReferences));
 
     const JobRequests jobsToStart = jobQueue.processQueue();
@@ -547,6 +540,11 @@ JobRequest JobQueue::createJobRequest(
     jobRequest.projectChangeTimePoint = projects.project(projectPartId).lastChangeTimePoint();
 
     return jobRequest;
+}
+
+void JobQueue::pretendParsedTranslationUnit()
+{
+    document.translationUnits().updateParseTimePoint(document.translationUnit().id(), Clock::now());
 }
 
 void JobQueue::updateDocumentRevision()

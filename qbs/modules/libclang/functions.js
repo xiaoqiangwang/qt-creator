@@ -1,7 +1,7 @@
 var Environment = require("qbs.Environment")
 var File = require("qbs.File")
 var FileInfo = require("qbs.FileInfo")
-var MinimumLLVMVersion = "3.9.0"
+var MinimumLLVMVersion = "6.0.0" // CLANG-UPGRADE-CHECK: Adapt minimum version numbers.
 var Process = require("qbs.Process")
 
 function readOutput(executable, args)
@@ -16,7 +16,10 @@ function readOutput(executable, args)
 
 function readListOutput(executable, args)
 {
-    return readOutput(executable, args).split(/\s+/);
+    var list = readOutput(executable, args).split(/\s+/);
+    if (!list[list.length - 1])
+        list.pop();
+    return list;
 }
 
 function isSuitableLLVMConfig(llvmConfigCandidate, qtcFunctions)
@@ -33,7 +36,7 @@ function llvmConfig(hostOS, qtcFunctions)
 {
     var llvmInstallDirFromEnv = Environment.getEnv("LLVM_INSTALL_DIR")
     var llvmConfigVariants = [
-        "llvm-config", "llvm-config-3.9", "llvm-config-4.0", "llvm-config-4.1"
+        "llvm-config", "llvm-config-6.0", "llvm-config-7.0", "llvm-config-8.0", "llvm-config-9.0"
     ];
 
     // Prefer llvm-config* from LLVM_INSTALL_DIR
@@ -69,6 +72,11 @@ function includeDir(llvmConfig)
 function libDir(llvmConfig)
 {
     return FileInfo.fromNativeSeparators(readOutput(llvmConfig, ["--libdir"]));
+}
+
+function binDir(llvmConfig)
+{
+    return FileInfo.fromNativeSeparators(readOutput(llvmConfig, ["--bindir"]));
 }
 
 function version(llvmConfig)

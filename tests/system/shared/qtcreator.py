@@ -24,6 +24,7 @@
 ############################################################################
 
 import platform;
+import re;
 import shutil;
 import os;
 import glob;
@@ -49,7 +50,6 @@ source("../../shared/build_utils.py")
 source("../../shared/project.py")
 source("../../shared/editor_utils.py")
 source("../../shared/project_explorer.py")
-source("../../shared/hook_utils.py")
 source("../../shared/debugger.py")
 source("../../shared/clang.py")
 source("../../shared/welcome.py")
@@ -318,7 +318,6 @@ elif platform.system() == 'Darwin':
 else:
     origSettingsDir = os.path.join(origSettingsDir, "unix")
 
-qt4examplePath = os.path.join(qt4Path, "examples")
 srcPath = os.getenv("SYSTEST_SRCPATH", os.path.expanduser(os.path.join("~", "squish-data")))
 
 overrideStartApplication()

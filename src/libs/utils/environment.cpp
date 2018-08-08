@@ -49,8 +49,10 @@ public:
             toReplace.append(':');
             toReplace.append(lib.path());
 
-            if (ldLibraryPath.startsWith(toReplace))
-                set("LD_LIBRARY_PATH", ldLibraryPath.remove(0, toReplace.length()));
+            if (ldLibraryPath.startsWith(toReplace + ':'))
+                set("LD_LIBRARY_PATH", ldLibraryPath.remove(0, toReplace.length() + 1));
+            else if (ldLibraryPath == toReplace)
+                unset("LD_LIBRARY_PATH");
         }
     }
 };
@@ -118,6 +120,34 @@ QStringList EnvironmentItem::toStringList(const QList<EnvironmentItem> &list)
             return QString(item.name);
         return QString(item.name + '=' + item.value);
     });
+}
+
+QList<EnvironmentItem> EnvironmentItem::itemsFromVariantList(const QVariantList &list)
+{
+    return Utils::transform(list, [](const QVariant &item) {
+        return itemFromVariantList(item.toList());
+    });
+}
+
+QVariantList EnvironmentItem::toVariantList(const QList<EnvironmentItem> &list)
+{
+    return Utils::transform(list, [](const EnvironmentItem &item) {
+        return QVariant(toVariantList(item));
+    });
+}
+
+EnvironmentItem EnvironmentItem::itemFromVariantList(const QVariantList &list)
+{
+    QTC_ASSERT(list.size() == 3, return EnvironmentItem("", ""));
+    QString name = list.value(0).toString();
+    Operation operation = Operation(list.value(1).toInt());
+    QString value = list.value(2).toString();
+    return EnvironmentItem(name, value, operation);
+}
+
+QVariantList EnvironmentItem::toVariantList(const EnvironmentItem &item)
+{
+    return QVariantList() << item.name << item.operation << item.value;
 }
 
 static QString expand(const Environment *e, QString value)
@@ -297,13 +327,13 @@ void Environment::prependOrSet(const QString&key, const QString &value, const QS
 void Environment::appendOrSetPath(const QString &value)
 {
     appendOrSet("PATH", QDir::toNativeSeparators(value),
-                QString(OsSpecificAspects(m_osType).pathListSeparator()));
+                QString(OsSpecificAspects::pathListSeparator(m_osType)));
 }
 
 void Environment::prependOrSetPath(const QString &value)
 {
     prependOrSet("PATH", QDir::toNativeSeparators(value),
-            QString(OsSpecificAspects(m_osType).pathListSeparator()));
+            QString(OsSpecificAspects::pathListSeparator(m_osType)));
 }
 
 void Environment::prependOrSetLibrarySearchPath(const QString &value)
@@ -332,26 +362,40 @@ void Environment::prependOrSetLibrarySearchPath(const QString &value)
     }
 }
 
+void Environment::prependOrSetLibrarySearchPaths(const QStringList &values)
+{
+    Utils::reverseForeach(values, [this](const QString &value) {
+        prependOrSetLibrarySearchPath(value);
+    });
+}
+
 Environment Environment::systemEnvironment()
 {
     return *staticSystemEnvironment();
 }
 
 const char lcMessages[] = "LC_MESSAGES";
+const char language[] = "LANGUAGE";
 const char englishLocale[] = "en_US.utf8";
+const char languageEnglishLocales[] = "en_US:en";
 
 void Environment::setupEnglishOutput(Environment *environment)
 {
+    QTC_ASSERT(environment, return);
     environment->set(lcMessages, englishLocale);
+    environment->set(language, languageEnglishLocales);
 }
 
 void Environment::setupEnglishOutput(QProcessEnvironment *environment)
 {
+    QTC_ASSERT(environment, return);
     environment->insert(lcMessages, englishLocale);
+    environment->insert(language, languageEnglishLocales);
 }
 
 void Environment::setupEnglishOutput(QStringList *environment)
 {
+    QTC_ASSERT(environment, return);
     Environment env(*environment);
     setupEnglishOutput(&env);
     *environment = env.toStringList();
@@ -362,21 +406,20 @@ void Environment::clear()
     m_values.clear();
 }
 
-FileName Environment::searchInDirectory(const QStringList &execs, QString directory,
-                                        QSet<QString> &alreadyChecked) const
+FileName Environment::searchInDirectory(const QStringList &execs, const FileName &directory,
+                                        QSet<FileName> &alreadyChecked) const
 {
-    const QChar slash = '/';
-    // Avoid turing / into // on windows which triggers windows to check
-    // for network drives!
-    const QString dir = directory.endsWith(slash) ? directory : directory + slash;
+    const int checkedCount = alreadyChecked.count();
+    alreadyChecked.insert(directory);
 
-    if (directory.isEmpty() || alreadyChecked.contains(dir))
-        return {};
+    if (directory.isEmpty() || alreadyChecked.count() == checkedCount)
+        return FileName();
 
-    alreadyChecked.insert(dir);
+    const QString dir = directory.toString();
 
+    QFileInfo fi;
     for (const QString &exec : execs) {
-        QFileInfo fi(dir + exec);
+        fi.setFile(dir, exec);
         if (fi.isFile() && fi.isExecutable())
             return FileName::fromString(fi.absoluteFilePath());
     }
@@ -406,7 +449,11 @@ bool Environment::isSameExecutable(const QString &exe1, const QString &exe2) con
     const QStringList exe2List = appendExeExtensions(exe2);
     for (const QString &i1 : exe1List) {
         for (const QString &i2 : exe2List) {
-            if (Utils::FileName::fromString(i1) == Utils::FileName::fromString(i2))
+            const FileName f1 = FileName::fromString(i1);
+            const FileName f2 = FileName::fromString(i2);
+            if (f1 == f2)
+                return true;
+            if (FileUtils::resolveSymlinks(f1) == FileUtils::resolveSymlinks(f2))
                 return true;
         }
     }
@@ -414,7 +461,7 @@ bool Environment::isSameExecutable(const QString &exe1, const QString &exe2) con
 }
 
 FileName Environment::searchInPath(const QString &executable,
-                                   const QStringList &additionalDirs,
+                                   const FileNameList &additionalDirs,
                                    const PathFilter &func) const
 {
     if (executable.isEmpty())
@@ -434,28 +481,29 @@ FileName Environment::searchInPath(const QString &executable,
         return FileName::fromString(exec);
     }
 
-    QSet<QString> alreadyChecked;
-    for (const QString &dir : additionalDirs) {
+    QSet<FileName> alreadyChecked;
+    for (const FileName &dir : additionalDirs) {
         FileName tmp = searchInDirectory(execs, dir, alreadyChecked);
-        if (!tmp.isEmpty() && (!func || func(tmp.toString())))
+        if (!tmp.isEmpty() && (!func || func(tmp)))
             return tmp;
     }
 
     if (executable.contains('/'))
         return FileName();
 
-    for (const QString &p : path()) {
-        FileName tmp = searchInDirectory(execs, QDir::fromNativeSeparators(p), alreadyChecked);
-        if (!tmp.isEmpty() && (!func || func(tmp.toString())))
+    for (const FileName &p : path()) {
+        FileName tmp = searchInDirectory(execs, p, alreadyChecked);
+        if (!tmp.isEmpty() && (!func || func(tmp)))
             return tmp;
     }
     return FileName();
 }
 
-QStringList Environment::path() const
+FileNameList Environment::path() const
 {
-    return value("PATH")
-            .split(OsSpecificAspects(m_osType).pathListSeparator(), QString::SkipEmptyParts);
+    const QStringList pathComponents = value("PATH")
+            .split(OsSpecificAspects::pathListSeparator(m_osType), QString::SkipEmptyParts);
+    return Utils::transform(pathComponents, &FileName::fromUserInput);
 }
 
 QString Environment::value(const QString &key) const
@@ -486,7 +534,7 @@ Environment::const_iterator Environment::constEnd() const
 
 Environment::const_iterator Environment::constFind(const QString &name) const
 {
-    return m_values.constFind(name);
+    return findKey(m_values, m_osType, name);
 }
 
 int Environment::size() const
@@ -551,6 +599,11 @@ QList<EnvironmentItem> Environment::diff(const Environment &other, bool checkApp
 bool Environment::hasKey(const QString &key) const
 {
     return m_values.contains(key);
+}
+
+OsType Environment::osType() const
+{
+    return m_osType;
 }
 
 QString Environment::userName() const

@@ -61,39 +61,6 @@ private:
     CXTranslationUnit tu;
 };
 
-class FollowSymbolData {
-public:
-    FollowSymbolData() = delete;
-    FollowSymbolData(const Utf8String &usr, const Utf8String &tokenSpelling, bool isFunctionLike,
-                     std::atomic<bool> &ready)
-        : m_usr(usr)
-        , m_spelling(tokenSpelling)
-        , m_isFunctionLike(isFunctionLike)
-        , m_ready(ready)
-    {}
-    FollowSymbolData(const FollowSymbolData &other)
-        : m_usr(other.m_usr)
-        , m_spelling(other.m_spelling)
-        , m_isFunctionLike(other.m_isFunctionLike)
-        , m_ready(other.m_ready)
-    {}
-
-    const Utf8String &usr() const { return m_usr; }
-    const Utf8String &spelling() const { return m_spelling; }
-    bool isFunctionLike() const { return m_isFunctionLike; }
-    bool ready() const { return m_ready; }
-    const SourceRangeContainer &result() const { return m_result; }
-
-    void setReady(bool ready = true) { m_ready = ready; }
-    void setResult(const SourceRangeContainer &result) { m_result = result; }
-private:
-    const Utf8String &m_usr;
-    const Utf8String &m_spelling;
-    SourceRangeContainer m_result;
-    bool m_isFunctionLike;
-    std::atomic<bool> &m_ready;
-};
-
 } // anonymous namespace
 
 static SourceRange getOperatorRange(const CXTranslationUnit tu,
@@ -107,7 +74,7 @@ static SourceRange getOperatorRange(const CXTranslationUnit tu,
         ++operatorIndex;
     }
     const CXSourceLocation end = clang_getTokenLocation(tu, tokens.data[operatorIndex]);
-    return SourceRange(clang_getRange(start, end));
+    return SourceRange(tu, clang_getRange(start, end));
 }
 
 static SourceRangeContainer extractMatchingTokenRange(const Cursor &cursor,
@@ -128,57 +95,16 @@ static SourceRangeContainer extractMatchingTokenRange(const Cursor &cursor,
                 continue;
             }
         }
-        return SourceRange(clang_getTokenExtent(tu, tokens.data[i]));
+        return SourceRange(tu, clang_getTokenExtent(tu, tokens.data[i]));
     }
     return SourceRangeContainer();
-}
-
-static void handleDeclaration(CXClientData client_data, const CXIdxDeclInfo *declInfo)
-{
-    if (!declInfo || !declInfo->isDefinition)
-        return;
-
-    const Cursor currentCursor(declInfo->cursor);
-    auto* data = reinterpret_cast<FollowSymbolData*>(client_data);
-    if (data->ready())
-        return;
-
-    if (data->usr() != currentCursor.canonical().unifiedSymbolResolution())
-        return;
-
-    QString str = Utf8String(currentCursor.displayName());
-    if (currentCursor.isFunctionLike() || currentCursor.isConstructorOrDestructor()) {
-        if (!data->isFunctionLike())
-            return;
-        str = str.mid(0, str.indexOf('('));
-    } else if (data->isFunctionLike()) {
-        return;
-    }
-    if (!str.endsWith(data->spelling()))
-        return;
-    const CXTranslationUnit tu = clang_Cursor_getTranslationUnit(declInfo->cursor);
-    Tokens tokens(currentCursor);
-
-    for (uint i = 0; i < tokens.tokenCount; ++i) {
-        Utf8String curSpelling = ClangString(clang_getTokenSpelling(tu, tokens.data[i]));
-        if (data->spelling() == curSpelling) {
-            if (data->isFunctionLike()
-                    && (i+1 >= tokens.tokenCount
-                        || !(ClangString(clang_getTokenSpelling(tu, tokens.data[i+1])) == "("))) {
-                continue;
-            }
-            data->setResult(SourceRange(clang_getTokenExtent(tu, tokens.data[i])));
-            data->setReady();
-            return;
-        }
-    }
 }
 
 static int getTokenIndex(CXTranslationUnit tu, const Tokens &tokens, uint line, uint column)
 {
     int tokenIndex = -1;
     for (int i = static_cast<int>(tokens.tokenCount - 1); i >= 0; --i) {
-        const SourceRange range = clang_getTokenExtent(tu, tokens.data[i]);
+        const SourceRange range(tu, clang_getTokenExtent(tu, tokens.data[i]));
         if (range.contains(line, column)) {
             tokenIndex = i;
             break;
@@ -187,90 +113,10 @@ static int getTokenIndex(CXTranslationUnit tu, const Tokens &tokens, uint line, 
     return tokenIndex;
 }
 
-static IndexerCallbacks createIndexerCallbacks()
-{
-    return {
-        [](CXClientData client_data, void *) {
-            auto* data = reinterpret_cast<FollowSymbolData*>(client_data);
-            return data->ready() ? 1 : 0;
-        },
-        [](CXClientData, CXDiagnosticSet, void *) {},
-        [](CXClientData, CXFile, void *) { return CXIdxClientFile(); },
-        [](CXClientData, const CXIdxIncludedFileInfo *) { return CXIdxClientFile(); },
-        [](CXClientData, const CXIdxImportedASTFileInfo *) { return CXIdxClientASTFile(); },
-        [](CXClientData, void *) { return CXIdxClientContainer(); },
-        handleDeclaration,
-        [](CXClientData, const CXIdxEntityRefInfo *) {}
-    };
-}
-
-static SourceRangeContainer followSymbolInDependentFiles(CXIndex index,
-                                                         const Cursor &cursor,
-                                                         const Utf8String &tokenSpelling,
-                                                         const QVector<Utf8String> &dependentFiles,
-                                                         const CommandLineArguments &currentArgs)
-{
-    int argsCount = 0;
-    if (currentArgs.data())
-        argsCount = currentArgs.count() - 1;
-
-    const Utf8String usr = cursor.canonical().unifiedSymbolResolution();
-
-    // ready is shared for all data in vector
-    std::atomic<bool> ready {false};
-    std::vector<FollowSymbolData> dataVector(
-                dependentFiles.size(),
-                FollowSymbolData(usr, tokenSpelling,
-                                 cursor.isFunctionLike() || cursor.isConstructorOrDestructor(),
-                                 ready));
-
-    std::vector<std::future<void>> indexFutures;
-
-    for (int i = 0; i < dependentFiles.size(); ++i) {
-        if (i > 0 && ready)
-            break;
-        indexFutures.emplace_back(std::async([&, i]() {
-            TIME_SCOPE_DURATION("Dependent file " + dependentFiles.at(i) + " indexer runner");
-
-            const CXIndexAction indexAction = clang_IndexAction_create(index);
-            IndexerCallbacks callbacks = createIndexerCallbacks();
-            clang_indexSourceFile(indexAction,
-                                  &dataVector[i],
-                                  &callbacks,
-                                  sizeof(callbacks),
-                                  CXIndexOpt_SkipParsedBodiesInSession
-                                      | CXIndexOpt_SuppressRedundantRefs
-                                      | CXIndexOpt_SuppressWarnings,
-                                  dependentFiles.at(i).constData(),
-                                  currentArgs.data(),
-                                  argsCount,
-                                  nullptr,
-                                  0,
-                                  nullptr,
-                                  CXTranslationUnit_SkipFunctionBodies
-                                      | CXTranslationUnit_KeepGoing);
-            clang_IndexAction_dispose(indexAction);
-        }));
-    }
-
-    for (const std::future<void> &future: indexFutures)
-        future.wait();
-
-    for (const FollowSymbolData &data: dataVector) {
-        if (!data.result().start().filePath().isEmpty()) {
-            return data.result();
-        }
-    }
-    return SourceRangeContainer();
-}
-
-SourceRangeContainer FollowSymbol::followSymbol(CXTranslationUnit tu,
-                                                CXIndex index,
-                                                const Cursor &fullCursor,
-                                                uint line,
-                                                uint column,
-                                                const QVector<Utf8String> &dependentFiles,
-                                                const CommandLineArguments &currentArgs)
+FollowSymbolResult FollowSymbol::followSymbol(CXTranslationUnit tu,
+                                              const Cursor &fullCursor,
+                                              uint line,
+                                              uint column)
 {
     std::unique_ptr<Tokens> tokens(new Tokens(fullCursor));
 
@@ -296,42 +142,40 @@ SourceRangeContainer FollowSymbol::followSymbol(CXTranslationUnit tu,
         CXFile file = clang_getIncludedFile(cursors[tokenIndex]);
         const ClangString filename(clang_getFileName(file));
         const SourceLocation loc(tu, filename, 1, 1);
-        return SourceRange(loc, loc);
+        FollowSymbolResult result;
+        result.range = SourceRangeContainer(SourceRange(loc, loc));
+        // CLANG-UPGRADE-CHECK: Remove if we don't use empty generated ui_* headers anymore.
+        if (Utf8String(filename).contains("ui_"))
+            result.isResultOnlyForFallBack = true;
+        return result;
     }
 
     // For definitions we can always find a declaration in current TU
     if (cursor.isDefinition())
         return extractMatchingTokenRange(cursor.canonical(), tokenSpelling);
 
-    SourceRangeContainer result;
     if (!cursor.isDeclaration()) {
         // This is the symbol usage
-        // We want to return definition or at least declaration of this symbol
-        const Cursor referencedCursor = cursor.referenced();
-        if (referencedCursor.isNull() || referencedCursor == cursor)
+        // We want to return definition
+        cursor = cursor.referenced();
+        if (cursor.isNull())
             return SourceRangeContainer();
-        result = extractMatchingTokenRange(referencedCursor, tokenSpelling);
 
-        // We've already found what we need
-        if (referencedCursor.isDefinition())
-            return result;
-        cursor = referencedCursor;
+        FollowSymbolResult result;
+        // We can't find definition in this TU or it's a virtual method call
+        if (!cursor.isDefinition() || cursor.isVirtualMethod())
+            result.isResultOnlyForFallBack = true;
+
+        result.range = extractMatchingTokenRange(cursor, tokenSpelling);
+        return result;
     }
 
-    const Cursor definitionCursor = cursor.definition();
-    if (!definitionCursor.isNull() && definitionCursor != cursor) {
-        // If we are able to find a definition in current TU
-        return extractMatchingTokenRange(definitionCursor, tokenSpelling);
-    }
+    cursor = cursor.definition();
+    // If we are able to find a definition in current TU
+    if (!cursor.isNull())
+        return extractMatchingTokenRange(cursor, tokenSpelling);
 
-    // Search for the definition in the dependent files
-    SourceRangeContainer dependentFilesResult = followSymbolInDependentFiles(index,
-                                                                             cursor,
-                                                                             tokenSpelling,
-                                                                             dependentFiles,
-                                                                             currentArgs);
-    return dependentFilesResult.start().filePath().isEmpty() ?
-                result : dependentFilesResult;
+    return SourceRangeContainer();
 }
 
 } // namespace ClangBackEnd

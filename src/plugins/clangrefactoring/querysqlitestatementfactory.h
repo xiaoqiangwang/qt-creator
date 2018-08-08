@@ -40,14 +40,26 @@ public:
     {}
     Database &database;
     ReadStatement selectLocationsForSymbolLocation{
-        "SELECT sourceId, line, column FROM locations WHERE symbolId = "
-        "  (SELECT symbolId FROM locations WHERE sourceId="
-        "    (SELECT sourceId FROM sources WHERE sourcePath =?)"
-        "   AND line=? AND column=?) "
+        "SELECT directoryId, sourceId, line, column FROM locations JOIN sources USING(sourceId) WHERE symbolId = "
+        "  (SELECT symbolId FROM locations WHERE sourceId=? AND line=? AND column=?) "
         "ORDER BY sourceId, line, column",
-        database}; // alternatively SELECT l2.symbolid, l2.sourceId, l2.line, l2.column FROM locations AS l2, sources, locations AS l1 ON sources.sourceId = l1.sourceId AND l2.symbolId=l1.symbolId WHERE sourcePath = ? AND l1.line=? AND l1.column=? ORDER BY l2.sourceId, l2.line, l2.column
-    ReadStatement selectSourcePathForId{
-        "SELECT sourceId, sourcePath FROM sources WHERE sourceId = ?",
+        database};
+    ReadStatement selectSourceUsagesForSymbolLocation{
+        "SELECT directoryPath || '/' || sourceName, line, column "
+        "FROM locations NATURAL JOIN sources NATURAL JOIN directories "
+        "WHERE symbolId = (SELECT symbolId FROM locations WHERE sourceId=? AND line=? AND column=?)",
+        database};
+    ReadStatement selectSymbolsForKindAndStartsWith{
+        "SELECT symbolId, symbolName, signature FROM symbols WHERE symbolKind = ? AND symbolName LIKE ?",
+        database};
+    ReadStatement selectSymbolsForKindAndStartsWith2{
+        "SELECT symbolId, symbolName, signature FROM symbols WHERE symbolKind IN (?,?) AND symbolName LIKE ?",
+        database};
+    ReadStatement selectSymbolsForKindAndStartsWith3{
+        "SELECT symbolId, symbolName, signature FROM symbols WHERE symbolKind IN (?,?,?) AND symbolName LIKE ?",
+        database};
+    ReadStatement selectLocationOfSymbol{
+        "SELECT (SELECT directoryId FROM sources WHERE sourceId = l.sourceId), sourceId, line, column FROM locations AS l WHERE symbolId = ? AND locationKind = ?",
         database};
 };
 

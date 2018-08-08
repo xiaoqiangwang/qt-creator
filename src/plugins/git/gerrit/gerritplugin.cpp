@@ -267,7 +267,6 @@ GerritPlugin::GerritPlugin(QObject *parent)
     : QObject(parent)
     , m_parameters(new GerritParameters)
     , m_server(new GerritServer)
-    , m_gerritCommand(0), m_pushToGerritCommand(0)
 {
 }
 
@@ -293,7 +292,12 @@ bool GerritPlugin::initialize(ActionContainer *ac)
     connect(pushAction, &QAction::triggered, this, [this]() { push(); });
     ac->addAction(m_pushToGerritCommand);
 
-    GitPlugin::instance()->addAutoReleasedObject(new GerritOptionsPage(m_parameters));
+    auto options = new GerritOptionsPage(m_parameters, this);
+    connect(options, &GerritOptionsPage::settingsChanged,
+            this, [this] {
+        if (m_dialog)
+            m_dialog->scheduleUpdateRemotes();
+    });
     return true;
 }
 
@@ -328,25 +332,7 @@ void GerritPlugin::push(const QString &topLevel)
 
     dialog.storeTopic();
     m_reviewers = dialog.reviewers();
-
-    QString target = dialog.selectedCommit();
-    if (target.isEmpty())
-        target = "HEAD";
-    target += ":refs/" + dialog.selectedPushType() +
-            '/' + dialog.selectedRemoteBranchName();
-    const QString topic = dialog.selectedTopic();
-    if (!topic.isEmpty())
-        target += '/' + topic;
-
-    QStringList options;
-    const QStringList reviewers = m_reviewers.split(',', QString::SkipEmptyParts);
-    for (const QString &reviewer : reviewers)
-        options << "r=" + reviewer;
-
-    if (!options.isEmpty())
-        target += '%' + options.join(',');
-
-    GitPlugin::client()->push(topLevel, {dialog.selectedRemoteName(), target});
+    GitPlugin::client()->push(topLevel, {dialog.selectedRemoteName(), dialog.pushTarget()});
 }
 
 static QString currentRepository()
@@ -359,8 +345,8 @@ void GerritPlugin::openView()
 {
     if (m_dialog.isNull()) {
         while (!m_parameters->isValid()) {
-            Core::AsynchronousMessageBox::warning(tr("Error"),
-                                                  tr("Invalid Gerrit configuration. Host, user and ssh binary are mandatory."));
+            QMessageBox::warning(Core::ICore::dialogParent(), tr("Error"),
+                                 tr("Invalid Gerrit configuration. Host, user and ssh binary are mandatory."));
             if (!ICore::showOptionsDialog("Gerrit"))
                 return;
         }
@@ -377,8 +363,8 @@ void GerritPlugin::openView()
         m_dialog = gd;
     } else {
         m_dialog->setCurrentPath(currentRepository());
-        m_dialog->refresh();
     }
+    m_dialog->refresh();
     const Qt::WindowStates state = m_dialog->windowState();
     if (state & Qt::WindowMinimized)
         m_dialog->setWindowState(state & ~Qt::WindowMinimized);

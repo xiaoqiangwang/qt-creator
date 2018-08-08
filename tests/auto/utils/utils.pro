@@ -3,8 +3,8 @@ TEMPLATE = subdirs
 SUBDIRS = \
     fileutils \
     ansiescapecodehandler \
-    camelhumpmatcher \
-    objectpool \
+    fuzzymatcher \
+    settings \
     stringutils \
     templateengine \
     treemodel

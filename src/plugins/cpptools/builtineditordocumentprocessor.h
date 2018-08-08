@@ -40,7 +40,7 @@ class CPPTOOLS_EXPORT BuiltinEditorDocumentProcessor : public BaseEditorDocument
 public:
     BuiltinEditorDocumentProcessor(TextEditor::TextDocument *document,
                                    bool enableSemanticHighlighter = true);
-    ~BuiltinEditorDocumentProcessor();
+    ~BuiltinEditorDocumentProcessor() override;
 
     // BaseEditorDocumentProcessor interface
     void runImpl(const BaseEditorDocumentParser::UpdateParams &updateParams) override;
@@ -52,8 +52,8 @@ public:
     bool isParserRunning() const override;
 
     QFuture<CursorInfo> cursorInfo(const CursorInfoParams &params) override;
-    QFuture<SymbolInfo> requestFollowSymbol(int, int) override
-    { return QFuture<SymbolInfo>(); }
+    QFuture<CursorInfo> requestLocalReferences(const QTextCursor &) override;
+    QFuture<SymbolInfo> requestFollowSymbol(int, int) override;
 
 private:
     void onParserFinished(CPlusPlus::Document::Ptr document, CPlusPlus::Snapshot snapshot);

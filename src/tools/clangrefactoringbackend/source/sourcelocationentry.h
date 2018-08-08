@@ -25,33 +25,16 @@
 
 #pragma once
 
-#include <stringcachefwd.h>
+#include <filepathid.h>
+
+#include <utils/linecolumn.h>
 
 #include <limits>
 #include <vector>
-#include <iosfwd>
 
 using uint = unsigned int;
 
 namespace ClangBackEnd {
-
-enum class SymbolType
-{
-    Declaration,
-    DeclarationReference
-};
-
-class LineColumn
-{
-public:
-    LineColumn(uint line, uint column)
-        : line(line),
-          column(column)
-    {}
-
-    uint line =  0;
-    uint column = 0;
-};
 
 using SymbolIndex = long long;
 
@@ -59,34 +42,29 @@ class SourceLocationEntry
 {
 public:
     SourceLocationEntry(SymbolIndex symbolId,
-                        FilePathIndex fileId,
-                        LineColumn lineColumn,
-                        SymbolType symbolType)
+                        FilePathId filePathId,
+                        Utils::LineColumn lineColumn,
+                        SourceLocationKind kind)
         : symbolId(symbolId),
-          fileId(fileId),
-          line(lineColumn.line),
-          column(lineColumn.column),
-          symbolType(symbolType)
+          filePathId(filePathId),
+          lineColumn(lineColumn),
+          kind(kind)
     {}
 
     SymbolIndex symbolId = 0;
-    FilePathIndex fileId = std::numeric_limits<uint>::max();
-    uint line =  0;
-    uint column = 0;
-    SymbolType symbolType;
+    FilePathId filePathId;
+    Utils::LineColumn lineColumn;
+    SourceLocationKind kind;
 
     friend bool operator==(const SourceLocationEntry &first, const SourceLocationEntry &second)
     {
         return first.symbolId == second.symbolId
-            && first.fileId == second.fileId
-            && first.line == second.line
-            && first.column == second.column
-            && first.symbolType == second.symbolType;
+            && first.filePathId == second.filePathId
+            && first.lineColumn == second.lineColumn
+            && first.kind == second.kind;
     }
 };
 
 using SourceLocationEntries = std::vector<SourceLocationEntry>;
-
-std::ostream &operator<<(std::ostream &out, const SourceLocationEntry &entry);
 
 } // namespace ClangBackEnd

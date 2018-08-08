@@ -59,7 +59,6 @@ public:
     CppEditorDocument *cppEditorDocument() const;
     CppTools::CppEditorOutline *outline() const;
 
-    CppTools::SemanticInfo semanticInfo() const;
     bool isSemanticInfoValidExceptLocalUses() const;
     bool isSemanticInfoValid() const;
 
@@ -79,7 +78,9 @@ public:
     void switchDeclarationDefinition(bool inNextSplit);
     void showPreProcessorWidget() override;
 
-    void findUsages();
+    void findUsages(QTextCursor cursor = QTextCursor());
+    void renameUsages(const QString &replacement = QString(),
+                      QTextCursor cursor = QTextCursor());
     void renameSymbolUnderCursor();
 
     bool selectBlockUp() override;
@@ -88,6 +89,7 @@ public:
     static void updateWidgetHighlighting(QWidget *widget, bool highlight);
     static bool isWidgetHighlighted(QWidget *widget);
 
+    CppTools::SemanticInfo semanticInfo() const override;
     void updateSemanticInfo() override;
     void invokeTextEditorWidgetAssist(TextEditor::AssistKind assistKind,
                                       TextEditor::IAssistProvider *provider) override;
@@ -98,14 +100,14 @@ protected:
     void keyPressEvent(QKeyEvent *e) override;
     bool handleStringSplitting(QKeyEvent *e) const;
 
-    Link findLinkAt(const QTextCursor &, bool resolveTarget = true,
+    void findLinkAt(const QTextCursor &cursor,
+                    Utils::ProcessLinkCallback &&processLinkCallback,
+                    bool resolveTarget = true,
                     bool inNextSplit = false) override;
 
     void onRefactorMarkerClicked(const TextEditor::RefactorMarker &marker) override;
 
     void slotCodeStyleSettingsChanged(const QVariant &) override;
-
-    void renameUsagesInternal(const QString &replacement) override;
 
 private:
     void updateFunctionDeclDefLink();

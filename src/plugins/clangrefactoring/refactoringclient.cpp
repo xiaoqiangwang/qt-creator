@@ -28,8 +28,9 @@
 #include "clangqueryhighlighter.h"
 #include "clangqueryexamplehighlighter.h"
 
-#include <refactoringconnectionclient.h>
 #include <clangrefactoringmessages.h>
+#include <filepathcachinginterface.h>
+#include <refactoringconnectionclient.h>
 
 namespace ClangRefactoring {
 
@@ -42,24 +43,24 @@ void RefactoringClient::alive()
 void RefactoringClient::sourceLocationsForRenamingMessage(
         ClangBackEnd::SourceLocationsForRenamingMessage &&message)
 {
-    m_localRenamingCallback(message.symbolName().toQString(),
-                          message.sourceLocations(),
-                          message.textDocumentRevision());
+    m_localRenamingCallback(message.symbolName.toQString(),
+                            message.sourceLocations,
+                            message.textDocumentRevision);
 
-    m_refactoringEngine->setUsable(true);
+    m_refactoringEngine->setRefactoringEngineAvailable(true);
 }
 
 void RefactoringClient::sourceRangesAndDiagnosticsForQueryMessage(
         ClangBackEnd::SourceRangesAndDiagnosticsForQueryMessage &&message)
 {
     m_clangQueryExampleHighlighter->setSourceRanges(message.takeSourceRanges());
-    m_clangQueryHighlighter->setDiagnostics(message.diagnostics());
+    m_clangQueryHighlighter->setDiagnostics(message.diagnostics);
 }
 
 void RefactoringClient::sourceRangesForQueryMessage(ClangBackEnd::SourceRangesForQueryMessage &&message)
 {
     ++m_resultCounter;
-    addSearchResults(message.sourceRanges());
+    addSearchResults(message.sourceRanges);
     setResultCounterAndSendSearchIsFinishedIfFinished();
 }
 
@@ -122,45 +123,24 @@ void RefactoringClient::setRefactoringConnectionClient(
     m_connectionClient = connectionClient;
 }
 
-std::unordered_map<uint, QString> RefactoringClient::convertFilePaths(
-        const ClangBackEnd::FilePathDict &filePaths)
-{
-    using Dict = std::unordered_map<uint, QString>;
-    Dict qstringFilePaths;
-    qstringFilePaths.reserve(filePaths.size());
-
-    auto convertFilePath = [] (const ClangBackEnd::FilePathDict::value_type &dictonaryEntry) {
-        return std::make_pair(dictonaryEntry.first,
-                              dictonaryEntry.second.path().toQString());
-    };
-
-    std::transform(filePaths.begin(),
-                   filePaths.end(),
-                   std::inserter(qstringFilePaths, qstringFilePaths.begin()),
-                   convertFilePath);
-
-    return qstringFilePaths;
-}
-
 void RefactoringClient::addSearchResults(const ClangBackEnd::SourceRangesContainer &sourceRanges)
 {
-    auto filePaths = convertFilePaths(sourceRanges.filePaths());
-
-    for (const auto &sourceRangeWithText : sourceRanges.sourceRangeWithTextContainers())
-        addSearchResult(sourceRangeWithText, filePaths);
+    for (const auto &sourceRangeWithText : sourceRanges.sourceRangeWithTextContainers)
+        addSearchResult(sourceRangeWithText);
 }
 
-void RefactoringClient::addSearchResult(const ClangBackEnd::SourceRangeWithTextContainer &sourceRangeWithText,
-                                        std::unordered_map<uint, QString> &filePaths)
+void RefactoringClient::addSearchResult(const ClangBackEnd::SourceRangeWithTextContainer &sourceRangeWithText)
 {
-    m_searchHandle->addResult(filePaths[sourceRangeWithText.fileHash()],
-                             QString(sourceRangeWithText.text()),
-                             {{int(sourceRangeWithText.start().line()),
-                               int(sourceRangeWithText.start().column() - 1),
-                               int(sourceRangeWithText.start().offset())},
-                              {int(sourceRangeWithText.end().line()),
-                               int(sourceRangeWithText.end().column() - 1),
-                               int(sourceRangeWithText.end().offset())}});
+    auto &filePathCache = m_refactoringEngine->filePathCache();
+
+    m_searchHandle->addResult(QString(filePathCache.filePath(sourceRangeWithText.filePathId()).path()),
+                              QString(sourceRangeWithText.text),
+                              {{int(sourceRangeWithText.start.line),
+                                int(sourceRangeWithText.start.column - 1),
+                                int(sourceRangeWithText.start.offset)},
+                               {int(sourceRangeWithText.end.line),
+                                int(sourceRangeWithText.end.column - 1),
+                                int(sourceRangeWithText.end.offset)}});
 }
 
 void RefactoringClient::setResultCounterAndSendSearchIsFinishedIfFinished()

@@ -31,7 +31,6 @@
 #include "pchgeneratornotifierinterface.h"
 #include "pchmanagerserverinterface.h"
 #include "projectpartsinterface.h"
-#include "stringcache.h"
 
 #include <ipcclientprovider.h>
 
@@ -46,21 +45,20 @@ class PchManagerServer : public PchManagerServerInterface,
 
 {
 public:
-    PchManagerServer(FilePathCache<> &filePathCache,
-                     ClangPathWatcherInterface &fileSystemWatcher,
+    PchManagerServer(ClangPathWatcherInterface &fileSystemWatcher,
                      PchCreatorInterface &pchCreator,
                      ProjectPartsInterface &projectParts);
 
 
     void end() override;
-    void updatePchProjectParts(UpdatePchProjectPartsMessage &&message) override;
-    void removePchProjectParts(RemovePchProjectPartsMessage &&message) override;
+    void updateProjectParts(UpdateProjectPartsMessage &&message) override;
+    void removeProjectParts(RemoveProjectPartsMessage &&message) override;
 
     void pathsWithIdsChanged(const Utils::SmallStringVector &ids) override;
+    void pathsChanged(const FilePathIds &filePathIds) override;
     void taskFinished(TaskFinishStatus status, const ProjectPartPch &projectPartPch) override;
 
 private:
-    FilePathCache<> &m_filePathCache;
     ClangPathWatcherInterface &m_fileSystemWatcher;
     PchCreatorInterface &m_pchCreator;
     ProjectPartsInterface &m_projectParts;

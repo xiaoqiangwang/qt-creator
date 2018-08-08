@@ -26,7 +26,6 @@
 
 #include "qmakeandroidbuildapkstep.h"
 #include "qmakeandroidbuildapkwidget.h"
-#include "qmakeandroidrunconfiguration.h"
 
 #include <android/androidconfigurations.h>
 #include <android/androidconstants.h>
@@ -39,81 +38,44 @@
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/target.h>
 #include <qtsupport/qtkitinformation.h>
-#include <qmakeprojectmanager/qmakenodes.h>
-#include <qmakeprojectmanager/qmakeproject.h>
+
+#include <qmakeprojectmanager/qmakeprojectmanagerconstants.h>
 
 #include <utils/qtcprocess.h>
 
-#include <QHBoxLayout>
-
 using namespace Android;
-using QmakeProjectManager::QmakeProject;
-using QmakeProjectManager::QmakeProFileNode;
 
 namespace QmakeAndroidSupport {
 namespace Internal {
 
 const Core::Id ANDROID_BUILD_APK_ID("QmakeProjectManager.AndroidBuildApkStep");
 
-//////////////////
+
 // QmakeAndroidBuildApkStepFactory
-/////////////////
 
-QmakeAndroidBuildApkStepFactory::QmakeAndroidBuildApkStepFactory(QObject *parent)
-    : IBuildStepFactory(parent)
+QmakeAndroidBuildApkStepFactory::QmakeAndroidBuildApkStepFactory()
 {
+    registerStep<QmakeAndroidBuildApkStep>(ANDROID_BUILD_APK_ID);
+    setSupportedProjectType(QmakeProjectManager::Constants::QMAKEPROJECT_ID);
+    setSupportedDeviceType(Constants::ANDROID_DEVICE_TYPE);
+    setSupportedStepList(ProjectExplorer::Constants::BUILDSTEPS_BUILD);
+    setDisplayName(tr("Build Android APK"));
+    setRepeatable(false);
 }
 
-QList<ProjectExplorer::BuildStepInfo> QmakeAndroidBuildApkStepFactory::availableSteps(ProjectExplorer::BuildStepList *parent) const
-{
-    ProjectExplorer::Target *target = parent->target();
-    if (parent->id() != ProjectExplorer::Constants::BUILDSTEPS_BUILD
-            || !target->project()->supportsKit(target->kit())
-            || !AndroidManager::supportsAndroid(target)
-            || !qobject_cast<QmakeProject *>(target->project())
-            || parent->contains(ANDROID_BUILD_APK_ID))
-        return {};
-
-    return {{ANDROID_BUILD_APK_ID, tr("Build Android APK")}};
-}
-
-ProjectExplorer::BuildStep *QmakeAndroidBuildApkStepFactory::create(ProjectExplorer::BuildStepList *parent, const Core::Id id)
-{
-    Q_UNUSED(id);
-    return new QmakeAndroidBuildApkStep(parent);
-}
-
-ProjectExplorer::BuildStep *QmakeAndroidBuildApkStepFactory::clone(ProjectExplorer::BuildStepList *parent, ProjectExplorer::BuildStep *product)
-{
-    return new QmakeAndroidBuildApkStep(parent, static_cast<QmakeAndroidBuildApkStep *>(product));
-}
+// QmakeAndroidBuildApkStep
 
 QmakeAndroidBuildApkStep::QmakeAndroidBuildApkStep(ProjectExplorer::BuildStepList *bc)
-    :AndroidBuildApkStep(bc, ANDROID_BUILD_APK_ID)
-{ }
+    : AndroidBuildApkStep(bc, ANDROID_BUILD_APK_ID)
+{
+}
 
 Utils::FileName QmakeAndroidBuildApkStep::proFilePathForInputFile() const
 {
     ProjectExplorer::RunConfiguration *rc = target()->activeRunConfiguration();
-    if (auto *arc = qobject_cast<QmakeAndroidRunConfiguration *>(rc))
-        return arc->proFilePath();
+    if (rc)
+        return Utils::FileName::fromString(rc->buildKey());
     return Utils::FileName();
-}
-
-QmakeAndroidBuildApkStep::QmakeAndroidBuildApkStep(ProjectExplorer::BuildStepList *bc, QmakeAndroidBuildApkStep *other)
-    : AndroidBuildApkStep(bc, other)
-{ }
-
-Utils::FileName QmakeAndroidBuildApkStep::androidPackageSourceDir() const
-{
-    QmakeProjectManager::QmakeProject *pro = static_cast<QmakeProjectManager::QmakeProject *>(project());
-    const QmakeProjectManager::QmakeProFileNode *node
-            = pro->rootProjectNode()->findProFileFor(proFilePathForInputFile());
-    if (!node)
-        return Utils::FileName();
-
-    QFileInfo sourceDirInfo(node->singleVariableValue(QmakeProjectManager::Variable::AndroidPackageSourceDir));
-    return Utils::FileName::fromString(sourceDirInfo.canonicalFilePath());
 }
 
 bool QmakeAndroidBuildApkStep::init(QList<const BuildStep *> &earlierSteps)
@@ -135,22 +97,10 @@ bool QmakeAndroidBuildApkStep::init(QList<const BuildStep *> &earlierSteps)
     if (Utils::HostOsInfo::isWindowsHost())
         command += ".exe";
 
-    QString deploymentMethod;
-    if (m_deployAction == MinistroDeployment)
-        deploymentMethod = "ministro";
-    else if (m_deployAction == BundleLibrariesDeployment)
-        deploymentMethod = "bundled";
-
     ProjectExplorer::BuildConfiguration *bc = buildConfiguration();
     QString outputDir = bc->buildDirectory().appendPath(Constants::ANDROID_BUILDDIRECTORY).toString();
 
-    const auto *pro = static_cast<QmakeProjectManager::QmakeProject *>(project());
-    const QmakeProjectManager::QmakeProFileNode *node = pro->rootProjectNode()->findProFileFor(proFilePathForInputFile());
-    m_skipBuilding = !node;
-    if (m_skipBuilding)
-        return true;
-
-    QString inputFile = node->singleVariableValue(QmakeProjectManager::Variable::AndroidDeploySettingsFile);
+    QString inputFile = AndroidManager::androidQtSupport(target())->deploySettingsFile(target());
     if (inputFile.isEmpty()) {
         m_skipBuilding = true;
         return true;
@@ -165,7 +115,6 @@ bool QmakeAndroidBuildApkStep::init(QList<const BuildStep *> &earlierSteps)
 
     QStringList arguments = {"--input", inputFile,
                              "--output", outputDir,
-                             "--deployment", deploymentMethod,
                              "--android-platform", AndroidManager::buildTargetSDK(target()),
                              "--jdk", AndroidConfigurations::currentConfig().openJDKLocation().toString()};
 
@@ -173,6 +122,9 @@ bool QmakeAndroidBuildApkStep::init(QList<const BuildStep *> &earlierSteps)
         arguments << "--verbose";
 
     arguments << "--gradle";
+
+    if (m_useMinistro)
+        arguments << "--deployment" << "ministro";
 
     QStringList argumentsPasswordConcealed = arguments;
 

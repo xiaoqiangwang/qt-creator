@@ -26,7 +26,6 @@
 #include "iosbuildstep.h"
 #include "iosconfigurations.h"
 #include "iosdevice.h"
-#include "iosmanager.h"
 #include "iosrunconfiguration.h"
 #include "iosrunner.h"
 #include "iossimulator.h"
@@ -38,6 +37,7 @@
 
 #include <projectexplorer/kitinformation.h>
 #include <projectexplorer/projectexplorerconstants.h>
+#include <projectexplorer/runconfigurationaspects.h>
 #include <projectexplorer/target.h>
 #include <projectexplorer/taskhub.h>
 #include <projectexplorer/toolchain.h>
@@ -48,6 +48,7 @@
 
 #include <utils/fileutils.h>
 #include <utils/qtcprocess.h>
+#include <utils/url.h>
 #include <utils/utilsicons.h>
 
 #include <QDateTime>
@@ -99,7 +100,7 @@ IosRunner::IosRunner(RunControl *runControl)
     stopRunningRunControl(runControl);
     auto runConfig = qobject_cast<IosRunConfiguration *>(runControl->runConfiguration());
     m_bundleDir = runConfig->bundleDirectory().toString();
-    m_arguments = QStringList(runConfig->commandLineArguments());
+    m_arguments = runConfig->extraAspect<ArgumentsAspect>()->arguments();
     m_device = DeviceKitInformation::device(runConfig->target()->kit());
     m_deviceType = runConfig->deviceType();
 }
@@ -122,14 +123,6 @@ void IosRunner::setQmlDebugging(QmlDebug::QmlDebugServicesPreset qmlDebugService
 QString IosRunner::bundlePath()
 {
     return m_bundleDir;
-}
-
-QStringList IosRunner::extraArgs()
-{
-    QStringList res = m_arguments;
-    if (m_qmlServerPort.isValid())
-        res << QmlDebug::qmlDebugTcpArguments(m_qmlDebugServices, m_qmlServerPort);
-    return res;
 }
 
 QString IosRunner::deviceId()
@@ -207,7 +200,12 @@ void IosRunner::start()
             this, &IosRunner::handleToolExited);
     connect(m_toolHandler, &IosToolHandler::finished,
             this, &IosRunner::handleFinished);
-    m_toolHandler->requestRunApp(bundlePath(), extraArgs(), runType(), deviceId());
+
+    QStringList args = QtcProcess::splitArgs(m_arguments, OsTypeMac);
+    if (m_qmlServerPort.isValid())
+        args.append(QmlDebug::qmlDebugTcpArguments(m_qmlDebugServices, m_qmlServerPort));
+
+    m_toolHandler->requestRunApp(bundlePath(), args, runType(), deviceId());
 }
 
 void IosRunner::stop()
@@ -270,7 +268,7 @@ void IosRunner::handleGotInferiorPid(IosToolHandler *handler, const QString &bun
     if (prerequisiteOk)
         reportStarted();
     else
-        reportFailure(tr("Could not get necessary ports the debugger connection."));
+        reportFailure(tr("Could not get necessary ports for the debugger connection."));
 }
 
 void IosRunner::handleAppOutput(IosToolHandler *handler, const QString &output)
@@ -386,9 +384,9 @@ IosQmlProfilerSupport::IosQmlProfilerSupport(RunControl *runControl)
     setDisplayName("IosAnalyzeSupport");
 
     auto iosRunConfig = qobject_cast<IosRunConfiguration *>(runControl->runConfiguration());
-    StandardRunnable runnable;
+    Runnable runnable;
     runnable.executable = iosRunConfig->localExecutable().toUserOutput();
-    runnable.commandLineArguments = iosRunConfig->commandLineArguments();
+    runnable.commandLineArguments = iosRunConfig->extraAspect<ArgumentsAspect>()->arguments();
     runControl->setDisplayName(iosRunConfig->applicationName());
     runControl->setRunnable(runnable);
 
@@ -406,7 +404,7 @@ void IosQmlProfilerSupport::start()
     QTcpServer server;
     QTC_ASSERT(server.listen(QHostAddress::LocalHost)
                || server.listen(QHostAddress::LocalHostIPv6), return);
-    serverUrl.setScheme(urlTcpScheme());
+    serverUrl.setScheme(Utils::urlTcpScheme());
     serverUrl.setHost(server.serverAddress().toString());
 
     Port qmlPort = m_runner->qmlServerPort();

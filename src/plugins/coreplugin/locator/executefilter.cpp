@@ -38,7 +38,7 @@ ExecuteFilter::ExecuteFilter()
 {
     setId("Execute custom commands");
     setDisplayName(tr("Execute Custom Commands"));
-    setShortcutString(QString(QLatin1Char('!')));
+    setShortcutString("!");
     setPriority(High);
     setIncludedByDefault(false);
 
@@ -61,7 +61,7 @@ QList<LocatorFilterEntry> ExecuteFilter::matchesFor(QFutureInterface<LocatorFilt
         value.append(LocatorFilterEntry(this, entry, QVariant()));
     QList<LocatorFilterEntry> others;
     const Qt::CaseSensitivity entryCaseSensitivity = caseSensitivity(entry);
-    foreach (const QString &cmd, m_commandHistory) {
+    for (const QString &cmd : qAsConst(m_commandHistory)) {
         if (future.isCanceled())
             break;
         if (cmd == entry) // avoid repeated entry
@@ -101,7 +101,7 @@ void ExecuteFilter::accept(LocatorFilterEntry selection,
 
     ExecuteData d;
     d.workingDirectory = workingDirectory;
-    const int pos = value.indexOf(QLatin1Char(' '));
+    const int pos = value.indexOf(' ');
     if (pos == -1) {
         d.executable = value;
     } else {
@@ -187,6 +187,5 @@ QString ExecuteFilter::headCommand() const
     const ExecuteData &data = m_taskQueue.head();
     if (data.arguments.isEmpty())
         return data.executable;
-    else
-        return data.executable + QLatin1Char(' ') + data.arguments;
+    return data.executable + ' ' + data.arguments;
 }

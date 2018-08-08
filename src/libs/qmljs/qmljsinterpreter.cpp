@@ -103,27 +103,27 @@ public:
 
     const Value *value() const { return m_value; }
 
-    virtual bool processProperty(const QString &name, const Value *value, const PropertyInfo &)
+    bool processProperty(const QString &name, const Value *value, const PropertyInfo &) override
     {
         return process(name, value);
     }
 
-    virtual bool processEnumerator(const QString &name, const Value *value)
+    bool processEnumerator(const QString &name, const Value *value) override
     {
         return process(name, value);
     }
 
-    virtual bool processSignal(const QString &name, const Value *value)
+    bool processSignal(const QString &name, const Value *value) override
     {
         return process(name, value);
     }
 
-    virtual bool processSlot(const QString &name, const Value *value)
+    bool processSlot(const QString &name, const Value *value) override
     {
         return process(name, value);
     }
 
-    virtual bool processGeneratedSlot(const QString &name, const Value *value)
+    bool processGeneratedSlot(const QString &name, const Value *value) override
     {
         return process(name, value);
     }
@@ -202,6 +202,24 @@ QString PropertyInfo::toString() const
         list.append("Value");
 
     return list.join('|');
+}
+
+static QList<CustomImportsProvider *> g_customImportProviders;
+
+CustomImportsProvider::CustomImportsProvider(QObject *parent)
+    : QObject(parent)
+{
+    g_customImportProviders.append(this);
+}
+
+CustomImportsProvider::~CustomImportsProvider()
+{
+    g_customImportProviders.removeOne(this);
+}
+
+const QList<CustomImportsProvider *> CustomImportsProvider::allProviders()
+{
+    return g_customImportProviders;
 }
 
 } // namespace QmlJS
@@ -2239,11 +2257,13 @@ ImportInfo ImportInfo::pathImport(const QString &docPath, const QString &path,
     } else if (importFileInfo.isDir()) {
         info.m_type = ImportType::Directory;
     } else if (path.startsWith(QLatin1String("qrc:"))) {
+        ModelManagerInterface *model = ModelManagerInterface::instance();
         info.m_path = path;
-        if (ModelManagerInterface::instance()->filesAtQrcPath(info.path()).isEmpty())
-            info.m_type = ImportType::QrcDirectory;
-        else
-            info.m_type = ImportType::QrcFile;
+        info.m_type = !model
+                ? ImportType::UnknownFile
+                : model->filesAtQrcPath(info.path()).isEmpty()
+                  ? ImportType::QrcDirectory
+                  : ImportType::QrcFile;
     } else {
         info.m_type = ImportType::UnknownFile;
     }
@@ -2554,31 +2574,31 @@ class MemberDumper: public MemberProcessor
 public:
     MemberDumper() {}
 
-    virtual bool processProperty(const QString &name, const Value *, const PropertyInfo &pInfo)
+    bool processProperty(const QString &name, const Value *, const PropertyInfo &pInfo) override
     {
         qCDebug(qmljsLog) << "property: " << name << " flags:" << pInfo.toString();
         return true;
     }
 
-    virtual bool processEnumerator(const QString &name, const Value *)
+    bool processEnumerator(const QString &name, const Value *) override
     {
         qCDebug(qmljsLog) << "enumerator: " << name;
         return true;
     }
 
-    virtual bool processSignal(const QString &name, const Value *)
+    bool processSignal(const QString &name, const Value *) override
     {
         qCDebug(qmljsLog) << "signal: " << name;
         return true;
     }
 
-    virtual bool processSlot(const QString &name, const Value *)
+    bool processSlot(const QString &name, const Value *) override
     {
         qCDebug(qmljsLog) << "slot: " << name;
         return true;
     }
 
-    virtual bool processGeneratedSlot(const QString &name, const Value *)
+    bool processGeneratedSlot(const QString &name, const Value *) override
     {
         qCDebug(qmljsLog) << "generated slot: " << name;
         return true;

@@ -4,6 +4,7 @@ include(../../qtcreatorplugin.pri)
 
 HEADERS += \
     abstracteditorsupport.h \
+    abstractoverviewmodel.h \
     baseeditordocumentparser.h \
     baseeditordocumentprocessor.h \
     builtincursorinfo.h \
@@ -12,6 +13,7 @@ HEADERS += \
     builtinindexingsupport.h \
     clangdiagnosticconfig.h \
     clangdiagnosticconfigsmodel.h \
+    clangdiagnosticconfigsselectionwidget.h \
     clangdiagnosticconfigswidget.h \
     cppcanonicalsymbol.h \
     cppchecksymbols.h \
@@ -32,11 +34,13 @@ HEADERS += \
     cppdoxygen.h \
     cppeditoroutline.h \
     cppeditorwidgetinterface.h \
+    cppelementevaluator.h \
     cppfileiterationorder.h \
     cppfilesettingspage.h \
     cppfindreferences.h \
     cppfollowsymbolundercursor.h \
     cppfunctionsfilter.h \
+    cpphoverhandler.h \
     cppincludesfilter.h \
     cppindexingsupport.h \
     cpplocalsymbols.h \
@@ -45,6 +49,7 @@ HEADERS += \
     cppmodelmanager.h \
     cppmodelmanagersupport.h \
     cppmodelmanagersupportinternal.h \
+    cppoverviewmodel.h \
     cpppointerdeclarationformatter.h \
     cppprojectfile.h \
     cppprojectupdater.h \
@@ -91,11 +96,12 @@ HEADERS += \
     compileroptionsbuilder.h \
     refactoringengineinterface.h \
     cppprojectfilecategorizer.h \
-    clangcompileroptionsbuilder.h \
     cppprojectpartchooser.h \
     cppsymbolinfo.h \
     cursorineditor.h \
     wrappablelineedit.h \
+    usages.h \
+    cpptools_clangtidychecks.h
 
 SOURCES += \
     abstracteditorsupport.cpp \
@@ -107,6 +113,7 @@ SOURCES += \
     builtinindexingsupport.cpp \
     clangdiagnosticconfig.cpp \
     clangdiagnosticconfigsmodel.cpp \
+    clangdiagnosticconfigsselectionwidget.cpp \
     clangdiagnosticconfigswidget.cpp \
     cppcanonicalsymbol.cpp \
     cppchecksymbols.cpp \
@@ -125,11 +132,13 @@ SOURCES += \
     cppcurrentdocumentfilter.cpp \
     cppeditoroutline.cpp \
     cppdoxygen.cpp \
+    cppelementevaluator.cpp \
     cppfileiterationorder.cpp \
     cppfilesettingspage.cpp \
     cppfindreferences.cpp \
     cppfollowsymbolundercursor.cpp \
     cppfunctionsfilter.cpp \
+    cpphoverhandler.cpp \
     cppincludesfilter.cpp \
     cppindexingsupport.cpp \
     cpplocalsymbols.cpp \
@@ -138,6 +147,7 @@ SOURCES += \
     cppmodelmanager.cpp \
     cppmodelmanagersupport.cpp \
     cppmodelmanagersupportinternal.cpp \
+    cppoverviewmodel.cpp \
     cpppointerdeclarationformatter.cpp \
     cppprojectfile.cpp \
     cppprojectupdater.cpp \
@@ -176,15 +186,17 @@ SOURCES += \
     cppprojectinfogenerator.cpp \
     compileroptionsbuilder.cpp \
     cppprojectfilecategorizer.cpp \
-    clangcompileroptionsbuilder.cpp \
     cppprojectpartchooser.cpp \
-    wrappablelineedit.cpp \
+    wrappablelineedit.cpp
 
 FORMS += \
     clangdiagnosticconfigswidget.ui \
     cppcodemodelsettingspage.ui \
     cppcodestylesettingspage.ui \
-    cppfilesettingspage.ui
+    cppfilesettingspage.ui \
+    clangbasechecks.ui \
+    clazychecks.ui \
+    tidychecks.ui
 
 equals(TEST, 1) {
     HEADERS += \

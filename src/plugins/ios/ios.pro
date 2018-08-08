@@ -10,9 +10,7 @@ macx: LIBS += -framework CoreFoundation -framework IOKit
 HEADERS += \
     iosconstants.h \
     iosconfigurations.h \
-    iosmanager.h \
     iosrunconfiguration.h \
-    iosrunfactories.h \
     iossettingspage.h \
     iossettingswidget.h \
     iosrunner.h \
@@ -41,9 +39,7 @@ HEADERS += \
 
 SOURCES += \
     iosconfigurations.cpp \
-    iosmanager.cpp \
     iosrunconfiguration.cpp \
-    iosrunfactories.cpp \
     iossettingspage.cpp \
     iossettingswidget.cpp \
     iosrunner.cpp \

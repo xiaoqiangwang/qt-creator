@@ -32,6 +32,7 @@
 #include "testsettings.h"
 #include "testtreemodel.h"
 #include "testcodeparser.h"
+#include "testeditormark.h"
 
 #include <aggregation/aggregate.h>
 #include <coreplugin/actionmanager/actionmanager.h>
@@ -155,9 +156,6 @@ TestResultsPane::TestResultsPane(QObject *parent) :
             this, &TestResultsPane::onTestRunFinished);
     connect(TestRunner::instance(), &TestRunner::testResultReady,
             this, &TestResultsPane::addTestResult);
-    connect(ProjectExplorer::ProjectExplorerPlugin::instance(),
-            &ProjectExplorer::ProjectExplorerPlugin::updateRunActions,
-            this, &TestResultsPane::updateRunActions);
 }
 
 void TestResultsPane::createToolButtons()
@@ -175,19 +173,13 @@ void TestResultsPane::createToolButtons()
     });
 
     m_runAll = new QToolButton(m_treeView);
-    m_runAll->setIcon(Utils::Icons::RUN_SMALL_TOOLBAR.icon());
-    m_runAll->setToolTip(tr("Run All Tests"));
-    m_runAll->setEnabled(false);
-    connect(m_runAll, &QToolButton::clicked, this, &TestResultsPane::onRunAllTriggered);
+    m_runAll->setDefaultAction(Core::ActionManager::command(Constants::ACTION_RUN_ALL_ID)->action());
 
     m_runSelected = new QToolButton(m_treeView);
-    Utils::Icon runSelectedIcon = Utils::Icons::RUN_SMALL_TOOLBAR;
-    for (const Utils::IconMaskAndColor &maskAndColor : Icons::RUN_SELECTED_OVERLAY)
-        runSelectedIcon.append(maskAndColor);
-    m_runSelected->setIcon(runSelectedIcon.icon());
-    m_runSelected->setToolTip(tr("Run Selected Tests"));
-    m_runSelected->setEnabled(false);
-    connect(m_runSelected, &QToolButton::clicked, this, &TestResultsPane::onRunSelectedTriggered);
+    m_runSelected->setDefaultAction(Core::ActionManager::command(Constants::ACTION_RUN_SELECTED_ID)->action());
+
+    m_runFile = new QToolButton(m_treeView);
+    m_runFile->setDefaultAction(Core::ActionManager::command(Constants::ACTION_RUN_FILE_ID)->action());
 
     m_stopTestRun = new QToolButton(m_treeView);
     m_stopTestRun->setIcon(Utils::Icons::STOP_SMALL_TOOLBAR.icon());
@@ -236,6 +228,7 @@ void TestResultsPane::addTestResult(const TestResultPtr &result)
 
     m_model->addTestResult(result, m_expandCollapse->isChecked());
     setIconBadgeNumber(m_model->resultTypeCount(Result::Fail)
+                       + m_model->resultTypeCount(Result::MessageFatal)
                        + m_model->resultTypeCount(Result::UnexpectedPass));
     flash();
     navigateStateChanged();
@@ -258,8 +251,8 @@ QWidget *TestResultsPane::outputWidget(QWidget *parent)
 
 QList<QWidget *> TestResultsPane::toolBarWidgets() const
 {
-    return {m_expandCollapse, m_runAll, m_runSelected, m_stopTestRun, m_outputToggleButton,
-            m_filterButton};
+    return {m_expandCollapse, m_runAll, m_runSelected, m_runFile, m_stopTestRun,
+            m_outputToggleButton, m_filterButton};
 }
 
 QString TestResultsPane::displayName() const
@@ -280,26 +273,15 @@ void TestResultsPane::clearContents()
     setIconBadgeNumber(0);
     navigateStateChanged();
     m_summaryWidget->setVisible(false);
-    m_autoScroll = AutotestPlugin::instance()->settings()->autoScroll;
+    m_autoScroll = AutotestPlugin::settings()->autoScroll;
     connect(m_treeView->verticalScrollBar(), &QScrollBar::rangeChanged,
             this, &TestResultsPane::onScrollBarRangeChanged, Qt::UniqueConnection);
     m_textOutput->clear();
+    clearMarks();
 }
 
-void TestResultsPane::visibilityChanged(bool visible)
+void TestResultsPane::visibilityChanged(bool /*visible*/)
 {
-    if (visible == m_wasVisibleBefore)
-        return;
-    if (visible) {
-        connect(TestTreeModel::instance(), &TestTreeModel::testTreeModelChanged,
-                this, &TestResultsPane::updateRunActions);
-        // make sure run/run all are in correct state
-        updateRunActions();
-    } else {
-        disconnect(TestTreeModel::instance(), &TestTreeModel::testTreeModelChanged,
-                   this, &TestResultsPane::updateRunActions);
-    }
-    m_wasVisibleBefore = visible;
 }
 
 void TestResultsPane::setFocus()
@@ -437,7 +419,7 @@ void TestResultsPane::onRunSelectedTriggered()
 
 void TestResultsPane::initializeFilterMenu()
 {
-    const bool omitIntern = AutotestPlugin::instance()->settings()->omitInternalMssg;
+    const bool omitIntern = AutotestPlugin::settings()->omitInternalMssg;
     // FilterModel has all messages enabled by default
     if (omitIntern)
         m_filterModel->toggleTestResultType(Result::MessageInternal);
@@ -514,10 +496,7 @@ void TestResultsPane::onTestRunStarted()
 {
     m_testRunning = true;
     m_stopTestRun->setEnabled(true);
-    m_runAll->setEnabled(false);
-    Core::ActionManager::command(Constants::ACTION_RUN_ALL_ID)->action()->setEnabled(false);
-    m_runSelected->setEnabled(false);
-    Core::ActionManager::command(Constants::ACTION_RUN_SELECTED_ID)->action()->setEnabled(false);
+    AutotestPlugin::updateMenuItemsEnabledState();
     m_summaryWidget->setVisible(false);
 }
 
@@ -526,13 +505,7 @@ void TestResultsPane::onTestRunFinished()
     m_testRunning = false;
     m_stopTestRun->setEnabled(false);
 
-    const bool runEnabled = !ProjectExplorer::BuildManager::isBuilding()
-            && TestTreeModel::instance()->hasTests()
-            && TestTreeModel::instance()->parser()->state() == TestCodeParser::Idle;
-    m_runAll->setEnabled(runEnabled);  // TODO unify Run* actions
-    Core::ActionManager::command(Constants::ACTION_RUN_ALL_ID)->action()->setEnabled(runEnabled);
-    m_runSelected->setEnabled(runEnabled);
-    Core::ActionManager::command(Constants::ACTION_RUN_SELECTED_ID)->action()->setEnabled(runEnabled);
+    AutotestPlugin::updateMenuItemsEnabledState();
     updateSummaryLabel();
     m_summaryWidget->setVisible(true);
     m_model->removeCurrentTestMessage();
@@ -540,24 +513,13 @@ void TestResultsPane::onTestRunFinished()
                this, &TestResultsPane::onScrollBarRangeChanged);
     if (!m_treeView->isVisible())
         popup(Core::IOutputPane::NoModeSwitch);
+    createMarks();
 }
 
 void TestResultsPane::onScrollBarRangeChanged(int, int max)
 {
     if (m_autoScroll && m_atEnd)
         m_treeView->verticalScrollBar()->setValue(max);
-}
-
-void TestResultsPane::updateRunActions()
-{
-    QString whyNot;
-    TestTreeModel *model = TestTreeModel::instance();
-    const bool enable = !m_testRunning && !model->parser()->isParsing() && model->hasTests()
-            && !ProjectExplorer::BuildManager::isBuilding()
-            && ProjectExplorer::ProjectExplorerPlugin::canRunStartupProject(
-                ProjectExplorer::Constants::NORMAL_RUN_MODE, &whyNot);
-    m_runAll->setEnabled(enable);
-    m_runSelected->setEnabled(enable);
 }
 
 void TestResultsPane::onCustomContextMenuRequested(const QPoint &pos)
@@ -671,6 +633,44 @@ QString TestResultsPane::getWholeOutput(const QModelIndex &parent)
         output.append(getWholeOutput(current));
     }
     return output;
+}
+
+void TestResultsPane::createMarks(const QModelIndex &parent)
+{
+    for (int row = 0, count = m_model->rowCount(parent); row < count; ++row) {
+        const QModelIndex index = m_model->index(row, 0, parent);
+        const TestResult *result = m_model->testResult(index);
+        QTC_ASSERT(result, continue);
+
+        if (m_model->hasChildren(index))
+            createMarks(index);
+
+        const QVector<Result::Type> interested{Result::Fail, Result::UnexpectedPass};
+        if (interested.contains(result->result())) {
+            const Utils::FileName fileName = Utils::FileName::fromString(result->fileName());
+            TestEditorMark *mark = new TestEditorMark(index, fileName, result->line());
+            mark->setIcon(index.data(Qt::DecorationRole).value<QIcon>());
+            mark->setColor(Utils::Theme::OutputPanes_TestFailTextColor);
+            mark->setPriority(TextEditor::TextMark::NormalPriority);
+            mark->setToolTip(result->description());
+            m_marks << mark;
+        }
+    }
+}
+
+void TestResultsPane::clearMarks()
+{
+    qDeleteAll(m_marks);
+    m_marks.clear();
+}
+
+void TestResultsPane::showTestResult(const QModelIndex &index)
+{
+    QModelIndex mapped = m_filterModel->mapFromSource(index);
+    if (mapped.isValid()) {
+        popup(Core::IOutputPane::NoModeSwitch);
+        m_treeView->setCurrentIndex(mapped);
+    }
 }
 
 } // namespace Internal

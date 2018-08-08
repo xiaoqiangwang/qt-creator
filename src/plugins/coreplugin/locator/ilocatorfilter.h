@@ -107,8 +107,10 @@ class CORE_EXPORT ILocatorFilter : public QObject
 public:
     enum Priority {Highest = 0, High = 1, Medium = 2, Low = 3};
 
-    ILocatorFilter(QObject *parent = 0);
-    virtual ~ILocatorFilter() {}
+    ILocatorFilter(QObject *parent = nullptr);
+    ~ILocatorFilter() override;
+
+    static const QList<ILocatorFilter *> allLocatorFilters();
 
     Id id() const;
     Id actionId() const;
@@ -143,7 +145,6 @@ public:
     bool isEnabled() const;
 
     static Qt::CaseSensitivity caseSensitivity(const QString &str);
-    static bool containsWildcard(const QString &str);
     static QRegularExpression createRegExp(const QString &text);
     LocatorFilterEntry::HighlightInfo highlightInfo(const QRegularExpressionMatch &match,
         LocatorFilterEntry::HighlightInfo::DataType dataType = LocatorFilterEntry::HighlightInfo::DisplayName);

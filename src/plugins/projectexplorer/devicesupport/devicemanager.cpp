@@ -29,15 +29,15 @@
 
 #include <coreplugin/icore.h>
 #include <coreplugin/messagemanager.h>
-#include <extensionsystem/pluginmanager.h>
-#include <projectexplorer/project.h>
+
 #include <projectexplorer/projectexplorerconstants.h>
 #include <ssh/sshhostkeydatabase.h>
+#include <utils/algorithm.h>
 #include <utils/fileutils.h>
 #include <utils/persistentsettings.h>
-#include <utils/qtcassert.h>
 #include <utils/portlist.h>
-#include <utils/algorithm.h>
+#include <utils/qtcassert.h>
+#include <utils/stringutils.h>
 
 #include <QFileInfo>
 #include <QHash>
@@ -150,7 +150,7 @@ void DeviceManager::load()
     // read devices file from global settings path
     QHash<Core::Id, Core::Id> defaultDevices;
     QList<IDevice::Ptr> sdkDevices;
-    if (reader.load(systemSettingsFilePath(QLatin1String("/qtcreator/devices.xml"))))
+    if (reader.load(systemSettingsFilePath(QLatin1String("/devices.xml"))))
         sdkDevices = fromMap(reader.restoreValues().value(DeviceManagerKey).toMap(), &defaultDevices);
     // read devices file from user settings path
     QList<IDevice::Ptr> userDevices;
@@ -230,9 +230,8 @@ Utils::FileName DeviceManager::settingsFilePath(const QString &extension)
 
 Utils::FileName DeviceManager::systemSettingsFilePath(const QString &deviceFileRelativePath)
 {
-    return Utils::FileName::fromString(
-              QFileInfo(Core::ICore::settings(QSettings::SystemScope)->fileName()).absolutePath()
-              + deviceFileRelativePath);
+    return Utils::FileName::fromString(Core::ICore::installerResourcePath()
+                                       + deviceFileRelativePath);
 }
 
 void DeviceManager::addDevice(const IDevice::ConstPtr &_device)
@@ -245,7 +244,7 @@ void DeviceManager::addDevice(const IDevice::ConstPtr &_device)
             names << tmp->displayName();
     }
 
-    device->setDisplayName(Project::makeUnique(device->displayName(), names));
+    device->setDisplayName(Utils::makeUniquelyNumbered(device->displayName(), names));
 
     const int pos = d->indexForId(device->id());
 
@@ -338,7 +337,7 @@ void DeviceManager::setDefaultDevice(Core::Id id)
 
 const IDeviceFactory *DeviceManager::restoreFactory(const QVariantMap &map)
 {
-    IDeviceFactory *factory = ExtensionSystem::PluginManager::getObject<IDeviceFactory>(
+    IDeviceFactory *factory = Utils::findOrDefault(IDeviceFactory::allDeviceFactories(),
         [&map](IDeviceFactory *factory) {
             return factory->canRestore(map);
         });

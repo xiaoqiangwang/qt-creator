@@ -35,10 +35,10 @@
 #include "qmljshoverhandler.h"
 #include "qmljsquickfixassist.h"
 #include "qmloutlinemodel.h"
+#include "quicktoolbar.h"
 
 #include <qmljs/qmljsbind.h>
 #include <qmljs/qmljsevaluate.h>
-#include <qmljs/qmljsicontextpane.h>
 #include <qmljs/qmljsmodelmanagerinterface.h>
 #include <qmljs/qmljsutils.h>
 
@@ -68,6 +68,7 @@
 #include <texteditor/codeassist/genericproposal.h>
 #include <texteditor/codeassist/genericproposalmodel.h>
 #include <texteditor/texteditoractionhandler.h>
+#include <texteditor/textmark.h>
 
 #include <utils/annotateditemdelegate.h>
 #include <utils/changeset.h>
@@ -128,7 +129,7 @@ void QmlJSEditorWidget::finalizeInitialization()
     textDocument()->setCodec(QTextCodec::codecForName("UTF-8")); // qml files are defined to be utf-8
 
     m_modelManager = ModelManagerInterface::instance();
-    m_contextPane = ExtensionSystem::PluginManager::getObject<IContextPane>();
+    m_contextPane = QmlJSEditorPlugin::quickToolBar();
 
     m_modelManager->activateScan();
 
@@ -257,14 +258,12 @@ void QmlJSEditorWidget::updateOutlineIndexNow()
     emit outlineModelIndexChanged(m_outlineModelIndex);
 
     if (comboIndex.isValid()) {
-        bool blocked = m_outlineCombo->blockSignals(true);
+        QSignalBlocker blocker(m_outlineCombo);
 
         // There is no direct way to select a non-root item
         m_outlineCombo->setRootModelIndex(comboIndex.parent());
         m_outlineCombo->setCurrentIndex(comboIndex.row());
         m_outlineCombo->setRootModelIndex(QModelIndex());
-
-        m_outlineCombo->blockSignals(blocked);
     }
 }
 } // namespace Internal
@@ -656,8 +655,16 @@ static QString inspectCppComponent(const CppComponentValue *cppValue)
     const int enumeratorCount = cppValue->metaObject()->enumeratorCount();
     for (int index = cppValue->metaObject()->enumeratorOffset(); index < enumeratorCount; ++index) {
         LanguageUtils::FakeMetaEnum enumerator = cppValue->metaObject()->enumerator(index);
-        bufWriter << "    // Enum " << enumerator.name() << " { " <<
-                     enumerator.keys().join(QLatin1Char(',')) << " }" << endl;
+        bufWriter << "    enum " << enumerator.name() << " {" << endl;
+        const QStringList keys = enumerator.keys();
+        const int keysCount = keys.size();
+        for (int i = 0; i < keysCount; ++i) {
+            bufWriter << "        " << keys.at(i);
+            if (i != keysCount - 1)
+                bufWriter << ',';
+            bufWriter << endl;
+        }
+        bufWriter << "    }" << endl;
     }
 
     bufWriter << "}" << endl;
@@ -705,48 +712,53 @@ void QmlJSEditorWidget::inspectElementUnderCursor() const
     widget->textDocument()->setPlainText(buf);
 }
 
-TextEditorWidget::Link QmlJSEditorWidget::findLinkAt(const QTextCursor &cursor,
-                                                             bool /*resolveTarget*/,
-                                                             bool /*inNextSplit*/)
+void QmlJSEditorWidget::findLinkAt(const QTextCursor &cursor,
+                                   Utils::ProcessLinkCallback &&processLinkCallback,
+                                   bool /*resolveTarget*/,
+                                   bool /*inNextSplit*/)
 {
     const SemanticInfo semanticInfo = m_qmlJsEditorDocument->semanticInfo();
     if (! semanticInfo.isValid())
-        return Link();
+        return processLinkCallback(Utils::Link());
 
     const unsigned cursorPosition = cursor.position();
 
     AST::Node *node = semanticInfo.astNodeAt(cursorPosition);
-    QTC_ASSERT(node, return Link());
+    QTC_ASSERT(node, return;);
 
     if (AST::UiImport *importAst = cast<AST::UiImport *>(node)) {
         // if it's a file import, link to the file
         foreach (const ImportInfo &import, semanticInfo.document->bind()->imports()) {
             if (import.ast() == importAst && import.type() == ImportType::File) {
-                TextEditorWidget::Link link(import.path());
+                Utils::Link link(import.path());
                 link.linkTextStart = importAst->firstSourceLocation().begin();
                 link.linkTextEnd = importAst->lastSourceLocation().end();
-                return link;
+                processLinkCallback(Utils::Link());
+                return;
             }
         }
-        return Link();
+        processLinkCallback(Utils::Link());
+        return;
     }
 
     // string literals that could refer to a file link to them
     if (StringLiteral *literal = cast<StringLiteral *>(node)) {
         const QString &text = literal->value.toString();
-        TextEditorWidget::Link link;
+        Utils::Link link;
         link.linkTextStart = literal->literalToken.begin();
         link.linkTextEnd = literal->literalToken.end();
         if (semanticInfo.snapshot.document(text)) {
             link.targetFileName = text;
-            return link;
+            processLinkCallback(link);
+            return;
         }
         const QString relative = QString::fromLatin1("%1/%2").arg(
                     semanticInfo.document->path(),
                     text);
         if (semanticInfo.snapshot.document(relative)) {
             link.targetFileName = relative;
-            return link;
+            processLinkCallback(link);
+            return;
         }
     }
 
@@ -758,9 +770,9 @@ TextEditorWidget::Link QmlJSEditorWidget::findLinkAt(const QTextCursor &cursor,
     int line = 0, column = 0;
 
     if (! (value && value->getSourceLocation(&fileName, &line, &column)))
-        return Link();
+        return processLinkCallback(Utils::Link());
 
-    TextEditorWidget::Link link;
+    Utils::Link link;
     link.targetFileName = fileName;
     link.targetLine = line;
     link.targetColumn = column - 1; // adjust the column
@@ -770,22 +782,25 @@ TextEditorWidget::Link QmlJSEditorWidget::findLinkAt(const QTextCursor &cursor,
             if (! tail->next && cursorPosition <= tail->identifierToken.end()) {
                 link.linkTextStart = tail->identifierToken.begin();
                 link.linkTextEnd = tail->identifierToken.end();
-                return link;
+                processLinkCallback(link);
+                return;
             }
         }
 
     } else if (AST::IdentifierExpression *id = AST::cast<AST::IdentifierExpression *>(node)) {
         link.linkTextStart = id->firstSourceLocation().begin();
         link.linkTextEnd = id->lastSourceLocation().end();
-        return link;
+        processLinkCallback(link);
+        return;
 
     } else if (AST::FieldMemberExpression *mem = AST::cast<AST::FieldMemberExpression *>(node)) {
         link.linkTextStart = mem->lastSourceLocation().begin();
         link.linkTextEnd = mem->lastSourceLocation().end();
-        return link;
+        processLinkCallback(link);
+        return;
     }
 
-    return Link();
+    processLinkCallback(Utils::Link());
 }
 
 void QmlJSEditorWidget::findUsages()
@@ -822,17 +837,16 @@ void QmlJSEditorWidget::contextMenuEvent(QContextMenuEvent *e)
         AssistInterface *interface = createAssistInterface(QuickFix, ExplicitlyInvoked);
         if (interface) {
             QScopedPointer<IAssistProcessor> processor(
-                        QmlJSEditorPlugin::instance()->quickFixAssistProvider()->createProcessor());
+                        QmlJSEditorPlugin::quickFixAssistProvider()->createProcessor());
             QScopedPointer<IAssistProposal> proposal(processor->perform(interface));
             if (!proposal.isNull()) {
-                GenericProposalModel *model = static_cast<GenericProposalModel *>(proposal->model());
+                GenericProposalModelPtr model = proposal->model().staticCast<GenericProposalModel>();
                 for (int index = 0; index < model->size(); ++index) {
                     AssistProposalItem *item = static_cast<AssistProposalItem *>(model->proposalItem(index));
                     QuickFixOperation::Ptr op = item->data().value<QuickFixOperation::Ptr>();
                     QAction *action = refactoringMenu->addAction(op->description());
                     connect(action, &QAction::triggered, this, [op]() { op->perform(); });
                 }
-                delete model;
             }
         }
     }
@@ -1032,6 +1046,7 @@ QmlJSEditorFactory::QmlJSEditorFactory()
     setDisplayName(QCoreApplication::translate("OpenWith::Editors", Constants::C_QMLJSEDITOR_DISPLAY_NAME));
 
     addMimeType(QmlJSTools::Constants::QML_MIMETYPE);
+    addMimeType(QmlJSTools::Constants::QMLUI_MIMETYPE);
     addMimeType(QmlJSTools::Constants::QMLPROJECT_MIMETYPE);
     addMimeType(QmlJSTools::Constants::QBS_MIMETYPE);
     addMimeType(QmlJSTools::Constants::QMLTYPES_MIMETYPE);
@@ -1044,7 +1059,6 @@ QmlJSEditorFactory::QmlJSEditorFactory()
     setAutoCompleterCreator([]() { return new AutoCompleter; });
     setCommentDefinition(Utils::CommentDefinition::CppStyle);
     setParenthesesMatchingEnabled(true);
-    setMarksVisible(true);
     setCodeFoldingSupported(true);
 
     addHoverHandler(new QmlJSHoverHandler);

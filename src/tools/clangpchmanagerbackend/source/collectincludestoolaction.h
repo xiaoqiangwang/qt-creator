@@ -25,9 +25,10 @@
 
 #pragma once
 
-#include "stringcache.h"
-
 #include "collectincludesaction.h"
+
+#include <filepathcachingfwd.h>
+#include <filepathid.h>
 
 #include <clang/Tooling/Tooling.h>
 
@@ -36,21 +37,18 @@ namespace ClangBackEnd {
 class CollectIncludesToolAction final : public clang::tooling::FrontendActionFactory
 {
 public:
-    CollectIncludesToolAction(std::vector<FilePathIndex> &includeIds,
-                              FilePathCache<> &filePathCache,
+    CollectIncludesToolAction(FilePathIds &includeIds,
+                              FilePathIds &topIncludeIds,
+                              FilePathCachingInterface &filePathCache,
                               const Utils::PathStringVector &excludedIncludes)
         : m_includeIds(includeIds),
+          m_topIncludeIds(topIncludeIds),
           m_filePathCache(filePathCache),
           m_excludedIncludes(excludedIncludes)
     {}
 
 
-    bool runInvocation(
-#if LLVM_VERSION_MAJOR >= 4
-                       std::shared_ptr<clang::CompilerInvocation> invocation,
-#else
-                       clang::CompilerInvocation *invocation,
-#endif
+    bool runInvocation(std::shared_ptr<clang::CompilerInvocation> invocation,
                        clang::FileManager *fileManager,
                        std::shared_ptr<clang::PCHContainerOperations> pchContainerOperations,
                        clang::DiagnosticConsumer *diagnosticConsumer) override
@@ -67,18 +65,19 @@ public:
     clang::FrontendAction *create() override
     {
         return new CollectIncludesAction(m_includeIds,
+                                         m_topIncludeIds,
                                          m_filePathCache,
                                          m_excludedIncludeUIDs,
                                          m_alreadyIncludedFileUIDs);
     }
 
-    std::vector<FilePathIndex> generateExcludedIncludeFileUIDs(clang::FileManager &fileManager) const
+    std::vector<uint> generateExcludedIncludeFileUIDs(clang::FileManager &fileManager) const
     {
-        std::vector<FilePathIndex> fileUIDs;
+        std::vector<uint> fileUIDs;
         fileUIDs.reserve(m_excludedIncludes.size());
 
         for (const Utils::PathString &filePath : m_excludedIncludes) {
-            const clang::FileEntry *file = fileManager.getFile({filePath.data(), filePath.size()});
+            const clang::FileEntry *file = fileManager.getFile({filePath.data(), filePath.size()}, true);
 
             if (file)
                 fileUIDs.push_back(file->getUID());
@@ -90,10 +89,11 @@ public:
     }
 
 private:
-    std::vector<FilePathIndex> m_alreadyIncludedFileUIDs;
-    std::vector<FilePathIndex> m_excludedIncludeUIDs;
-    std::vector<FilePathIndex> &m_includeIds;
-    FilePathCache<> &m_filePathCache;
+    std::vector<uint> m_alreadyIncludedFileUIDs;
+    std::vector<uint> m_excludedIncludeUIDs;
+    FilePathIds &m_includeIds;
+    FilePathIds &m_topIncludeIds;
+    FilePathCachingInterface &m_filePathCache;
     const Utils::PathStringVector &m_excludedIncludes;
 };
 

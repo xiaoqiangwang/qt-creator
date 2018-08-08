@@ -40,7 +40,7 @@ class TestSettingsWidget : public QWidget
 {
     Q_OBJECT
 public:
-    explicit TestSettingsWidget(QWidget *parent = 0);
+    explicit TestSettingsWidget(QWidget *parent = nullptr);
 
     void setSettings(const TestSettings &settings);
     TestSettings settings() const;
@@ -48,7 +48,7 @@ public:
 private:
     void populateFrameworksListWidget(const QHash<Core::Id, bool> &frameworks);
     void populateFiltersWidget(const QStringList &filters);
-    QHash<Core::Id, bool> frameworks() const;
+    void frameworkSettings(TestSettings &settings) const;
     QStringList filters() const;
     void onFrameworkItemChanged();
     void onAddFilterClicked();

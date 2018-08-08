@@ -39,7 +39,7 @@ class CppLocatorFilter : public Core::ILocatorFilter
 
 public:
     CppLocatorFilter(CppLocatorData *locatorData);
-    ~CppLocatorFilter();
+    ~CppLocatorFilter() override;
 
     QList<Core::LocatorFilterEntry> matchesFor(QFutureInterface<Core::LocatorFilterEntry> &future,
                                                const QString &entry) override;
@@ -52,7 +52,7 @@ protected:
     virtual Core::LocatorFilterEntry filterEntryFromIndexItem(IndexItem::Ptr info);
 
 protected:
-    CppLocatorData *m_data;
+    CppLocatorData *m_data = nullptr;
 };
 
 } // namespace Internal

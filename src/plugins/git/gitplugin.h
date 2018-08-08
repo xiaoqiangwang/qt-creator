@@ -89,6 +89,9 @@ public:
     void startCommit(CommitType commitType = SimpleCommit);
     void updateBranches(const QString &repository);
 
+    QObject *remoteCommand(const QStringList &options, const QString &workingDirectory,
+                           const QStringList &args) override;
+
 protected:
     void updateActions(VcsBase::VcsBasePlugin::ActionState) override;
     bool submitEditorAboutToClose() override;
@@ -112,6 +115,7 @@ private:
     void logRepository();
     void undoFileChanges(bool revertStaging);
     void resetRepository();
+    void recoverDeletedFiles();
     void startRebase();
     void startChangeRelatedAction(const Core::Id &id);
     void stageFile();

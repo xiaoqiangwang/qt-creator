@@ -27,8 +27,8 @@
 
 #include <pchmanagerclientinterface.h>
 #include <precompiledheadersupdatedmessage.h>
-#include <removepchprojectpartsmessage.h>
-#include <updatepchprojectpartsmessage.h>
+#include <removeprojectpartsmessage.h>
+#include <updateprojectpartsmessage.h>
 
 #include <utils/smallstring.h>
 
@@ -36,12 +36,10 @@
 
 namespace ClangBackEnd {
 
-PchManagerServer::PchManagerServer(FilePathCache<> &filePathCache,
-                                   ClangPathWatcherInterface &fileSystemWatcher,
+PchManagerServer::PchManagerServer(ClangPathWatcherInterface &fileSystemWatcher,
                                    PchCreatorInterface &pchCreator,
                                    ProjectPartsInterface &projectParts)
-    : m_filePathCache(filePathCache),
-      m_fileSystemWatcher(fileSystemWatcher),
+    : m_fileSystemWatcher(fileSystemWatcher),
       m_pchCreator(pchCreator),
       m_projectParts(projectParts)
 {
@@ -54,7 +52,7 @@ void PchManagerServer::end()
 
 }
 
-void PchManagerServer::updatePchProjectParts(UpdatePchProjectPartsMessage &&message)
+void PchManagerServer::updateProjectParts(UpdateProjectPartsMessage &&message)
 {
     m_pchCreator.setGeneratedFiles(message.takeGeneratedFiles());
 
@@ -63,11 +61,11 @@ void PchManagerServer::updatePchProjectParts(UpdatePchProjectPartsMessage &&mess
     m_fileSystemWatcher.updateIdPaths(m_pchCreator.takeProjectsIncludes());
 }
 
-void PchManagerServer::removePchProjectParts(RemovePchProjectPartsMessage &&message)
+void PchManagerServer::removeProjectParts(RemoveProjectPartsMessage &&message)
 {
-    m_fileSystemWatcher.removeIds(message.projectsPartIds());
+    m_fileSystemWatcher.removeIds(message.projectsPartIds);
 
-    m_projectParts.remove(message.projectsPartIds());
+    m_projectParts.remove(message.projectsPartIds);
 }
 
 void PchManagerServer::pathsWithIdsChanged(const Utils::SmallStringVector &ids)
@@ -75,6 +73,10 @@ void PchManagerServer::pathsWithIdsChanged(const Utils::SmallStringVector &ids)
     m_pchCreator.generatePchs(m_projectParts.projects(ids));
 
     m_fileSystemWatcher.updateIdPaths(m_pchCreator.takeProjectsIncludes());
+}
+
+void PchManagerServer::pathsChanged(const FilePathIds &/*filePathIds*/)
+{
 }
 
 void PchManagerServer::taskFinished(TaskFinishStatus status, const ProjectPartPch &projectPartPch)

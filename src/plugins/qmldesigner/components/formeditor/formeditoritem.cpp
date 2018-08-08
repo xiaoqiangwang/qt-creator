@@ -221,7 +221,7 @@ void FormEditorItem::paintBoundingRect(QPainter *painter) const
     pen.setCosmetic(true);
     pen.setJoinStyle(Qt::MiterJoin);
 
-    QColor frameColor("#AAAAAA");
+    const QColor frameColor(0xaa, 0xaa, 0xaa);
     static const QColor selectionColor = Utils::creatorTheme()->color(Utils::Theme::QmlDesigner_FormEditorSelectionColor);
 
     if (scene()->showBoundingRects()) {
@@ -338,7 +338,10 @@ void FormEditorItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, 
     if (isInStackedContainer)
         showPlaceHolder = qmlItemNode().instanceIsRenderPixmapNull() && isContentVisible();
 
-    painter->setClipRegion(boundingRect().toRect());
+    QRegion clipRegion = painter->clipRegion();
+    if (clipRegion.contains(m_selectionBoundingRect.toRect().topLeft())
+            && clipRegion.contains(m_selectionBoundingRect.toRect().bottomRight()))
+        painter->setClipRegion(boundingRect().toRect());
     painter->setClipping(true);
 
     if (!hideCompletely) {
@@ -346,10 +349,19 @@ void FormEditorItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, 
             if (scene()->showBoundingRects() && m_boundingRect.width() > 15 && m_boundingRect.height() > 15)
                 paintPlaceHolderForInvisbleItem(painter);
         } else if (!isInStackedContainer || isContentVisible() ) {
+            painter->save();
+            const QTransform &painterTransform = painter->transform();
+            if (painterTransform.m11() < 1.0 // horizontally scaled down?
+                    || painterTransform.m22() < 1.0 // vertically scaled down?
+                    || painterTransform.isRotating())
+                painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
+
             if (m_blurContent)
                 painter->drawPixmap(m_paintedBoundingRect.topLeft(), qmlItemNode().instanceBlurredRenderPixmap());
             else
                 painter->drawPixmap(m_paintedBoundingRect.topLeft(), qmlItemNode().instanceRenderPixmap());
+
+            painter->restore();
         }
     }
 

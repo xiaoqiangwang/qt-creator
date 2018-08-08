@@ -70,7 +70,7 @@ public:
     Perspective() = default;
     // Takes ownership of \a centralWidget and all dock widgets in \a operations.
     Perspective(const QString &name, const QVector<Operation> &operations,
-                QWidget *centralWidget = 0);
+                QWidget *centralWidget = nullptr);
     ~Perspective();
 
     void addOperation(const Operation &operation);
@@ -131,6 +131,7 @@ public:
 
     void showStatusMessage(const QString &message, int timeoutMS);
     QDockWidget *dockWidget(const QByteArray &dockId) const;
+    void raiseDock(const QByteArray &dockId);
     QByteArray currentPerspective() const { return m_currentPerspectiveId; }
     QStackedWidget *centralWidgetStack() const { return m_centralWidgetStack; }
 
@@ -139,6 +140,8 @@ public:
     void setPerspectiveEnabled(const QByteArray &perspectiveId, bool enabled);
 
 private:
+    void closeEvent(QCloseEvent *) final { saveCurrentPerspective(); }
+
     QDockWidget *registerDockWidget(const QByteArray &dockId, QWidget *widget);
     void loadPerspectiveHelper(const QByteArray &perspectiveId, bool fromStoredSettings = true);
 

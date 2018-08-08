@@ -36,8 +36,8 @@ class RequestSourceLocationsForRenamingMessage;
 class RequestSourceRangesAndDiagnosticsForQueryMessage;
 class RequestSourceRangesForQueryMessage;
 class CancelMessage;
-class UpdatePchProjectPartsMessage;
-class RemovePchProjectPartsMessage;
+class UpdateProjectPartsMessage;
+class RemoveProjectPartsMessage;
 
 class CLANGSUPPORT_EXPORT RefactoringServerInterface : public ProjectManagementServerInterface
 
@@ -51,17 +51,20 @@ public:
     virtual void requestSourceRangesForQueryMessage(RequestSourceRangesForQueryMessage &&message) = 0;
     virtual void cancel() = 0;
 
-    bool isUsable() const
+    bool isAvailable() const
     {
-        return isUsable_;
+        return isAvailable_;
     }
-    void setUsable(bool isUsable)
+    void setAvailable(bool isAvailable)
     {
-        isUsable_ = isUsable;
+        isAvailable_ = isAvailable;
     }
 
+protected:
+    ~RefactoringServerInterface() = default;
+
 private:
-    bool isUsable_ = false;
+    bool isAvailable_ = false;
 };
 
 } // namespace ClangBackEnd

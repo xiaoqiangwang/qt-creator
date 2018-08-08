@@ -33,28 +33,26 @@
 #include "symbolstorage.h"
 
 #include <refactoringdatabaseinitializer.h>
-#include <stringcache.h>
+#include <filepathcachingfwd.h>
 
 #include <sqlitedatabase.h>
 #include <sqlitereadstatement.h>
 #include <sqlitewritestatement.h>
+
+#include <QFileSystemWatcher>
 
 namespace ClangBackEnd {
 
 class SymbolIndexing final : public SymbolIndexingInterface
 {
 public:
-    using StatementFactory = ClangBackEnd::StorageSqliteStatementFactory<Sqlite::Database,
-                                                                         Sqlite::ReadStatement,
-                                                                         Sqlite::WriteStatement>;
+    using StatementFactory = ClangBackEnd::StorageSqliteStatementFactory<Sqlite::Database>;
     using Storage = ClangBackEnd::SymbolStorage<StatementFactory>;
-    using DatabaseInitializer = RefactoringDatabaseInitializer<Sqlite::Database>;
 
-    SymbolIndexing(FilePathCache<std::mutex> &filePathCache,
-                   Utils::PathString &&databaseFilePath)
+    SymbolIndexing(Sqlite::Database &database,
+                   FilePathCachingInterface &filePathCache)
         : m_filePathCache(filePathCache),
-          m_database(std::move(databaseFilePath)),
-          m_databaseInitializer(m_database)
+          m_statementFactory(database)
     {
     }
 
@@ -63,25 +61,22 @@ public:
         return m_indexer;
     }
 
-    Sqlite::Database &database()
-    {
-        return m_database;
-    }
-
     void updateProjectParts(V2::ProjectPartContainers &&projectParts,
-                            V2::FileContainers &&generatedFiles)
-    {
-        m_indexer.updateProjectParts(std::move(projectParts), std::move(generatedFiles));
-    }
+                            V2::FileContainers &&generatedFiles);
 
 private:
-    FilePathCache<std::mutex> &m_filePathCache;
-    Sqlite::Database m_database;
-    DatabaseInitializer m_databaseInitializer;
+    FilePathCachingInterface &m_filePathCache;
     SymbolsCollector m_collector{m_filePathCache};
-    StatementFactory m_statementFactory{m_database};
+    StatementFactory m_statementFactory;
     Storage m_symbolStorage{m_statementFactory, m_filePathCache};
-    SymbolIndexer m_indexer{m_collector, m_symbolStorage};
+    ClangPathWatcher<QFileSystemWatcher, QTimer> m_sourceWatcher{m_filePathCache};
+    FileStatusCache m_fileStatusCache{m_filePathCache};
+    SymbolIndexer m_indexer{m_collector,
+                            m_symbolStorage,
+                            m_sourceWatcher,
+                            m_filePathCache,
+                            m_fileStatusCache,
+                            m_statementFactory.database};
 };
 
 } // namespace ClangBackEnd

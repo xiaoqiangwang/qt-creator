@@ -166,7 +166,6 @@ GenericProject::GenericProject(const Utils::FileName &fileName) :
     m_cppCodeModelUpdater(new CppTools::CppProjectUpdater(this))
 {
     setId(Constants::GENERICPROJECT_ID);
-    setProjectContext(Context(GenericProjectManager::Constants::PROJECTCONTEXT));
     setProjectLanguages(Context(ProjectExplorer::Constants::CXX_LANGUAGE_ID));
     setDisplayName(fileName.toFileInfo().completeBaseName());
 
@@ -340,26 +339,27 @@ void GenericProject::refresh(RefreshOptions options)
     parseProject(options);
 
     if (options & Files) {
-        auto newRoot = new GenericProjectNode(this);
+        auto newRoot = std::make_unique<GenericProjectNode>(this);
 
         for (const QString &f : m_files) {
             FileType fileType = FileType::Source; // ### FIXME
             if (f.endsWith(".qrc"))
                 fileType = FileType::Resource;
-            newRoot->addNestedNode(new FileNode(Utils::FileName::fromString(f), fileType, false));
+            newRoot->addNestedNode(std::make_unique<FileNode>(FileName::fromString(f), fileType,
+                                                              false));
         }
 
-        newRoot->addNestedNode(new FileNode(Utils::FileName::fromString(m_filesFileName),
-                                             FileType::Project,
-                                             /* generated = */ false));
-        newRoot->addNestedNode(new FileNode(Utils::FileName::fromString(m_includesFileName),
-                                             FileType::Project,
-                                             /* generated = */ false));
-        newRoot->addNestedNode(new FileNode(Utils::FileName::fromString(m_configFileName),
-                                             FileType::Project,
-                                             /* generated = */ false));
+        newRoot->addNestedNode(std::make_unique<FileNode>(FileName::fromString(m_filesFileName),
+                                                          FileType::Project,
+                                                          /* generated = */ false));
+        newRoot->addNestedNode(std::make_unique<FileNode>(FileName::fromString(m_includesFileName),
+                                                          FileType::Project,
+                                                          /* generated = */ false));
+        newRoot->addNestedNode(std::make_unique<FileNode>(FileName::fromString(m_configFileName),
+                                                          FileType::Project,
+                                                          /* generated = */ false));
 
-        setRootProjectNode(newRoot);
+        setRootProjectNode(std::move(newRoot));
     }
 
     refreshCppCodeModel();
@@ -502,7 +502,7 @@ Project::RestoreResult GenericProject::fromMap(const QVariantMap &map, QString *
             continue;
         }
         if (!t->activeRunConfiguration())
-            t->addRunConfiguration(IRunConfigurationFactory::createHelper<CustomExecutableRunConfiguration>(t));
+            t->addRunConfiguration(new CustomExecutableRunConfiguration(t));
     }
 
     m_activeTarget = activeTarget();
