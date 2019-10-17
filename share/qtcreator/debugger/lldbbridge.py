@@ -83,6 +83,7 @@ class Dumper(DumperBase):
             #    'communication', 'unwind', 'commands'])
             #self.debugger.EnableLog('lldb', ['all'])
             self.debugger.Initialize()
+            self.debugger.SetAsync(True)
             self.debugger.HandleCommand('settings set auto-confirm on')
 
             # FIXME: warn('DISABLING DEFAULT FORMATTERS')
@@ -841,7 +842,8 @@ class Dumper(DumperBase):
         self.startMode_ = args.get('startmode', 1)
         self.breakOnMain_ = args.get('breakonmain', 0)
         self.useTerminal_ = args.get('useterminal', 0)
-        self.processArgs_ = self.hexdecode(args.get('processargs', '')).split('\0')
+        pargs =  self.hexdecode(args.get('processargs', ''))
+        self.processArgs_ = pargs.split('\0') if len(pargs) else []
         self.environment_ = args.get('environment', [])
         self.environment_ = list(map(lambda x: self.hexdecode(x), self.environment_))
         self.attachPid_ = args.get('attachpid', 0)
@@ -862,10 +864,7 @@ class Dumper(DumperBase):
                 pass
             else:
                 if self.useTerminal_:
-                    self.ignoreStops = 2
-        else:
-            if self.useTerminal_:
-                self.ignoreStops = 1
+                    self.ignoreStops = 1
 
         if self.platform_:
             self.debugger.SetCurrentPlatform(self.platform_)
@@ -894,7 +893,6 @@ class Dumper(DumperBase):
 
     def prepare(self, args):
         error = lldb.SBError()
-        listener = self.debugger.GetListener()
 
         if self.attachPid_ > 0:
             attachInfo = lldb.SBAttachInfo(self.attachPid_)
@@ -947,18 +945,23 @@ class Dumper(DumperBase):
         if self.target is not None:
             broadcaster = self.target.GetBroadcaster()
             listener = self.debugger.GetListener()
+            broadcaster.AddListener(listener, lldb.SBProcess.eBroadcastBitStateChanged)
+            listener.StartListeningForEvents(broadcaster, lldb.SBProcess.eBroadcastBitStateChanged)
             broadcaster.AddListener(listener, lldb.SBTarget.eBroadcastBitBreakpointChanged)
             listener.StartListeningForEvents(broadcaster, lldb.SBTarget.eBroadcastBitBreakpointChanged)
 
 
     def loop(self):
         event = lldb.SBEvent()
+        broadcaster = self.target.GetBroadcaster()
         listener = self.debugger.GetListener()
         while True:
-            if listener.WaitForEvent(10000000, event):
+            sys.stdout.flush() # IMPORTANT! to receive process state changes with lldb 1100
+            while listener.GetNextEvent(event):
                 self.handleEvent(event)
-            else:
-                warn('TIMEOUT')
+            if listener.WaitForEventForBroadcaster(0, broadcaster, event):
+                self.handleEvent(event)
+
 
     def describeError(self, error):
         desc = lldb.SBStream()
@@ -1300,6 +1303,10 @@ class Dumper(DumperBase):
         if lldb.SBBreakpoint.EventIsBreakpointEvent(event):
             self.handleBreakpointEvent(event)
             return
+        if not lldb.SBProcess.EventIsProcessEvent(event):
+            warn("UNEXPECTED event (%s)" % event.GetType())
+            return
+
         out = lldb.SBStream()
         event.GetDescription(out)
         #warn("EVENT: %s" % event)
@@ -1792,7 +1799,7 @@ class Dumper(DumperBase):
             expr = self.parseAndEvaluate(expr)
             self.qqEditable[typeName](self, expr, value)
         else:
-            lhs.SetValueFromCString(value, error)
+            self.parseAndEvaluate(expr + '=' + value)
         self.reportResult(self.describeError(error), args)
 
     def watchPoint(self, args):
@@ -1909,7 +1916,7 @@ class LogMixin:
             localz = frame.f_locals
             instance = str(localz["self"]) + "." if 'self' in localz else ''
             message = "%s%s(%s)%s" % (instance, fn, args, message)
-        print message
+        print(message)
 
     @staticmethod
     def log_fn(arg_str = ''):
@@ -1944,7 +1951,7 @@ class SummaryDumper(Dumper, LogMixin):
 
     @staticmethod
     def warn(message):
-        print "Qt summary warning: %s" % message
+        print("Qt summary warning: %s" % message)
 
     @staticmethod
     def showException(message, exType, exValue, exTraceback):
@@ -1978,9 +1985,9 @@ class SummaryDumper(Dumper, LogMixin):
         try:
             from pygdbmi import gdbmiparser
         except ImportError:
-            print "Qt summary provider requires the pygdbmi module, " \
-                    "please install using 'sudo /usr/bin/easy_install pygdbmi', " \
-                    "and then restart Xcode."
+            print("Qt summary provider requires the pygdbmi module, "
+                    "please install using 'sudo /usr/bin/easy_install pygdbmi', "
+                    "and then restart Xcode.")
             lldb.debugger.HandleCommand('type category delete Qt')
             return None
 

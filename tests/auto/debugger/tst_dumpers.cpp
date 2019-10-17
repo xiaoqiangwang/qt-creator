@@ -5148,6 +5148,33 @@ void tst_Dumpers::dumper_data()
                + Check("set2.0", "[0]", "42", "int")
                + Check("set2.1", "[1]", "42", "int");
 
+    QTest::newRow("StdInitializerList")
+        << Data("#include <initializer_list>\n",
+                "auto initb = {true, false, false, true};\n"
+                "auto initi = {1, 2, 3};\n"
+                "auto inits = {\"1\", \"2\", \"3\"};\n"
+                "std::initializer_list<int> empty;\n"
+                "unused(&initb, &initi, &inits, &empty);\n")
+
+               + Cxx11Profile()
+
+               + Check("initb", "<4 items>", "std::initializer_list<bool>")
+               + Check("initb.0", "[0]", "1", "bool") // 1 -> true is done on display
+               + Check("initb.1", "[1]", "0", "bool")
+               + Check("initb.2", "[2]", "0", "bool")
+               + Check("initb.3", "[3]", "1", "bool")
+
+               + Check("initi", "<3 items>", "std::initializer_list<int>")
+               + Check("initi.0", "[0]", "1", "int")
+               + Check("initi.1", "[1]", "2", "int")
+               + Check("initi.2", "[2]", "3", "int")
+
+               + Check("inits", "<3 items>", "std::initializer_list<const char *>")
+               + Check("inits.0", "[0]", "\"1\"", "char*")
+               + Check("inits.1", "[1]", "\"2\"", "char*")
+               + Check("inits.2", "[2]", "\"3\"", "char*")
+
+               + Check("empty", "<0 items>", "std::initializer_list<int>");
 
 //    class Goo
 //    {
@@ -7235,6 +7262,41 @@ void tst_Dumpers::dumper_data()
             + Check("f1", "1", "@QSqlField (qlonglong)")
             + Check("f2", "\"qt-logo.png\"", "@QSqlField (QString)")
             + Check("f3", "(invalid)", "@QSqlField (invalid)");
+
+
+    Data f90data;
+    f90data.configTest = "which f95";
+    f90data.allProfile =
+        "CONFIG -= qt\n"
+        "SOURCES += main.f90\n"
+        "# Prevents linking\n"
+        "TARGET=\n"
+        "# Overwrites qmake-generated 'all' target.\n"
+        "all.commands = f95 -g -o doit main.f90\n"
+        "all.depends = main.f90\n"
+        "all.CONFIG = phony\n\n"
+        "QMAKE_EXTRA_TARGETS += all\n";
+
+    f90data.allCode =
+        "program test_fortran\n\n"
+        "  implicit none\n\n"
+        "  character(8) :: c8\n"
+        "  integer(8)   :: i8\n\n"
+        "  i8 = 1337\n"
+        "  c8 = 'c_____a_'\n"
+        "  ! write (*,*) c8\n"
+        "  i8 = i8 / 0\n"
+        "end program\n";
+
+    f90data.mainFile = "main.f90";
+
+    QTest::newRow("F90")
+        << f90data
+        + GdbEngine
+        + Check("c8", "\"c_____a_\"", "character *8")
+        + Check("i8", "1337", "integer(kind=8)");
+
+
 #if 0
 #ifdef Q_OS_LINUX
     // Hint: To open a failing test in Creator, do:
