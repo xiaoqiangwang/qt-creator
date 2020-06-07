@@ -1,14 +1,13 @@
 {
     "version": 1,
-    "supportedProjectTypes": [ "Qt4ProjectManager.Qt4Project" ],
-    "id": "U.QtForPythonApplicationWindow",
-    "category": "F.Application",
+    "supportedProjectTypes": [ "PythonProject" ],
+    "id": "F.QtForPythonApplicationWindow",
+    "category": "F.ApplicationPySide",
     "trDescription": "Creates a Qt for Python application that contains an empty window.",
     "trDisplayName": "Qt for Python - Window",
-    "trDisplayCategory": "Application",
-    "icon": "icon.png",
-    "enabled": "%{JS: value('Plugins').indexOf('PythonEditor') >= 0}",
-    "featuresRequired": [ "QtSupport.Wizards.FeatureQt.5.6" ],
+    "trDisplayCategory": "Application (Qt for Python)",
+    "icon": "../icons/icon.png",
+    "enabled": "%{JS: value('Plugins').indexOf('Python') >= 0}",
 
     "options":
     [
@@ -43,8 +42,8 @@
                     "type": "ComboBox",
                     "data":
                     {
-                        "items": [ { "trKey": "<Custom>", "value": "" },
-                                   "QWidget", "QMainWindow"]
+                        "items": [ "QWidget", "QMainWindow",
+                                 { "trKey": "<Custom>", "value": "" } ]
                     }
                 },
                 {
@@ -84,6 +83,11 @@
                     "source": "../main_mainwindow.py",
                     "target": "%{MainPyFileName}",
                     "openInEditor": true
+                },
+                {
+                    "source": "../../git.ignore",
+                    "target": ".gitignore",
+                    "condition": "%{JS: !value('IsSubproject') && value('VersionControl') === 'G.Git'}"
                 }
             ]
         }

@@ -176,15 +176,8 @@ QByteArray CppEditorDocument::contentsText() const
 
 void CppEditorDocument::applyFontSettings()
 {
-    if (TextEditor::SyntaxHighlighter *highlighter = syntaxHighlighter()) {
-        // Clear all additional formats since they may have changed
-        QTextBlock b = document()->firstBlock();
-        while (b.isValid()) {
-            QVector<QTextLayout::FormatRange> noFormats;
-            highlighter->setExtraFormats(b, noFormats);
-            b = b.next();
-        }
-    }
+    if (TextEditor::SyntaxHighlighter *highlighter = syntaxHighlighter())
+        highlighter->clearAllExtraFormats(); // Clear all additional formats since they may have changed
     TextDocument::applyFontSettings(); // rehighlights and updates additional formats
     if (m_processor)
         m_processor->semanticRehighlight();
@@ -241,7 +234,7 @@ void CppEditorDocument::reparseWithPreferredParseContext(const QString &parseCon
 void CppEditorDocument::onFilePathChanged(const Utils::FilePath &oldPath,
                                           const Utils::FilePath &newPath)
 {
-    Q_UNUSED(oldPath);
+    Q_UNUSED(oldPath)
 
     if (!newPath.isEmpty()) {
         indenter()->setFileName(newPath);
@@ -364,7 +357,7 @@ void CppEditorDocument::showHideInfoBarAboutMultipleParseContexts(bool show)
         Core::InfoBarEntry info(id,
                                 tr("Note: Multiple parse contexts are available for this file. "
                                    "Choose the preferred one from the editor toolbar."),
-                                Core::InfoBarEntry::GlobalSuppressionEnabled);
+                                Core::InfoBarEntry::GlobalSuppression::Enabled);
         info.removeCancelButton();
         if (infoBar()->canInfoBeAdded(id))
             infoBar()->addInfo(info);

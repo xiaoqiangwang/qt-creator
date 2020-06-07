@@ -25,30 +25,28 @@
 
 import QtQuick 2.11
 import QtQuick.Layouts 1.12
-import QtQuick.Controls 2.5
-import QtQuick.Controls.Styles 1.4
 import QtQuick.Dialogs 1.3
 
 import HelperWidgets 2.0
 import QtQuickDesignerTheme 1.0
-
+import StudioControls 1.0 as StudioControls
+import StudioTheme 1.0 as StudioTheme
 
 Rectangle {
     id: tabBackground
     width: parent.width
     height: parent.height
-    color: "#242424"
+    color: StudioTheme.Values.themeControlBackground
     anchors.fill: parent
 
-    property alias viewModel : gradientTable.model;
-    property bool editableName : false;
+    property alias viewModel: gradientTable.model
+    property bool editableName: false
     signal presetNameChanged(int id, string name)
     signal deleteButtonClicked(int id)
 
-    property int delegateWidth: 153;
-    property int delegateHeight: 173;
-    property int gridCellWidth: 160;
-
+    property real delegateWidth: 154
+    property real delegateHeight: 178
+    property real gridCellWidth: 160
 
     ScrollView {
         Layout.fillWidth: true
@@ -66,103 +64,97 @@ Rectangle {
 
             property int gridColumns: width / tabBackground.gridCellWidth;
             cellWidth: width / gridColumns
-            cellHeight: 180
+            cellHeight: 185
 
             Component {
                 id: gradientDelegate
 
                 Rectangle {
                     id: backgroundCard
-                    color: "#404040"
-                    clip: false
+                    color: StudioTheme.Values.themeControlOutline
+                    clip: true
 
                     property real flexibleWidth: (gradientTable.width - gradientTable.cellWidth * gradientTable.gridColumns) / gradientTable.gridColumns
                     property bool isSelected: false
 
-                    width: gradientTable.cellWidth + flexibleWidth - 8; height: tabBackground.delegateHeight
+                    width: gradientTable.cellWidth + flexibleWidth - 8
+                    height: tabBackground.delegateHeight
                     radius: 16
+
+                    function selectPreset(index) {
+                        gradientTable.currentIndex = index
+                        gradientData.stops = stopsPosList
+                        gradientData.colors = stopsColorList
+                        gradientData.stopsCount = stopListSize
+                        gradientData.presetID = presetID
+                        gradientData.presetType = presetTabView.currentIndex
+
+                        if (gradientData.selectedItem != null)
+                            gradientData.selectedItem.isSelected = false
+
+                        backgroundCard.isSelected = true
+                        gradientData.selectedItem = backgroundCard
+                    }
 
                     MouseArea {
                         id: rectMouseArea
                         anchors.fill: parent
                         hoverEnabled: true
                         onClicked: {
-                            gradientTable.currentIndex = index;
-                            gradientData.stops = stopsPosList;
-                            gradientData.colors = stopsColorList;
-                            gradientData.stopsCount = stopListSize;
-                            gradientData.presetID = presetID;
-                            gradientData.presetType = presetTabView.currentIndex
-
-                            if (gradientData.selectedItem != null)
-                                gradientData.selectedItem.isSelected = false
-
-                            backgroundCard.isSelected = true
-                            gradientData.selectedItem = backgroundCard
+                            presetNameBox.edit = false
+                            nameInput.focus = false
+                            backgroundCard.selectPreset(index)
                         }
-                        onEntered: {
-                            if (backgroundCard.state != "CLICKED") {
-                                backgroundCard.state = "HOVER";
-                            }
-                        }
-                        onExited: {
-                            if (backgroundCard.state != "CLICKED") {
-                                backgroundCard.state = "USUAL";
-                            }
-                        }
-                    } //mouseArea
-
-                    onIsSelectedChanged: {
-                        if (isSelected)
-                            backgroundCard.state = "CLICKED"
-                        else
-                            backgroundCard.state = "USUAL"
                     }
 
                     states: [
                         State {
-                            name: "HOVER"
+                            name: "default"
+                            when: !(rectMouseArea.containsMouse || removeButton.hovered ||
+                                  (nameMouseArea.containsMouse && !tabBackground.editableName)) &&
+                                  !backgroundCard.isSelected
                             PropertyChanges {
                                 target: backgroundCard
-                                color: "#606060"
-                                z: 5
-                                clip: true
-                                border.width: 1
-                                border.color: "#029de0"
-                            }
-                        },
-                        State {
-                            name: "CLICKED"
-                            PropertyChanges {
-                                target: backgroundCard
-                                color:"#029de0"
-                                z: 4
-                                clip: true
-                                border.width: 1
-                                border.color: "#606060"
-                            }
-                        },
-                        State {
-                            name: "USUAL"
-                            PropertyChanges
-                            {
-                                target: backgroundCard
-                                color: "#404040"
-                                scale: 1.0
+                                color: StudioTheme.Values.themeControlOutline
                                 border.width: 0
                             }
+                        },
+                        State {
+                            name: "hovered"
+                            when: (rectMouseArea.containsMouse || removeButton.hovered ||
+                                  (nameMouseArea.containsMouse && !tabBackground.editableName)) &&
+                                  !backgroundCard.isSelected
+                            PropertyChanges {
+                                target: backgroundCard
+                                color: StudioTheme.Values.themeControlBackgroundPressed
+                                border.width: 1
+                                border.color: StudioTheme.Values.themeInteraction
+                            }
+                        },
+                        State {
+                            name: "selected"
+                            when: backgroundCard.isSelected
+                            PropertyChanges {
+                                target: backgroundCard
+                                color:StudioTheme.Values.themeInteraction
+                                border.width: 1
+                                border.color: StudioTheme.Values.themeControlBackgroundPressed
+                            }
                         }
-                    ] //states
+                    ]
 
                     ColumnLayout {
+                        spacing: 2
                         anchors.fill: parent
 
                         Rectangle {
-                            width: 150; height: 150
                             id: gradientRect
+                            width: 150
+                            height: 150
                             radius: 16
-                            Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
+                            Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
                             Layout.topMargin: 2
+
                             gradient: Gradient {
                                 id: showGr
                             }
@@ -175,66 +167,155 @@ Rectangle {
                             Component.onCompleted: {
                                 var stopsAmount = stopListSize;
                                 var newStops = [];
-                                for (var i = 0; i < stopsAmount; i++ ) {
+                                for (var i = 0; i < stopsAmount; i++) {
                                     newStops.push( stopComponent.createObject(showGr, { "position": stopsPosList[i], "color": stopsColorList[i] }) );
                                 }
                                 showGr.stops = newStops;
                             }
 
-                            Rectangle {
-                                id: removeItemRect
+                            AbstractButton {
+                                id: removeButton
+                                visible: editableName && (rectMouseArea.containsMouse || removeButton.hovered)
+                                backgroundRadius: StudioTheme.Values.smallRectWidth
                                 anchors.right: parent.right
-                                anchors.rightMargin: 2
+                                anchors.rightMargin: 5
                                 anchors.top: parent.top
-                                anchors.topMargin: 2
-                                height: 16
-                                width: 16
-                                visible: editableName && rectMouseArea.containsMouse
-                                color: "#804682b4"
+                                anchors.topMargin: 5
+                                width: Math.round(StudioTheme.Values.smallRectWidth)
+                                height: Math.round(StudioTheme.Values.smallRectWidth)
+                                buttonIcon: StudioTheme.Constants.closeCross
+                                onClicked: tabBackground.deleteButtonClicked(index)
+                            }
+                        }
 
+                        Item {
+                            id: presetNameBox
+                            Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+                            Layout.preferredWidth: backgroundCard.width - 2
+                            Layout.preferredHeight: backgroundCard.height - gradientRect.height - 4
+                            Layout.bottomMargin: 4
 
-                                MouseArea {
-                                    anchors.fill: parent;
-                                    onClicked: tabBackground.deleteButtonClicked(index);
-                                }
+                            property bool edit: false
 
-                                Image {
-                                    id: remoreItemImg
-                                    source: "image://icons/close"
-                                    fillMode: Image.PreserveAspectFit
-                                    anchors.fill: parent;
-                                    Layout.alignment: Qt.AlignCenter
+                            Rectangle {
+                                id: nameBackgroundColor
+                                enabled: tabBackground.editableName
+                                color: "transparent"
+                                radius: 16
+                                visible: true
+                                anchors.fill: parent
+                            }
+
+                            ToolTipArea {
+                                id: nameMouseArea
+                                anchors.fill: parent
+                                tooltip: nameText.text
+                                propagateComposedEvents: true
+
+                                onClicked: {
+                                    if (!tabBackground.editableName) {
+                                        backgroundCard.selectPreset(index)
+                                        return
+                                    }
+
+                                    presetNameBox.edit = true
+                                    nameInput.forceActiveFocus()
+                                    // have to select text like this, otherwise there is an issue with long names
+                                    nameInput.cursorPosition = 0
+                                    nameInput.cursorPosition = nameInput.length
+                                    nameInput.selectAll()
                                 }
                             }
-                        } //rectangle gradient
 
-                        TextInput {
-                            id: presetNameBox
-                            readOnly: !editableName
-                            text: (presetName)
-                            Layout.alignment: Qt.AlignHCenter | Qt.AlignBottom
-                            Layout.preferredWidth: backgroundCard.width
-                            Layout.topMargin: -5
-                            padding: 5.0
-                            topPadding: -2.0
-                            horizontalAlignment: Text.AlignHCenter
-                            wrapMode: Text.Wrap
-                            color: "#ffffff"
-                            activeFocusOnPress: true
+                            Text {
+                                id: nameText
+                                text: presetName
+                                anchors.fill: parent
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                color: StudioTheme.Values.themeTextColor
+                                elide: Text.ElideMiddle
+                                maximumLineCount: 1
+                            }
 
-                            onEditingFinished: tabBackground.presetNameChanged(index, text);
+                            TextInput {
+                                id: nameInput
+                                enabled: tabBackground.editableName
+                                visible: false
+                                text: presetName
+                                anchors.fill: parent
+                                anchors.leftMargin: 5
+                                anchors.rightMargin: 5
+                                horizontalAlignment: TextInput.AlignHCenter
+                                verticalAlignment: TextInput.AlignVCenter
+                                color: StudioTheme.Values.themeTextColor
+                                selectionColor: StudioTheme.Values.themeInteraction
+                                selectByMouse: true
+                                activeFocusOnPress: true
+                                wrapMode: TextInput.NoWrap
+                                clip: true
 
-                            Keys.onPressed: {
-                                if (event.key === Qt.Key_Enter || event.key === Qt.Key_Return) {
-                                    event.accepted = true;
-                                    editingFinished();
-                                    focus = false;
+                                onEditingFinished: {
+                                    nameText.text = text
+                                    tabBackground.presetNameChanged(index, text)
+                                    presetNameBox.edit = false
                                 }
-                            } //Keys.onPressed
-                        } //textInput
-                    } //columnLayout
-                } //rectangle background
-            } //component delegate
-        } //gridview
-    } //scrollView
-} //rectangle
+
+                                Keys.onPressed: {
+                                    if (event.key === Qt.Key_Enter || event.key === Qt.Key_Return) {
+                                        event.accepted = true
+                                        nameInput.editingFinished()
+                                        nameInput.focus = false
+                                    }
+
+                                    if (event.key === Qt.Key_Escape) {
+                                        event.accepted = true
+                                        nameInput.text = nameText.text
+                                        nameInput.focus = false
+                                    }
+                                }
+                            }
+
+                            states: [
+                                State {
+                                    name: "default"
+                                    when: tabBackground.editableName && !nameMouseArea.containsMouse && !presetNameBox.edit
+                                    PropertyChanges {
+                                        target: nameBackgroundColor
+                                        color: "transparent"
+                                        border.width: 0
+                                    }
+                                    PropertyChanges { target: nameText; visible: true }
+                                    PropertyChanges { target: nameInput; visible: false }
+                                },
+                                State {
+                                    name: "hovered"
+                                    when: tabBackground.editableName && nameMouseArea.containsMouse && !presetNameBox.edit
+                                    PropertyChanges {
+                                        target: nameBackgroundColor
+                                        color: StudioTheme.Values.themeControlBackgroundPressed
+                                        border.width: 0
+                                    }
+                                    PropertyChanges { target: nameText; visible: true }
+                                    PropertyChanges { target: nameInput; visible: false }
+                                },
+                                State {
+                                    name: "edit"
+                                    when: tabBackground.editableName && presetNameBox.edit
+                                    PropertyChanges {
+                                        target: nameBackgroundColor
+                                        color: StudioTheme.Values.themeControlBackgroundPressed
+                                        border.color: StudioTheme.Values.themeInteraction
+                                        border.width: 1
+                                    }
+                                    PropertyChanges { target: nameText; visible: false }
+                                    PropertyChanges { target: nameInput; visible: true }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

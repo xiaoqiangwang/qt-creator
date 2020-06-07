@@ -1,12 +1,13 @@
 add_qtc_plugin(QmlDesigner
   DEPENDS
-    qmljs LanguageUtils QmlEditorWidgets
+    QmlJS LanguageUtils QmlEditorWidgets AdvancedDockingSystem
     Qt5::QuickWidgets Qt5::CorePrivate
   DEFINES
     DESIGNER_CORE_LIBRARY
     IDE_LIBRARY_BASENAME=\"${IDE_LIBRARY_BASE_PATH}\"
-  INCLUDES
-    ${CMAKE_CURRENT_LIST_DIR}/designercore/include
+  PUBLIC_INCLUDES
+    "${CMAKE_CURRENT_LIST_DIR}"
+    "${CMAKE_CURRENT_LIST_DIR}/designercore/include"
   PLUGIN_DEPENDS
     Core ProjectExplorer QmlJSEditor QmakeProjectManager QmlProjectManager
     QtSupport TextEditor
@@ -16,6 +17,7 @@ add_qtc_plugin(QmlDesigner
     designmodewidget.cpp designmodewidget.h
     documentmanager.cpp documentmanager.h
     documentwarningwidget.cpp documentwarningwidget.h
+    generateresource.cpp generateresource.h
     openuiqmlfiledialog.cpp openuiqmlfiledialog.h openuiqmlfiledialog.ui
     qmldesignerconstants.h
     qmldesignericons.h
@@ -27,6 +29,8 @@ add_qtc_plugin(QmlDesigner
     components/propertyeditor/propertyeditorvalue.h
     components/connectioneditor/connectionviewwidget.h
   SKIP_DEBUG_CMAKE_FILE_CHECK
+  EXTRA_TRANSLATIONS
+    "${PROJECT_SOURCE_DIR}/share/qtcreator/qmldesigner"
 )
 
 set(QmlDesignerPluginInstallPrefix "${IDE_PLUGIN_PATH}/qmldesigner")
@@ -38,7 +42,6 @@ add_qtc_plugin(componentsplugin
   CONDITION TARGET QmlDesigner
   DEPENDS Core QmlDesigner Utils Qt5::Qml
   DEFINES COMPONENTS_LIBRARY
-  INCLUDES ${CMAKE_CURRENT_LIST_DIR}/designercore/include
   SOURCES
     componentsplugin/addtabdesigneraction.cpp componentsplugin/addtabdesigneraction.h
     componentsplugin/addtabtotabviewdialog.cpp componentsplugin/addtabtotabviewdialog.h
@@ -54,7 +57,6 @@ add_qtc_plugin(componentsplugin
 add_qtc_plugin(qmlpreviewplugin
   CONDITION TARGET QmlDesigner
   DEPENDS Core ProjectExplorer QmlDesigner Utils Qt5::Qml
-  INCLUDES ${CMAKE_CURRENT_LIST_DIR}/designercore/include
   SOURCES
     qmlpreviewplugin/qmlpreviewactions.cpp qmlpreviewplugin/qmlpreviewactions.h
     qmlpreviewplugin/qmlpreviewplugin.cpp qmlpreviewplugin/qmlpreviewplugin.h
@@ -67,7 +69,6 @@ add_qtc_plugin(qtquickplugin
   CONDITION TARGET QmlDesigner
   DEPENDS Core QmlDesigner Utils Qt5::Qml
   DEFINES QTQUICK_LIBRARY
-  INCLUDES ${CMAKE_CURRENT_LIST_DIR}/designercore/include
   SOURCES
     qtquickplugin/qtquickplugin.cpp qtquickplugin/qtquickplugin.h
     qtquickplugin/qtquickplugin.qrc
@@ -135,10 +136,16 @@ extend_qtc_plugin(QmlDesigner
     synchronizecommand.cpp synchronizecommand.h
     tokencommand.cpp tokencommand.h
     valueschangedcommand.cpp valueschangedcommand.h
+    changeselectioncommand.cpp changeselectioncommand.h
+    update3dviewstatecommand.cpp update3dviewstatecommand.h
+    puppettocreatorcommand.cpp puppettocreatorcommand.h
+    inputeventcommand.cpp inputeventcommand.h
+    view3dactioncommand.cpp view3dactioncommand.h
 )
 
 extend_qtc_plugin(QmlDesigner
   SOURCES_PREFIX ../../../share/qtcreator/qml/qmlpuppet/interfaces
+  PUBLIC_INCLUDES ../../../share/qtcreator/qml/qmlpuppet/interfaces
   SOURCES
     nodeinstanceserverinterface.cpp
     commondefines.h
@@ -149,6 +156,7 @@ extend_qtc_plugin(QmlDesigner
 
 extend_qtc_plugin(QmlDesigner
   SOURCES_PREFIX ../../../share/qtcreator/qml/qmlpuppet/types
+  PUBLIC_INCLUDES ../../../share/qtcreator/qml/qmlpuppet/types
   SOURCES enumeration.h
 )
 
@@ -186,7 +194,18 @@ extend_qtc_plugin(QmlDesigner
 )
 
 extend_qtc_plugin(QmlDesigner
+  SOURCES_PREFIX components/edit3d
+  SOURCES
+  edit3dview.cpp edit3dview.h
+  edit3dwidget.cpp edit3dwidget.h
+  edit3dcanvas.cpp edit3dcanvas.h
+  edit3dactions.cpp edit3dactions.h
+  edit3d.qrc
+)
+
+extend_qtc_plugin(QmlDesigner
   SOURCES_PREFIX components/formeditor
+  PUBLIC_INCLUDES components/formeditor
   SOURCES
     abstractcustomtool.cpp abstractcustomtool.h
     abstractformeditortool.cpp abstractformeditortool.h
@@ -199,6 +218,7 @@ extend_qtc_plugin(QmlDesigner
     controlelement.cpp controlelement.h
     dragtool.cpp dragtool.h
     formeditor.qrc
+    formeditorannotationicon.cpp formeditorannotationicon.h
     formeditorgraphicsview.cpp formeditorgraphicsview.h
     formeditoritem.cpp formeditoritem.h
     formeditorscene.cpp formeditorscene.h
@@ -211,7 +231,6 @@ extend_qtc_plugin(QmlDesigner
     lineeditaction.cpp lineeditaction.h
     movemanipulator.cpp movemanipulator.h
     movetool.cpp movetool.h
-    numberseriesaction.cpp numberseriesaction.h
     onedimensionalcluster.cpp onedimensionalcluster.h
     resizecontroller.cpp resizecontroller.h
     resizehandleitem.cpp resizehandleitem.h
@@ -242,6 +261,7 @@ extend_qtc_plugin(QmlDesigner
 
 extend_qtc_plugin(QmlDesigner
   SOURCES_PREFIX components/integration
+  PUBLIC_INCLUDES components/integration
   SOURCES
     componentaction.cpp componentaction.h
     componentview.cpp componentview.h
@@ -264,6 +284,17 @@ extend_qtc_plugin(QmlDesigner
     itemlibrarysectionmodel.cpp itemlibrarysectionmodel.h
     itemlibraryview.cpp itemlibraryview.h
     itemlibrarywidget.cpp itemlibrarywidget.h
+    itemlibraryassetimportdialog.cpp itemlibraryassetimportdialog.h
+    itemlibraryassetimportdialog.ui
+    itemlibraryassetimporter.cpp itemlibraryassetimporter.h
+)
+
+find_package(Qt5 COMPONENTS Quick3DAssetImport QUIET)
+extend_qtc_plugin(QmlDesigner
+  CONDITION TARGET Qt5::Quick3DAssetImport
+  FEATURE_INFO "Qt Quick 3D asset import"
+  DEPENDS Qt5::Quick3DAssetImportPrivate
+  DEFINES IMPORT_QUICK3D_ASSETS
 )
 
 extend_qtc_plugin(QmlDesigner
@@ -282,8 +313,10 @@ extend_qtc_plugin(QmlDesigner
 extend_qtc_plugin(QmlDesigner
   SOURCES_PREFIX components/propertyeditor
   SOURCES
+    aligndistribute.cpp aligndistribute.h
     designerpropertymap.cpp designerpropertymap.h
     fileresourcesmodel.cpp fileresourcesmodel.h
+    itemfiltermodel.cpp itemfiltermodel.h
     gradientmodel.cpp gradientmodel.h
     gradientpresetcustomlistmodel.cpp gradientpresetcustomlistmodel.h
     gradientpresetdefaultlistmodel.cpp gradientpresetdefaultlistmodel.h
@@ -298,6 +331,7 @@ extend_qtc_plugin(QmlDesigner
     simplecolorpalette.cpp simplecolorpalette.h
     simplecolorpalettemodel.cpp simplecolorpalettemodel.h
     simplecolorpalettesingleton.cpp simplecolorpalettesingleton.h
+    tooltip.cpp tooltip.h
     qmlanchorbindingproxy.cpp qmlanchorbindingproxy.h
     qmlmodelnodeproxy.cpp qmlmodelnodeproxy.h
     quick2propertyeditorview.cpp quick2propertyeditorview.h
@@ -362,6 +396,7 @@ extend_qtc_plugin(QmlDesigner
     include/abstractproperty.h
     include/abstractview.h
     include/anchorline.h
+    include/annotation.h
     include/basetexteditmodifier.h
     include/bindingproperty.h
     include/bytearraymodifier.h
@@ -410,6 +445,8 @@ extend_qtc_plugin(QmlDesigner
     include/qmlchangeset.h
     include/qmldesignercorelib_global.h
     include/qmlitemnode.h
+    include/qmlvisualnode.h
+    include/qml3dnode.h
     include/qmlmodelnodefacade.h
     include/qmlobjectnode.h
     include/qmlstate.h
@@ -438,6 +475,7 @@ extend_qtc_plugin(QmlDesigner
 
 extend_qtc_plugin(QmlDesigner
   SOURCES_PREFIX designercore
+  PUBLIC_INCLUDES designercore
   SOURCES
     metainfo/itemlibraryinfo.cpp
     metainfo/metainfo.cpp
@@ -449,6 +487,7 @@ extend_qtc_plugin(QmlDesigner
     model/abstractproperty.cpp
     model/abstractview.cpp
     model/anchorline.cpp
+    model/annotation.cpp
     model/basetexteditmodifier.cpp
     model/bindingproperty.cpp
     model/componenttextmodifier.cpp
@@ -478,6 +517,8 @@ extend_qtc_plugin(QmlDesigner
     model/qmlanchors.cpp
     model/qmlchangeset.cpp
     model/qmlitemnode.cpp
+    model/qmlvisualnode.cpp
+    model/qml3dnode.cpp
     model/qmlmodelnodefacade.cpp
     model/qmlobjectnode.cpp
     model/qmlstate.cpp
@@ -499,8 +540,24 @@ extend_qtc_plugin(QmlDesigner
 )
 
 extend_qtc_plugin(QmlDesigner
+  SOURCES_PREFIX components/bindingeditor
+  SOURCES bindingeditor.cpp bindingeditor.h
+    actioneditor.cpp actioneditor.h
+    bindingeditordialog.cpp bindingeditordialog.h
+    bindingeditorwidget.cpp bindingeditorwidget.h
+)
+
+extend_qtc_plugin(QmlDesigner
   SOURCES_PREFIX components/colortool
   SOURCES colortool.cpp colortool.h
+)
+
+extend_qtc_plugin(QmlDesigner
+  SOURCES_PREFIX components/annotationeditor
+  SOURCES annotationcommenttab.cpp annotationcommenttab.h annotationcommenttab.ui
+  annotationeditordialog.cpp annotationeditordialog.h annotationeditordialog.ui
+  annotationeditor.cpp annotationeditor.h
+  annotationtool.cpp annotationtool.h
 )
 
 extend_qtc_plugin(QmlDesigner
@@ -594,6 +651,7 @@ extend_qtc_plugin(QmlDesigner
     detail/keyframeitem.cpp detail/keyframeitem.h
     detail/playhead.cpp detail/playhead.h
     detail/selectableitem.cpp detail/selectableitem.h
+    detail/selectionmodel.cpp detail/selectionmodel.h
     detail/selector.cpp detail/selector.h
     detail/shortcut.cpp detail/shortcut.h
     detail/treeitemdelegate.cpp detail/treeitemdelegate.h

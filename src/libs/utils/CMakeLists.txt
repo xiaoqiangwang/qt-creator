@@ -1,16 +1,8 @@
-if (IDE_LIBEXEC_PATH AND IDE_BIN_PATH)
-  file(RELATIVE_PATH RELATIVE_TOOLS_PATH
-    "${CMAKE_INSTALL_PREFIX}/${IDE_BIN_PATH}" "${CMAKE_INSTALL_PREFIX}/${IDE_LIBEXEC_PATH}")
-else()
-  message(WARNING "IDE_LIBEXEC_PATH or IDE_BIN_PATH undefined when calculating tools path")
-  set(RELATIVE_TOOLS_PATH "")
-endif()
-
 add_qtc_library(Utils
   DEPENDS Qt5::Xml
   PUBLIC_DEPENDS Qt5::Concurrent Qt5::Core Qt5::Network Qt5::Qml Qt5::Gui Qt5::Widgets
   DEFINES
-    "QTC_REL_TOOLS_PATH=\"${RELATIVE_TOOLS_PATH}\""
+    "QTC_REL_TOOLS_PATH=\"${RELATIVE_LIBEXEC_PATH}\""
   SOURCES
     ../3rdparty/optional/optional.hpp
     ../3rdparty/variant/variant.hpp
@@ -21,6 +13,7 @@ add_qtc_library(Utils
     basetreeview.cpp basetreeview.h
     benchmarker.cpp benchmarker.h
     buildablehelperlibrary.cpp buildablehelperlibrary.h
+    camelcasecursor.cpp camelcasecursor.h
     categorysortfiltermodel.cpp categorysortfiltermodel.h
     changeset.cpp changeset.h
     checkablemessagebox.cpp checkablemessagebox.h
@@ -28,7 +21,7 @@ add_qtc_library(Utils
     codegeneration.cpp codegeneration.h
     completinglineedit.cpp completinglineedit.h
     completingtextedit.cpp completingtextedit.h
-    consoleprocess.cpp consoleprocess.h consoleprocess_p.h
+    consoleprocess.cpp consoleprocess.h
     cpplanguage_details.h
     crumblepath.cpp crumblepath.h
     delegates.cpp delegates.h
@@ -36,12 +29,19 @@ add_qtc_library(Utils
     detailsbutton.cpp detailsbutton.h
     detailswidget.cpp detailswidget.h
     differ.cpp differ.h
+    displayname.cpp displayname.h
     dropsupport.cpp dropsupport.h
     elfreader.cpp elfreader.h
     elidinglabel.cpp elidinglabel.h
     environment.cpp environment.h
+    environmentfwd.h
     environmentdialog.cpp environmentdialog.h
     environmentmodel.cpp environmentmodel.h
+    namevaluedictionary.cpp namevaluedictionary.h
+    namevalueitem.cpp namevalueitem.h
+    namevaluemodel.cpp namevaluemodel.h
+    namevaluesdialog.cpp namevaluesdialog.h
+    namevaluevalidator.cpp namevaluevalidator.h
     execmenu.cpp execmenu.h
     executeondestruction.h
     fadingindicator.cpp fadingindicator.h
@@ -68,6 +68,7 @@ add_qtc_library(Utils
     hostosinfo.cpp hostosinfo.h
     htmldocextractor.cpp htmldocextractor.h
     icon.cpp icon.h
+    infolabel.cpp infolabel.h
     itemviews.cpp itemviews.h
     json.cpp json.h
     jsontreeitem.cpp jsontreeitem.h
@@ -84,9 +85,13 @@ add_qtc_library(Utils
     mimetypes/mimeprovider.cpp mimetypes/mimeprovider_p.h
     mimetypes/mimetype.cpp mimetypes/mimetype.h mimetypes/mimetype_p.h
     mimetypes/mimetypeparser.cpp mimetypes/mimetypeparser_p.h
+    namevaluedictionary.cpp namevaluedictionary.h
+    namevalueitem.cpp namevalueitem.h
+    namevaluemodel.cpp namevaluemodel.h
+    namevaluesdialog.cpp namevaluesdialog.h
+    namevaluevalidator.cpp namevaluevalidator.h
     navigationtreeview.cpp navigationtreeview.h
     networkaccessmanager.cpp networkaccessmanager.h
-    newclasswidget.cpp newclasswidget.h newclasswidget.ui
     optional.h
     osspecificaspects.h
     outputformat.h
@@ -163,7 +168,6 @@ add_qtc_library(Utils
 
 extend_qtc_target(Utils CONDITION WIN32
   SOURCES
-    consoleprocess_win.cpp
     process_ctrlc_stub.cpp
     touchbar/touchbar.cpp
   DEPENDS
@@ -176,7 +180,6 @@ extend_qtc_target(Utils CONDITION WIN32
 
 extend_qtc_target(Utils CONDITION APPLE
   SOURCES
-    consoleprocess_unix.cpp
     fileutils_mac.mm fileutils_mac.h
     processhandle_mac.mm
     theme/theme_mac.mm theme/theme_mac.h
@@ -188,7 +191,6 @@ extend_qtc_target(Utils CONDITION APPLE
 
 extend_qtc_target(Utils CONDITION UNIX AND NOT APPLE
   SOURCES
-    consoleprocess_unix.cpp
     touchbar/touchbar.cpp
 )
 
@@ -197,6 +199,13 @@ if (WIN32)
     SOURCES process_stub_win.c
     DEPENDS shell32
     DEFINES _UNICODE UNICODE _CRT_SECURE_NO_WARNINGS
+  )
+
+  add_qtc_executable(qtcreator_ctrlc_stub
+    DEPENDS user32 shell32
+    DEFINES _UNICODE UNICODE _CRT_SECURE_NO_WARNINGS
+    SOURCES
+      process_ctrlc_stub.cpp
   )
 else()
   add_qtc_executable(qtcreator_process_stub SOURCES process_stub_unix.c)

@@ -31,9 +31,9 @@ def openQbsProject(projectPath):
 def openQmakeProject(projectPath, targets=Targets.desktopTargetClasses(), fromWelcome=False):
     cleanUpUserFiles(projectPath)
     if fromWelcome:
-        wsButtonFrame, wsButtonLabel = getWelcomeScreenMainButton('Open Project')
+        wsButtonFrame, wsButtonLabel = getWelcomeScreenMainButton('Open')
         if not all((wsButtonFrame, wsButtonLabel)):
-            test.fatal("Could not find 'Open Project' button on Welcome Page.")
+            test.fatal("Could not find 'Open' button on Welcome Page.")
             return []
         mouseClick(wsButtonLabel)
     else:
@@ -79,9 +79,9 @@ def openCmakeProject(projectPath, buildDir):
 # this list can be used in __chooseTargets__()
 def __createProjectOrFileSelectType__(category, template, fromWelcome = False, isProject=True):
     if fromWelcome:
-        wsButtonFrame, wsButtonLabel = getWelcomeScreenMainButton("New Project")
+        wsButtonFrame, wsButtonLabel = getWelcomeScreenMainButton("New")
         if not all((wsButtonFrame, wsButtonLabel)):
-            test.fatal("Could not find 'New Project' button on Welcome Page")
+            test.fatal("Could not find 'New' button on Welcome Page")
             return []
         mouseClick(wsButtonLabel)
     else:
@@ -115,6 +115,11 @@ def __createProjectSetNameAndPath__(path, projectName = None, checks = True):
     ensureChecked("{type='QCheckBox' name='projectsDirectoryCheckBox' visible='1'}", False)
     clickButton(waitForObject(":Next_QPushButton"))
     return str(projectName)
+
+
+def __createProjectHandleTranslationSelection__():
+    clickButton(":Next_QPushButton")
+
 
 def __handleBuildSystem__(buildSystem):
     combo = "{name='BuildSystem' type='QComboBox' visible='1'}"
@@ -210,7 +215,7 @@ def __modifyAvailableTargets__(available, requiredQt, asStrings=False):
 # param checks turns tests in the function on if set to True
 def createProject_Qt_GUI(path, projectName, checks = True, addToVersionControl = "<None>"):
     template = "Qt Widgets Application"
-    available = __createProjectOrFileSelectType__("  Application", template)
+    available = __createProjectOrFileSelectType__("  Application (Qt)", template)
     __createProjectSetNameAndPath__(path, projectName, checks)
     __handleBuildSystem__(None)
 
@@ -230,6 +235,7 @@ def createProject_Qt_GUI(path, projectName, checks = True, addToVersionControl =
         test.compare(findObject(":formFileLineEdit_Utils::FileNameValidatingLineEdit").text, ui_file)
 
     clickButton(waitForObject(":Next_QPushButton"))
+    __createProjectHandleTranslationSelection__()
     __selectQtVersionDesktop__(checks, available, True)
 
     expectedFiles = []
@@ -241,7 +247,7 @@ def createProject_Qt_GUI(path, projectName, checks = True, addToVersionControl =
         expectedFiles.extend(__sortFilenamesOSDependent__(["main.cpp", cpp_file, h_file, ui_file, pro_file]))
     __createProjectHandleLastPage__(expectedFiles, addToVersionControl)
 
-    progressBarWait(20000)
+    waitForProjectParsing()
     if checks:
         __verifyFileCreation__(path, expectedFiles)
 
@@ -250,9 +256,10 @@ def createProject_Qt_GUI(path, projectName, checks = True, addToVersionControl =
 # param projectName is the name for the new project
 # param checks turns tests in the function on if set to True
 def createProject_Qt_Console(path, projectName, checks = True, buildSystem = None):
-    available = __createProjectOrFileSelectType__("  Application", "Qt Console Application")
+    available = __createProjectOrFileSelectType__("  Application (Qt)", "Qt Console Application")
     __createProjectSetNameAndPath__(path, projectName, checks)
     __handleBuildSystem__(buildSystem)
+    __createProjectHandleTranslationSelection__()
     __selectQtVersionDesktop__(checks, available)
 
     expectedFiles = []
@@ -266,31 +273,32 @@ def createProject_Qt_Console(path, projectName, checks = True, buildSystem = Non
         expectedFiles.extend(__sortFilenamesOSDependent__([cpp_file, pro_file]))
     __createProjectHandleLastPage__(expectedFiles)
 
-    progressBarWait(10000)
+    waitForProjectParsing()
     if checks:
         __verifyFileCreation__(path, expectedFiles)
 
 def createNewQtQuickApplication(workingDir, projectName=None,
-                                targets=Targets.desktopTargetClasses(), minimumQtVersion="5.6",
+                                targets=Targets.desktopTargetClasses(), minimumQtVersion="5.10",
                                 template="Qt Quick Application - Empty", fromWelcome=False,
                                 buildSystem=None):
-    available = __createProjectOrFileSelectType__("  Application", template, fromWelcome)
+    available = __createProjectOrFileSelectType__("  Application (Qt Quick)", template, fromWelcome)
     projectName = __createProjectSetNameAndPath__(workingDir, projectName)
     __handleBuildSystem__(buildSystem)
     requiredQt = __createProjectHandleQtQuickSelection__(minimumQtVersion)
     __modifyAvailableTargets__(available, requiredQt)
+    __createProjectHandleTranslationSelection__()
     checkedTargets = __chooseTargets__(targets, available)
     snooze(1)
     if len(checkedTargets):
         clickButton(waitForObject(":Next_QPushButton"))
         __createProjectHandleLastPage__()
-        progressBarWait(10000)
+        waitForProjectParsing()
     else:
         clickButton(waitForObject("{type='QPushButton' text='Cancel' visible='1'}"))
 
     return checkedTargets, projectName
 
-def createNewQtQuickUI(workingDir, qtVersion = "5.6"):
+def createNewQtQuickUI(workingDir, qtVersion = "5.10"):
     available = __createProjectOrFileSelectType__("  Other Project", 'Qt Quick UI Prototype')
     if workingDir == None:
         workingDir = tempDir()
@@ -302,26 +310,24 @@ def createNewQtQuickUI(workingDir, qtVersion = "5.6"):
     if len(checkedTargets):
         clickButton(waitForObject(":Next_QPushButton"))
         __createProjectHandleLastPage__()
-        progressBarWait(10000)
+        waitForProjectParsing(codemodelParsingTimeout=0)
     else:
         clickButton(waitForObject("{type='QPushButton' text='Cancel' visible='1'}"))
 
     return checkedTargets, projectName
 
-def createNewQmlExtension(workingDir, targets=[Targets.DESKTOP_5_6_1_DEFAULT]):
+def createNewQmlExtension(workingDir, targets=[Targets.DESKTOP_5_14_1_DEFAULT]):
     available = __createProjectOrFileSelectType__("  Library", "Qt Quick 2 Extension Plugin")
     if workingDir == None:
         workingDir = tempDir()
     __createProjectSetNameAndPath__(workingDir)
-    __chooseTargets__(targets, available)
+    nameLineEd = waitForObject("{name='ObjectName' type='Utils::FancyLineEdit' visible='1'}")
+    replaceEditorContent(nameLineEd, "TestItem")
+    uriLineEd = waitForObject("{name='Uri' type='Utils::FancyLineEdit' visible='1'}")
+    replaceEditorContent(uriLineEd, "org.qt-project.test.qmlcomponents")
     nextButton = waitForObject(":Next_QPushButton")
     clickButton(nextButton)
-    nameLineEd = waitForObject("{buddy={type='QLabel' text='Object class-name:' unnamed='1' visible='1'} "
-                               "type='QLineEdit' unnamed='1' visible='1'}")
-    replaceEditorContent(nameLineEd, "TestItem")
-    uriLineEd = waitForObject("{buddy={type='QLabel' text='URI:' unnamed='1' visible='1'} "
-                              "type='QLineEdit' unnamed='1' visible='1'}")
-    replaceEditorContent(uriLineEd, "org.qt-project.test.qmlcomponents")
+    __chooseTargets__(targets, available)
     clickButton(nextButton)
     __createProjectHandleLastPage__()
 
@@ -368,6 +374,7 @@ def createNewCPPLib(projectDir, projectName, className, target, isStatic):
                     LibType.getStringForLib(libType))
     __createProjectHandleModuleSelection__("Core")
     className = __createProjectHandleClassInformation__(className)
+    __createProjectHandleTranslationSelection__()
     __chooseTargets__(target, available)
     clickButton(waitForObject(":Next_QPushButton"))
     __createProjectHandleLastPage__()
@@ -381,6 +388,7 @@ def createNewQtPlugin(projectDir, projectName, className, target, baseClass="QGe
                                   "window=':New_ProjectExplorer::JsonWizard'}"),
                     LibType.getStringForLib(LibType.QT_PLUGIN))
     className = __createProjectHandleClassInformation__(className, baseClass)
+    __createProjectHandleTranslationSelection__()
     __chooseTargets__(target, available)
     clickButton(waitForObject(":Next_QPushButton"))
     __createProjectHandleLastPage__()
@@ -411,7 +419,7 @@ def __chooseTargets__(targets, availableTargets=None, additionalFunc=None):
                 if additionalFunc:
                     detailsWidget = waitForObject("{type='Utils::DetailsWidget' unnamed='1' "
                                                   "window=':Qt Creator_Core::Internal::MainWindow' "
-                                                  "toolTip?='<html><body><h3>%s</h3>*' visible='1'}"
+                                                  "summaryText='%s' visible='1'}"
                                                   % Targets.getStringForTarget(current))
                     detailsButton = getChildByClass(detailsWidget, "Utils::DetailsButton")
                     clickButton(detailsButton)
@@ -497,19 +505,16 @@ def __getSupportedPlatforms__(text, templateName, getAsStrings=False):
     else:
         version = None
     if templateName.startswith("Qt Quick Application - "):
-        if templateName == "Qt Quick Application - Empty":
-            result = set([Targets.DESKTOP_5_6_1_DEFAULT, Targets.DESKTOP_5_10_1_DEFAULT])
-        else:
-            result = set([Targets.DESKTOP_5_10_1_DEFAULT])
+        result = set([Targets.DESKTOP_5_10_1_DEFAULT, Targets.DESKTOP_5_14_1_DEFAULT])
     elif 'Supported Platforms' in text:
         supports = text[text.find('Supported Platforms'):].split(":")[1].strip().split(" ")
         result = set()
         if 'Desktop' in supports:
-            if (version == None or version < "5.0"):
+            if (version == None or version < "5.0") and not templateName.startswith("Qt Quick 2"):
                 result.add(Targets.DESKTOP_4_8_7_DEFAULT)
                 if platform.system() in ("Linux", "Darwin"):
                     result.add(Targets.EMBEDDED_LINUX)
-            result = result.union(set([Targets.DESKTOP_5_6_1_DEFAULT, Targets.DESKTOP_5_10_1_DEFAULT]))
+            result = result.union(set([Targets.DESKTOP_5_10_1_DEFAULT, Targets.DESKTOP_5_14_1_DEFAULT]))
             if platform.system() != 'Darwin':
                 result.add(Targets.DESKTOP_5_4_1_GCC)
     elif 'Platform independent' in text:
@@ -663,11 +668,15 @@ def addCPlusPlusFile(name, template, projectName, forceOverwrite=False, addToVCS
         clickButton("{text='%s' type='QPushButton' unnamed='1' visible='1' window=%s}"
                     % (buttonToClick, overwriteDialog))
 
-# if one of the parameters is set to 0 or below the respective parsing won't be waited for
-def waitForProjectParsing(projectParsingTimeout=10000, codemodelParsingTimeout=10000):
-    if projectParsingTimeout > 0:
-        runButton = findObject(':*Qt Creator.Run_Core::Internal::FancyToolButton')
-        # Wait for parsing to complete
-        waitFor("runButton.enabled", projectParsingTimeout)
+# if one of the parameters is set to 0 the function will not wait in this step
+# beginParsingTimeout      milliseconds to wait for parsing to begin
+# projectParsingTimeout    milliseconds to wait for project parsing
+# codemodelParsingTimeout  milliseconds to wait for C++ parsing
+def waitForProjectParsing(beginParsingTimeout=0, projectParsingTimeout=10000,
+                          codemodelParsingTimeout=10000):
+    runButton = findObject(':*Qt Creator.Run_Core::Internal::FancyToolButton')
+    waitFor("not runButton.enabled", beginParsingTimeout)
+    # Wait for parsing to complete
+    waitFor("runButton.enabled", projectParsingTimeout)
     if codemodelParsingTimeout > 0:
         progressBarWait(codemodelParsingTimeout)

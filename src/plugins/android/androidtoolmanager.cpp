@@ -35,7 +35,7 @@
 #include <QLoggingCategory>
 
 namespace {
-Q_LOGGING_CATEGORY(androidToolLog, "qtc.android.sdkManager", QtWarningMsg)
+static Q_LOGGING_CATEGORY(androidToolLog, "qtc.android.sdkManager", QtWarningMsg)
 }
 
 namespace Android {
@@ -60,10 +60,9 @@ public:
 static bool androidToolCommand(Utils::FilePath toolPath, const QStringList &args,
                                const QProcessEnvironment &environment, QString *output)
 {
-    QString androidToolPath = toolPath.toString();
     SynchronousProcess proc;
     proc.setProcessEnvironment(environment);
-    SynchronousProcessResponse response = proc.runBlocking(androidToolPath, args);
+    SynchronousProcessResponse response = proc.runBlocking({toolPath, args});
     if (response.result == SynchronousProcessResponse::Finished) {
         if (output)
             *output = response.allOutput();
@@ -131,8 +130,7 @@ bool AndroidToolManager::removeAvd(const QString &name) const
     proc.setTimeoutS(5);
     proc.setProcessEnvironment(AndroidConfigurations::toolsEnvironment(m_config));
     SynchronousProcessResponse response
-            = proc.runBlocking(m_config.androidToolPath().toString(),
-                               QStringList({"delete", "avd", "-n", name}));
+            = proc.runBlocking({m_config.androidToolPath(), {"delete", "avd", "-n", name}});
     return response.result == SynchronousProcessResponse::Finished && response.exitCode == 0;
 }
 
@@ -150,7 +148,7 @@ CreateAvdInfo AndroidToolManager::createAvdImpl(CreateAvdInfo info, FilePath and
     proc.setProcessEnvironment(env);
     QStringList arguments;
     arguments << QLatin1String("create") << QLatin1String("avd")
-              << QLatin1String("-t") << AndroidConfig::apiLevelNameFor(info.sdkPlatform)
+              << QLatin1String("-t") << QString("android-%1").arg(info.systemImage->apiLevel())
               << QLatin1String("-n") << info.name
               << QLatin1String("-b") << info.abi;
     if (info.sdcardSize > 0)
@@ -208,8 +206,10 @@ AndroidDeviceInfoList AndroidToolManager::androidVirtualDevices(const Utils::Fil
     if (avds.empty())
         return devices;
 
-    while (avds.first().startsWith(QLatin1String("* daemon")))
-        avds.removeFirst(); // remove the daemon logs
+    for (const QString line : avds) // remove the daemon logs
+        if (line.startsWith("* daemon"))
+            avds.removeOne(line);
+
     avds.removeFirst(); // remove "List of devices attached" header line
 
     bool nextLineIsTargetLine = false;

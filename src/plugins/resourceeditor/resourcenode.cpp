@@ -41,6 +41,8 @@
 #include <QDir>
 #include <QDebug>
 
+#include <limits>
+
 using namespace Core;
 using namespace ProjectExplorer;
 using namespace Utils;
@@ -106,6 +108,18 @@ private:
     QString m_lang;
 };
 
+static int getPriorityFromContextNode(const ProjectExplorer::Node *resourceNode,
+                                      const ProjectExplorer::Node *contextNode)
+{
+    if (contextNode == resourceNode)
+        return std::numeric_limits<int>::max();
+    for (const ProjectExplorer::Node *n = contextNode; n; n = n->parentFolderNode()) {
+        if (n == resourceNode)
+            return std::numeric_limits<int>::max() - 1;
+    }
+    return -1;
+}
+
 static bool hasPriority(const QStringList &files)
 {
     if (files.isEmpty())
@@ -162,7 +176,8 @@ public:
 
     bool supportsAction(ProjectAction, const Node *node) const final;
     bool addFiles(const QStringList &filePaths, QStringList *notAdded) final;
-    bool removeFiles(const QStringList &filePaths, QStringList *notRemoved) final;
+    RemovedFilesFromProject removeFiles(const QStringList &filePaths,
+                                        QStringList *notRemoved) final;
     bool canRenameFile(const QString &filePath, const QString &newFilePath) override;
     bool renameFile(const QString &filePath, const QString &newFilePath) final;
 
@@ -197,7 +212,6 @@ bool SimpleResourceFolderNode::supportsAction(ProjectAction action, const Node *
         || action == AddExistingFile
         || action == AddExistingDirectory
         || action == RemoveFile
-        || action == DuplicateFile
         || action == Rename // Note: only works for the filename, works akwardly for relative file paths
         || action == InheritedFromParent; // Do not add to list of projects when adding new file
 }
@@ -207,7 +221,8 @@ bool SimpleResourceFolderNode::addFiles(const QStringList &filePaths, QStringLis
     return addFilesToResource(m_topLevelNode->filePath(), filePaths, notAdded, m_prefix, m_lang);
 }
 
-bool SimpleResourceFolderNode::removeFiles(const QStringList &filePaths, QStringList *notRemoved)
+RemovedFilesFromProject SimpleResourceFolderNode::removeFiles(const QStringList &filePaths,
+                                                              QStringList *notRemoved)
 {
     return prefixNode()->removeFiles(filePaths, notRemoved);
 }
@@ -375,7 +390,8 @@ bool ResourceTopLevelNode::addFiles(const QStringList &filePaths, QStringList *n
     return addFilesToResource(filePath(), filePaths, notAdded, QLatin1String("/"), QString());
 }
 
-bool ResourceTopLevelNode::removeFiles(const QStringList &filePaths, QStringList *notRemoved)
+RemovedFilesFromProject ResourceTopLevelNode::removeFiles(const QStringList &filePaths,
+                                                           QStringList *notRemoved)
 {
     return parentFolderNode()->removeFiles(filePaths, notRemoved);
 }
@@ -436,22 +452,13 @@ FolderNode::AddNewInformation ResourceTopLevelNode::addNewInformation(const QStr
             .arg(filePath().fileName())
             .arg(QLatin1Char('/'));
 
-    int p = -1;
-    if (hasPriority(files)) { // images/* and qml/js mimetypes
+    int p = getPriorityFromContextNode(this, context);
+    if (p == -1 && hasPriority(files)) { // images/* and qml/js mimetypes
         p = 110;
         if (context == this)
             p = 120;
         else if (parentProjectNode() == context)
             p = 150; // steal from our project node
-        // The ResourceFolderNode '/' defers to us, as otherwise
-        // two nodes would be responsible for '/'
-        // Thus also return a high priority for it
-        if (auto rfn = dynamic_cast<ResourceFolderNode *>(context))
-            if (rfn->prefix() == QLatin1String("/") && rfn->parentFolderNode() == this)
-                p = 120;
-        if (auto rfn = dynamic_cast<SimpleResourceFolderNode *>(context))
-            if (rfn->prefix() == QLatin1String("/") && rfn->resourceNode() == this)
-                p = 120;
     }
 
     return AddNewInformation(name, p);
@@ -487,7 +494,6 @@ bool ResourceFolderNode::supportsAction(ProjectAction action, const Node *node) 
         || action == AddExistingFile
         || action == AddExistingDirectory
         || action == RemoveFile
-        || action == DuplicateFile
         || action == Rename // Note: only works for the filename, works akwardly for relative file paths
         || action == HidePathActions; // hides open terminal etc.
 }
@@ -497,16 +503,17 @@ bool ResourceFolderNode::addFiles(const QStringList &filePaths, QStringList *not
     return addFilesToResource(m_topLevelNode->filePath(), filePaths, notAdded, m_prefix, m_lang);
 }
 
-bool ResourceFolderNode::removeFiles(const QStringList &filePaths, QStringList *notRemoved)
+RemovedFilesFromProject ResourceFolderNode::removeFiles(const QStringList &filePaths,
+                                                        QStringList *notRemoved)
 {
     if (notRemoved)
         *notRemoved = filePaths;
     ResourceFile file(m_topLevelNode->filePath().toString());
     if (file.load() != IDocument::OpenResult::Success)
-        return false;
+        return RemovedFilesFromProject::Error;
     int index = file.indexOfPrefix(m_prefix, m_lang);
     if (index == -1)
-        return false;
+        return RemovedFilesFromProject::Error;
     for (int j = 0; j < file.fileCount(index); ++j) {
         QString fileName = file.file(index, j);
         if (!filePaths.contains(fileName))
@@ -519,7 +526,7 @@ bool ResourceFolderNode::removeFiles(const QStringList &filePaths, QStringList *
     FileChangeBlocker changeGuard(m_topLevelNode->filePath().toString());
     file.save();
 
-    return true;
+    return RemovedFilesFromProject::Ok;
 }
 
 // QTCREATORBUG-15280
@@ -586,8 +593,8 @@ FolderNode::AddNewInformation ResourceFolderNode::addNewInformation(const QStrin
             .arg(m_topLevelNode->filePath().fileName())
             .arg(displayName());
 
-    int p = -1; // never the default
-    if (hasPriority(files)) { // image/* and qml/js mimetypes
+    int p = getPriorityFromContextNode(this, context);
+    if (p == -1 && hasPriority(files)) { // image/* and qml/js mimetypes
         p = 105; // prefer against .pro and .pri files
         if (context == this)
             p = 120;

@@ -122,6 +122,8 @@ public:
 
     QIcon icon() const override;
 
+    std::vector<PropertyTreeItem *> properties() const;
+
 private:
     QIcon m_icon;
 };
@@ -132,6 +134,8 @@ enum class ValueType {
     Integer,
     Double,
 };
+
+std::string toString(ValueType type);
 
 class PropertyTreeItem : public TreeItem
 {
@@ -150,6 +154,10 @@ public:
     Component component() const;
 
     AnimationCurve curve() const;
+
+    bool hasUnified() const;
+
+    QString unifyString() const;
 
     void setCurve(const AnimationCurve &curve);
 

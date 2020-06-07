@@ -35,7 +35,7 @@ add_qtc_plugin(AutoTest
     iframeworksettings.h
     itestframework.h
     itestparser.cpp itestparser.h
-    itestsettingspage.h
+    projectsettingswidget.cpp projectsettingswidget.h
     qtest/qttest_utils.cpp qtest/qttest_utils.h
     qtest/qttestconfiguration.cpp qtest/qttestconfiguration.h
     qtest/qttestconstants.h
@@ -59,6 +59,7 @@ add_qtc_plugin(AutoTest
     testframeworkmanager.cpp testframeworkmanager.h
     testnavigationwidget.cpp testnavigationwidget.h
     testoutputreader.cpp testoutputreader.h
+    testprojectsettings.cpp testprojectsettings.h
     testresult.cpp testresult.h
     testresultdelegate.cpp testresultdelegate.h
     testresultmodel.cpp testresultmodel.h

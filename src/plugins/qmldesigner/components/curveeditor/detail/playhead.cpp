@@ -30,6 +30,7 @@
 #include <QApplication>
 #include <QGraphicsScene>
 #include <QPainter>
+#include <QPainterPath>
 
 #include <cmath>
 
@@ -54,6 +55,11 @@ Playhead::Playhead(GraphicsView *view)
 int Playhead::currentFrame() const
 {
     return m_frame;
+}
+
+void Playhead::setMoving(bool moving)
+{
+    m_moving = moving;
 }
 
 void Playhead::moveToFrame(int frame, GraphicsView *view)

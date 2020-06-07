@@ -100,8 +100,6 @@ FindToolBar::FindToolBar(CurrentDocumentFind *currentDocumentFind)
     m_ui.findEdit->setButtonVisible(Utils::FancyLineEdit::Left, true);
     m_ui.findEdit->setFiltering(true);
     m_ui.findEdit->setPlaceholderText(QString());
-    m_ui.findEdit->setOkColor(Utils::creatorTheme()->color(Utils::Theme::TextColorNormal));
-    m_ui.findEdit->setErrorColor(Utils::creatorTheme()->color(Utils::Theme::TextColorError));
     m_ui.findEdit->button(Utils::FancyLineEdit::Left)->setFocusPolicy(Qt::TabFocus);
     m_ui.findEdit->setValidationFunction([this](Utils::FancyLineEdit *, QString *) {
                                              return m_lastResult != IFindSupport::NotFound;
@@ -423,7 +421,9 @@ void FindToolBar::updateToolBar()
     m_ui.findLabel->setVisible(showAllControls);
     m_ui.findEdit->setEnabled(enabled);
     m_ui.findEdit->setPlaceholderText(showAllControls ? QString() : tr("Search for..."));
+    m_ui.findPreviousButton->setEnabled(enabled);
     m_ui.findPreviousButton->setVisible(showAllControls);
+    m_ui.findNextButton->setEnabled(enabled);
     m_ui.findNextButton->setVisible(showAllControls);
     m_ui.horizontalSpacer->changeSize((showAllControls ? FINDBUTTON_SPACER_WIDTH : 0), 0,
                                       QSizePolicy::Expanding, QSizePolicy::Ignored);

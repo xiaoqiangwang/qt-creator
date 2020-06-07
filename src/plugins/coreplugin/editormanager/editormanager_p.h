@@ -94,7 +94,7 @@ public:
     static IEditor *activateEditor(EditorView *view, IEditor *editor,
                                    EditorManager::OpenEditorFlags flags = EditorManager::NoFlags);
     static IEditor *activateEditorForDocument(EditorView *view, IDocument *document,
-                                              EditorManager::OpenEditorFlags flags = nullptr);
+                                              EditorManager::OpenEditorFlags flags = {});
     static bool activateEditorForEntry(EditorView *view, DocumentModel::Entry *entry,
                                        EditorManager::OpenEditorFlags flags = EditorManager::NoFlags);
     /* closes the document if there is no other editor on the document visible */
@@ -124,6 +124,8 @@ public:
     static bool warnBeforeOpeningBigFilesEnabled();
     static void setBigFileSizeLimit(int limitInMB);
     static int bigFileSizeLimit();
+    static void setMaxRecentFiles(int count);
+    static int maxRecentFiles();
 
     static EditorWindow *createEditorWindow();
     static void splitNewWindow(Internal::EditorView *view);
@@ -159,6 +161,8 @@ signals:
 private:
     static void gotoNextDocHistory();
     static void gotoPreviousDocHistory();
+
+    static void gotoLastEditLocation();
 
     static void autoSave();
     static void handleContextChange(const QList<Core::IContext *> &context);
@@ -211,6 +215,7 @@ private:
     ~EditorManagerPrivate() override;
     void init();
 
+    EditLocation m_globalLastEditLocation;
     QList<EditLocation> m_globalHistory;
     QList<EditorArea *> m_editorAreas;
     QPointer<IEditor> m_currentEditor;
@@ -230,6 +235,7 @@ private:
     QAction *m_gotoPreviousDocHistoryAction;
     QAction *m_goBackAction;
     QAction *m_goForwardAction;
+    QAction *m_gotoLastEditAction;
     QAction *m_splitAction;
     QAction *m_splitSideBySideAction;
     QAction *m_splitNewWindowAction;
@@ -276,6 +282,7 @@ private:
 
     bool m_warnBeforeOpeningBigFilesEnabled = true;
     int m_bigFileSizeLimitInMB = 5;
+    int m_maxRecentFiles = 8;
 
     QString m_placeholderText;
     QList<std::function<bool(IEditor *)>> m_closeEditorListeners;

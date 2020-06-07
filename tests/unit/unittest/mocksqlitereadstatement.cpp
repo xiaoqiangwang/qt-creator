@@ -46,6 +46,16 @@ MockSqliteReadStatement::values<CppTools::Usage, 3>(
     return valuesReturnSourceUsages(reserveSize, sourceId, line, column);
 }
 
+template<>
+CppTools::Usages MockSqliteReadStatement::values<CppTools::Usage, 3>(std::size_t reserveSize,
+                                                                     const int &sourceId,
+                                                                     const int &line,
+                                                                     const int &column,
+                                                                     const int &locationKind)
+{
+    return valuesReturnSourceUsages(reserveSize, sourceId, line, column, locationKind);
+}
+
 template <>
 Symbols
 MockSqliteReadStatement::values<Symbol, 3>(
@@ -103,10 +113,16 @@ std::vector<Sources::Directory> MockSqliteReadStatement::values<Sources::Directo
     return valuesReturnStdVectorDirectory(reserveSize);
 }
 
-template <>
-std::vector<Sources::Source> MockSqliteReadStatement::values<Sources::Source, 2>(std::size_t reserveSize)
+template<>
+std::vector<Sources::Source> MockSqliteReadStatement::values<Sources::Source, 3>(std::size_t reserveSize)
 {
     return valuesReturnStdVectorSource(reserveSize);
+}
+
+template<>
+ProjectPartNameIds MockSqliteReadStatement::values<ProjectPartNameId, 2>(std::size_t reserveSize)
+{
+    return valuesReturnProjectPartNameIds(reserveSize);
 }
 
 template <>
@@ -252,4 +268,11 @@ Utils::optional<Sources::SourceNameAndDirectoryId>
 MockSqliteReadStatement::value<Sources::SourceNameAndDirectoryId, 2>(const int &id)
 {
     return valueReturnSourceNameAndDirectoryId(id);
+}
+
+template<>
+Utils::optional<ClangBackEnd::PrecompiledHeaderTimeStamps>
+MockSqliteReadStatement::value<ClangBackEnd::PrecompiledHeaderTimeStamps, 2>(const int &projectPartId)
+{
+    return valuesReturnPrecompiledHeaderTimeStamps(projectPartId);
 }

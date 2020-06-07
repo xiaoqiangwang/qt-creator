@@ -95,7 +95,7 @@ KitManagerConfigWidget::KitManagerConfigWidget(Kit *k) :
     inner->setLayout(m_layout);
 
     auto mainLayout = new QGridLayout(this);
-    mainLayout->setMargin(1);
+    mainLayout->setContentsMargins(1, 1, 1, 1);
     mainLayout->addWidget(inner, 0, 0);
 
     label = createLabel(tr("Name:"), tr("Kit name and icon."));
@@ -214,10 +214,9 @@ bool KitManagerConfigWidget::isDirty() const
 QString KitManagerConfigWidget::validityMessage() const
 {
     Tasks tmp;
-    if (!m_hasUniqueName) {
-        tmp.append(Task(Task::Warning, tr("Display name is not unique."), Utils::FilePath(), -1,
-                        ProjectExplorer::Constants::TASK_CATEGORY_COMPILE));
-    }
+    if (!m_hasUniqueName)
+        tmp.append(CompileTask(Task::Warning, tr("Display name is not unique.")));
+
     return m_modifiedKit->toHtml(tmp);
 }
 
@@ -414,7 +413,7 @@ void KitManagerConfigWidget::kitWasUpdated(Kit *k)
 
 void KitManagerConfigWidget::showEvent(QShowEvent *event)
 {
-    Q_UNUSED(event);
+    Q_UNUSED(event)
     foreach (KitAspectWidget *widget, m_widgets)
         widget->refresh();
 }

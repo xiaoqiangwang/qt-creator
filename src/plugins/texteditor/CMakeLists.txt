@@ -53,6 +53,7 @@ add_qtc_plugin(TextEditor
     findinopenfiles.cpp findinopenfiles.h
     fontsettings.cpp fontsettings.h
     fontsettingspage.cpp fontsettingspage.h fontsettingspage.ui
+    formatter.h
     formattexteditor.cpp formattexteditor.h
     highlighter.cpp highlighter.h
     highlightersettings.cpp highlightersettings.h
@@ -63,7 +64,6 @@ add_qtc_plugin(TextEditor
     ioutlinewidget.h
     linenumberfilter.cpp linenumberfilter.h
     marginsettings.cpp marginsettings.h
-    normalindenter.cpp normalindenter.h
     outlinefactory.cpp outlinefactory.h
     plaintexteditorfactory.cpp plaintexteditorfactory.h
     quickfix.cpp quickfix.h
@@ -92,7 +92,6 @@ add_qtc_plugin(TextEditor
     texteditor_p.h
     texteditoractionhandler.cpp texteditoractionhandler.h
     texteditorconstants.cpp texteditorconstants.h
-    texteditoroptionspage.cpp texteditoroptionspage.h
     texteditoroverlay.cpp texteditoroverlay.h
     texteditorplugin.cpp texteditorplugin.h
     texteditorsettings.cpp texteditorsettings.h

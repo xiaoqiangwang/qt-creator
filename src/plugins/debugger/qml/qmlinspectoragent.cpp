@@ -57,7 +57,7 @@ using namespace QmlDebug::Constants;
 namespace Debugger {
 namespace Internal {
 
-Q_LOGGING_CATEGORY(qmlInspectorLog, "qtc.dbg.qmlinspector", QtWarningMsg)
+static Q_LOGGING_CATEGORY(qmlInspectorLog, "qtc.dbg.qmlinspector", QtWarningMsg)
 
 
 /*!
@@ -254,7 +254,7 @@ void QmlInspectorAgent::onResult(quint32 queryId, const QVariant &value,
     } else if (queryId == m_engineQueryId) {
         m_engineQueryId = 0;
         QList<EngineReference> engines = qvariant_cast<QList<EngineReference> >(value);
-        QTC_ASSERT(engines.count(), return);
+        QTC_ASSERT(!engines.isEmpty(), return);
         m_engines = engines;
         queryEngineContext();
     } else {
@@ -262,8 +262,7 @@ void QmlInspectorAgent::onResult(quint32 queryId, const QVariant &value,
         if (index < 0) {
             if (QTC_GUARD(m_qmlEngine))
                 m_qmlEngine->expressionEvaluated(queryId, value);
-        } else {
-            Q_ASSERT(index < m_engines.length());
+        } else if (QTC_GUARD(index < m_engines.length())) {
             const int engineId = m_engines.at(index).debugId();
             m_rootContexts.insert(engineId, qvariant_cast<ContextReference>(value));
             if (m_rootContexts.size() == m_engines.size()) {
@@ -373,7 +372,7 @@ void QmlInspectorAgent::reloadEngines()
 
 void QmlInspectorAgent::queryEngineContext()
 {
-    qCDebug(qmlInspectorLog) << __FUNCTION__;
+    qCDebug(qmlInspectorLog) << __FUNCTION__ << "pending queries:" << m_rootContextQueryIds;
 
     if (!isConnected() || !boolSetting(ShowQmlObjectTree))
         return;
@@ -381,6 +380,7 @@ void QmlInspectorAgent::queryEngineContext()
     log(LogSend, "LIST_OBJECTS");
 
     m_rootContexts.clear();
+    m_rootContextQueryIds.clear();
     for (const auto &engine : qAsConst(m_engines))
         m_rootContextQueryIds.append(m_engineClient->queryRootContexts(engine));
 }
@@ -637,7 +637,7 @@ void QmlInspectorAgent::addWatchData(const ObjectReference &obj,
     }
 
     // properties
-    if (append && obj.properties().count()) {
+    if (append && !obj.properties().isEmpty()) {
         QString iname = objIname + ".[properties]";
         auto propertiesWatch = new WatchItem;
         propertiesWatch->iname = iname;

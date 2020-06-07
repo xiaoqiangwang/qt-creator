@@ -65,10 +65,11 @@ public:
     void removeObject(QObject *obj);
 
     // Plugin operations
+    void checkForProblematicPlugins();
     void loadPlugins();
     void shutdown();
     void setPluginPaths(const QStringList &paths);
-    QVector<ExtensionSystem::PluginSpec *> loadQueue();
+    const QVector<ExtensionSystem::PluginSpec *> loadQueue();
     void loadPlugin(PluginSpec *spec, PluginSpec::State destState);
     void resolveDependencies();
     void enableDependenciesIndirectly();
@@ -118,6 +119,7 @@ public:
     QEventLoop *shutdownEventLoop = nullptr; // used for async shutdown
 
     QStringList arguments;
+    QStringList argumentsForRestart;
     QScopedPointer<QElapsedTimer> m_profileTimer;
     QHash<const PluginSpec *, int> m_profileTotal;
     int m_profileElapsedMS = 0;

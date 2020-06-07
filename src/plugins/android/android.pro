@@ -11,7 +11,6 @@ HEADERS += \
     androidmanager.h \
     androidrunconfiguration.h \
     androidruncontrol.h \
-    androidsettingspage.h \
     androidsettingswidget.h \
     androidtoolchain.h \
     androiderrormessage.h \
@@ -24,7 +23,6 @@ HEADERS += \
     javaparser.h \
     androidplugin.h \
     androiddevice.h \
-    androidgdbserverkitinformation.h \
     androidqmltoolingsupport.h \
     androidmanifesteditorfactory.h \
     androidmanifesteditor.h \
@@ -50,14 +48,14 @@ HEADERS += \
     androidsdkmanagerwidget.h \
     androidpackageinstallationstep.h \
     androidextralibrarylistmodel.h \
-    createandroidmanifestwizard.h
+    createandroidmanifestwizard.h \
+    androidsdkdownloader.h
 
 SOURCES += \
     androidconfigurations.cpp \
     androidmanager.cpp \
     androidrunconfiguration.cpp \
     androidruncontrol.cpp \
-    androidsettingspage.cpp \
     androidsettingswidget.cpp \
     androidtoolchain.cpp \
     androiderrormessage.cpp \
@@ -69,7 +67,6 @@ SOURCES += \
     javaparser.cpp \
     androidplugin.cpp \
     androiddevice.cpp \
-    androidgdbserverkitinformation.cpp \
     androidqmltoolingsupport.cpp \
     androidmanifesteditorfactory.cpp \
     androidmanifesteditor.cpp \
@@ -94,7 +91,8 @@ SOURCES += \
     androidsdkmanagerwidget.cpp \
     androidpackageinstallationstep.cpp \
     androidextralibrarylistmodel.cpp \
-    createandroidmanifestwizard.cpp
+    createandroidmanifestwizard.cpp \
+    androidsdkdownloader.cpp
 
 FORMS += \
     androidsettingswidget.ui \

@@ -52,13 +52,14 @@ public:
     QSet<Core::Id> targetDeviceTypes() const override;
 
     QString description() const override;
-    QString targetArch() const;
+    const QStringList &androidAbis() const;
     int minimumNDK() const;
 
 protected:
     void parseMkSpec(ProFileEvaluator *) const override;
 private:
-    mutable QString m_targetArch;
+    std::unique_ptr<QObject> m_guard;
+    mutable QStringList m_androidAbis;
     mutable int m_minNdk = -1;
 };
 

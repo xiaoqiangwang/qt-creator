@@ -80,10 +80,13 @@ public:
     QString toUserOutput() const;
     QString shortNativePath() const;
 
-    QString fileName(int pathComponents = 0) const;
+    QString fileName() const;
+    QString fileNameWithPathComponents(int pathComponents) const;
     bool exists() const;
+    bool isWritablePath() const;
 
     FilePath parentDir() const;
+    FilePath absolutePath() const;
 
     bool operator==(const FilePath &other) const;
     bool operator!=(const FilePath &other) const;
@@ -95,14 +98,16 @@ public:
 
     bool isChildOf(const FilePath &s) const;
     bool isChildOf(const QDir &dir) const;
+    bool startsWith(const QString &s) const;
     bool endsWith(const QString &s) const;
-    bool isLocal() const;
 
+    bool isDir() const;
     bool isNewerThan(const QDateTime &timeStamp) const;
 
     FilePath relativeChildPath(const FilePath &parent) const;
     FilePath pathAppended(const QString &str) const;
     FilePath stringAppended(const QString &str) const;
+    FilePath resolvePath(const QString &fileName) const;
 
     FilePath canonicalPath() const;
 
@@ -111,7 +116,7 @@ public:
 
     uint hash(uint seed) const;
 
-    // NOTE: FileName operations on FilePath created from URL currenly
+    // NOTE: FilePath operations on FilePath created from URL currenly
     // do not work except for .toVariant() and .toUrl().
     static FilePath fromUrl(const QUrl &url);
     QUrl toUrl() const;
@@ -123,28 +128,30 @@ private:
 
 QTCREATOR_UTILS_EXPORT QTextStream &operator<<(QTextStream &s, const FilePath &fn);
 
-using FilePathList = QList<FilePath>;
-
-using FileName = FilePath;
-using FileNameList = FilePathList;
+using FilePaths = QList<FilePath>;
 
 class QTCREATOR_UTILS_EXPORT CommandLine
 {
 public:
-    CommandLine() {}
+    enum RawType { Raw };
 
-    CommandLine(const FilePath &executable, const QString &arguments)
-        : m_executable(executable), m_arguments(arguments)
-    {}
+    CommandLine();
+    explicit CommandLine(const QString &executable);
+    explicit CommandLine(const FilePath &executable);
+    CommandLine(const QString &exe, const QStringList &args);
+    CommandLine(const FilePath &exe, const QStringList &args);
+    CommandLine(const FilePath &exe, const QString &unparsedArgs, RawType);
 
     void addArg(const QString &arg, OsType osType = HostOsInfo::hostOs());
     void addArgs(const QStringList &inArgs, OsType osType = HostOsInfo::hostOs());
-    void addArgs(const QString &inArgs);
+
+    void addArgs(const QString &inArgs, RawType);
 
     QString toUserOutput() const;
 
     FilePath executable() const { return m_executable; }
     QString arguments() const { return m_arguments; }
+    QStringList splitArguments(OsType osType = HostOsInfo::hostOs()) const;
 
 private:
     FilePath m_executable;
@@ -166,7 +173,6 @@ public:
 
     static bool isRelativePath(const QString &fileName);
     static bool isAbsolutePath(const QString &fileName) { return !isRelativePath(fileName); }
-    static QString resolvePath(const QString &baseDir, const QString &fileName);
     static FilePath commonPath(const FilePath &oldCommonPath, const FilePath &fileName);
     static QByteArray fileId(const FilePath &fileName);
 };
@@ -284,17 +290,13 @@ inline uint qHash(const Utils::FilePath &a, uint seed = 0) { return a.hash(seed)
 } // namespace Utils
 
 namespace std {
-template<> struct hash<Utils::FilePath>
+template<> struct QTCREATOR_UTILS_EXPORT hash<Utils::FilePath>
 {
     using argument_type = Utils::FilePath;
     using result_type = size_t;
-    result_type operator()(const argument_type &fn) const
-    {
-        if (Utils::HostOsInfo::fileNameCaseSensitivity() == Qt::CaseInsensitive)
-            return hash<string>()(fn.toString().toUpper().toStdString());
-        return hash<string>()(fn.toString().toStdString());
-    }
+    result_type operator()(const argument_type &fn) const;
 };
 } // namespace std
 
 Q_DECLARE_METATYPE(Utils::FilePath)
+Q_DECLARE_METATYPE(Utils::CommandLine)

@@ -31,11 +31,11 @@
 #include "qbsinstallstep.h"
 #include "qbskitinformation.h"
 #include "qbsnodes.h"
+#include "qbsprofilemanager.h"
 #include "qbsprofilessettingspage.h"
 #include "qbsproject.h"
-#include "qbsprojectmanager.h"
 #include "qbsprojectmanagerconstants.h"
-#include "qbsrunconfiguration.h"
+#include "qbssettings.h"
 
 #include <coreplugin/actionmanager/actioncontainer.h>
 #include <coreplugin/actionmanager/actionmanager.h>
@@ -86,13 +86,12 @@ static QbsProject *currentEditorProject()
 class QbsProjectManagerPluginPrivate
 {
 public:
-    QbsManager manager;
+    QbsProfileManager manager;
     QbsBuildConfigurationFactory buildConfigFactory;
     QbsBuildStepFactory buildStepFactory;
     QbsCleanStepFactory cleanStepFactory;
     QbsInstallStepFactory installStepFactory;
-    QbsRunConfigurationFactory runConfigFactory;
-    SimpleRunWorkerFactory<SimpleTargetRunner, QbsRunConfiguration> runWorkerFactory;
+    QbsSettingsPage settingsPage;
     QbsProfilesSettingsPage profilesSetttingsPage;
     QbsKitAspect qbsKitAspect;
 };
@@ -104,8 +103,8 @@ QbsProjectManagerPlugin::~QbsProjectManagerPlugin()
 
 bool QbsProjectManagerPlugin::initialize(const QStringList &arguments, QString *errorMessage)
 {
-    Q_UNUSED(arguments);
-    Q_UNUSED(errorMessage);
+    Q_UNUSED(arguments)
+    Q_UNUSED(errorMessage)
 
     d = new QbsProjectManagerPluginPrivate;
 
@@ -249,9 +248,9 @@ bool QbsProjectManagerPlugin::initialize(const QStringList &arguments, QString *
     connect(Core::EditorManager::instance(), &Core::EditorManager::currentEditorChanged,
             this, &QbsProjectManagerPlugin::updateBuildActions);
 
-    connect(SessionManager::instance(), &SessionManager::projectAdded,
-            this, &QbsProjectManagerPlugin::projectWasAdded);
-    connect(SessionManager::instance(), &SessionManager::projectRemoved,
+    connect(SessionManager::instance(), &SessionManager::targetAdded,
+            this, &QbsProjectManagerPlugin::targetWasAdded);
+    connect(SessionManager::instance(), &SessionManager::targetRemoved,
             this, &QbsProjectManagerPlugin::updateBuildActions);
     connect(SessionManager::instance(), &SessionManager::startupProjectChanged,
             this, &QbsProjectManagerPlugin::updateReparseQbsAction);
@@ -264,19 +263,14 @@ bool QbsProjectManagerPlugin::initialize(const QStringList &arguments, QString *
     return true;
 }
 
-void QbsProjectManagerPlugin::extensionsInitialized()
-{ }
-
-void QbsProjectManagerPlugin::projectWasAdded(Project *project)
+void QbsProjectManagerPlugin::targetWasAdded(Target *target)
 {
-    auto qbsProject = qobject_cast<QbsProject *>(project);
-
-    if (!qbsProject)
+    if (!qobject_cast<QbsProject *>(target->project()))
         return;
 
-    connect(qbsProject, &Project::parsingStarted,
+    connect(target, &Target::parsingStarted,
             this, &QbsProjectManagerPlugin::projectChanged);
-    connect(qbsProject, &Project::parsingFinished,
+    connect(target, &Target::parsingFinished,
             this, &QbsProjectManagerPlugin::projectChanged);
 }
 
@@ -285,7 +279,8 @@ void QbsProjectManagerPlugin::updateContextActions()
     auto project = qobject_cast<Internal::QbsProject *>(ProjectTree::currentProject());
     const Node *node = ProjectTree::currentNode();
     bool isEnabled = !BuildManager::isBuilding(project)
-            && project && !project->isParsing()
+            && project && project->activeTarget()
+            && !project->activeTarget()->buildSystem()->isParsing()
             && node && node->isEnabled();
 
     const bool isFile = project && node && node->asFileNode();
@@ -308,7 +303,8 @@ void QbsProjectManagerPlugin::updateReparseQbsAction()
     auto project = qobject_cast<QbsProject *>(SessionManager::startupProject());
     m_reparseQbs->setEnabled(project
                              && !BuildManager::isBuilding(project)
-                             && !project->isParsing());
+                             && project && project->activeTarget()
+                             && !project->activeTarget()->buildSystem()->isParsing());
 }
 
 void QbsProjectManagerPlugin::updateBuildActions()
@@ -337,7 +333,9 @@ void QbsProjectManagerPlugin::updateBuildActions()
         }
 
         if (QbsProject *editorProject = currentEditorProject()) {
-            enabled = !BuildManager::isBuilding(editorProject) && !editorProject->isParsing();
+            enabled = !BuildManager::isBuilding(editorProject)
+                    && editorProject->activeTarget()
+                    && !editorProject->activeTarget()->buildSystem()->isParsing();
             fileVisible = productNode
                     || dynamic_cast<QbsProjectNode *>(parentProjectNode)
                     || dynamic_cast<QbsGroupNode *>(parentProjectNode);
@@ -420,7 +418,7 @@ void QbsProjectManagerPlugin::runStepsForProductContextMenu(const QList<Core::Id
     const auto * const productNode = dynamic_cast<const QbsProductNode *>(node);
     QTC_ASSERT(productNode, return);
 
-    runStepsForProducts(project, {QbsProject::uniqueProductName(productNode->qbsProductData())},
+    runStepsForProducts(project, {productNode->productData().value("full-display-name").toString()},
                         {stepTypes});
 }
 
@@ -447,13 +445,13 @@ void QbsProjectManagerPlugin::runStepsForProduct(const QList<Core::Id> &stepType
     Node *node = currentEditorNode();
     if (!node)
         return;
-    auto product = dynamic_cast<QbsProductNode *>(node->parentProjectNode());
-    if (!product)
+    auto productNode = dynamic_cast<QbsProductNode *>(node->parentProjectNode());
+    if (!productNode)
         return;
     QbsProject *project = currentEditorProject();
     if (!project)
         return;
-    runStepsForProducts(project, {QbsProject::uniqueProductName(product->qbsProductData())},
+    runStepsForProducts(project, {productNode->productData().value("full-display-name").toString()},
                         {stepTypes});
 }
 
@@ -486,9 +484,9 @@ void QbsProjectManagerPlugin::runStepsForSubprojectContextMenu(const QList<Core:
     QTC_ASSERT(subProject, return);
 
     QStringList toBuild;
-    foreach (const qbs::ProductData &data, subProject->qbsProjectData().allProducts())
-        toBuild << QbsProject::uniqueProductName(data);
-
+    forAllProducts(subProject->projectData(), [&toBuild](const QJsonObject &data) {
+        toBuild << data.value("full-display-name").toString();
+    });
     runStepsForProducts(project, toBuild, {stepTypes});
 }
 
@@ -512,9 +510,7 @@ void QbsProjectManagerPlugin::buildFiles(QbsProject *project, const QStringList 
     bc->setActiveFileTags(activeFileTags);
     bc->setProducts(QStringList());
 
-    const Core::Id buildStep = ProjectExplorer::Constants::BUILDSTEPS_BUILD;
-
-    BuildManager::buildList(bc->stepList(buildStep));
+    BuildManager::buildList(bc->buildSteps());
 
     bc->setChangedFiles(QStringList());
     bc->setActiveFileTags(QStringList());
@@ -548,8 +544,13 @@ void QbsProjectManagerPlugin::runStepsForProducts(QbsProject *project,
     QList<ProjectExplorer::BuildStepList *> stepLists;
     QStringList stepListNames;
     for (const Core::Id &stepType : stepTypes) {
-        stepLists << bc->stepList(stepType);
-        stepListNames <<ProjectExplorerPlugin::displayNameForStepId(stepType);
+        if (stepType == ProjectExplorer::Constants::BUILDSTEPS_BUILD) {
+            stepLists << bc->buildSteps();
+            stepListNames << ProjectExplorerPlugin::displayNameForStepId(stepType);
+        } else if (stepType == ProjectExplorer::Constants::BUILDSTEPS_CLEAN) {
+            stepLists << bc->cleanSteps();
+            stepListNames << ProjectExplorerPlugin::displayNameForStepId(stepType);
+        }
     }
     BuildManager::buildLists(stepLists, stepListNames);
     bc->setProducts(QStringList());
@@ -570,12 +571,26 @@ void QbsProjectManagerPlugin::reparseProject(QbsProject *project)
     if (!project)
         return;
 
+    Target *t = project->activeTarget();
+    if (!t)
+        return;
+
+    QbsBuildSystem *bs = static_cast<QbsBuildSystem *>(t->buildSystem());
+    if (!bs)
+        return;
+
     // Qbs does update the build graph during the build. So we cannot
     // start to parse while a build is running or we will lose information.
     if (BuildManager::isBuilding(project))
-        project->scheduleParsing();
+        bs->scheduleParsing();
     else
-        project->parseCurrentBuildConfiguration();
+        bs->parseCurrentBuildConfiguration();
+}
+
+void QbsProjectManagerPlugin::buildNamedProduct(QbsProject *project, const QString &product)
+{
+    QbsProjectManagerPlugin::runStepsForProducts(project, QStringList(product),
+            {Core::Id(ProjectExplorer::Constants::BUILDSTEPS_BUILD)});
 }
 
 } // namespace Internal

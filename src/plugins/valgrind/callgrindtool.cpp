@@ -219,6 +219,11 @@ public:
     bool m_toolBusy = false;
 
     Perspective m_perspective{"Callgrind.Perspective", CallgrindTool::tr("Callgrind")};
+
+    RunWorkerFactory callgrindRunWorkerFactory{
+        RunWorkerFactory::make<CallgrindToolRunner>(),
+        {CALLGRIND_RUN_MODE}
+    };
 };
 
 CallgrindToolPrivate::CallgrindToolPrivate()
@@ -271,7 +276,7 @@ CallgrindToolPrivate::CallgrindToolPrivate()
     menu->addAction(ActionManager::registerAction(action, CallgrindRemoteActionId),
                     Debugger::Constants::G_ANALYZER_REMOTE_TOOLS);
     QObject::connect(action, &QAction::triggered, this, [this, action] {
-        auto runConfig = RunConfiguration::startupRunConfiguration();
+        auto runConfig = SessionManager::startupRunConfiguration();
         if (!runConfig) {
             showCannotStartDialog(action->text());
             return;
@@ -285,7 +290,7 @@ CallgrindToolPrivate::CallgrindToolPrivate()
         runControl->createMainWorker();
         const auto runnable = dlg.runnable();
         runControl->setRunnable(runnable);
-        runControl->setDisplayName(runnable.executable);
+        runControl->setDisplayName(runnable.executable.toUserOutput());
         ProjectExplorerPlugin::startRunControl(runControl);
     });
 
@@ -391,7 +396,7 @@ CallgrindToolPrivate::CallgrindToolPrivate()
     // reset action
     m_resetAction = action = new QAction(this);
     action->setDisabled(true);
-    action->setIcon(Utils::Icons::RELOAD.icon());
+    action->setIcon(Utils::Icons::RELOAD_TOOLBAR.icon());
     //action->setText(CallgrindTool::tr("Reset"));
     action->setToolTip(CallgrindTool::tr("Reset all event counters."));
     connect(action, &QAction::triggered, this, &CallgrindToolPrivate::resetRequested);
@@ -525,7 +530,7 @@ CallgrindToolPrivate::CallgrindToolPrivate()
     m_perspective.addWindow(m_visualization, Perspective::SplitVertical, nullptr,
                            false, Qt::RightDockWidgetArea);
 
-    connect(ProjectExplorerPlugin::instance(), &ProjectExplorerPlugin::updateRunActions,
+    connect(ProjectExplorerPlugin::instance(), &ProjectExplorerPlugin::runActionsUpdated,
             this, &CallgrindToolPrivate::updateRunActions);
 }
 
@@ -781,13 +786,11 @@ void CallgrindToolPrivate::setupRunner(CallgrindToolRunner *toolRunner)
     QTC_ASSERT(m_visualization, return);
 
     // apply project settings
-    auto settings
-          = qobject_cast<ValgrindBaseSettings *>(runControl->settings(ANALYZER_VALGRIND_SETTINGS));
-    if (settings) {
-        m_visualization->setMinimumInclusiveCostRatio(settings->visualisationMinimumInclusiveCostRatio() / 100.0);
-        m_proxyModel.setMinimumInclusiveCostRatio(settings->minimumInclusiveCostRatio() / 100.0);
-        m_dataModel.setVerboseToolTipsEnabled(settings->enableEventToolTips());
-    }
+    ValgrindProjectSettings settings;
+    settings.fromMap(runControl->settingsData(ANALYZER_VALGRIND_SETTINGS));
+    m_visualization->setMinimumInclusiveCostRatio(settings.visualisationMinimumInclusiveCostRatio() / 100.0);
+    m_proxyModel.setMinimumInclusiveCostRatio(settings.minimumInclusiveCostRatio() / 100.0);
+    m_dataModel.setVerboseToolTipsEnabled(settings.enableEventToolTips());
 
     m_toolBusy = true;
     updateRunActions();
@@ -860,7 +863,7 @@ void CallgrindToolPrivate::showParserResults(const ParseData *data)
 
 void CallgrindToolPrivate::editorOpened(IEditor *editor)
 {
-    if (auto widget = qobject_cast<TextEditorWidget *>(editor->widget())) {
+    if (auto widget = TextEditorWidget::fromEditor(editor)) {
         connect(widget, &TextEditorWidget::markContextMenuRequested,
                 this, &CallgrindToolPrivate::requestContextMenu);
     }
@@ -999,7 +1002,6 @@ void setupCallgrindRunner(CallgrindToolRunner *toolRunner)
 CallgrindTool::CallgrindTool()
 {
     dd = new CallgrindToolPrivate;
-    RunControl::registerWorker<CallgrindToolRunner>(CALLGRIND_RUN_MODE, {});
 }
 
 CallgrindTool::~CallgrindTool()

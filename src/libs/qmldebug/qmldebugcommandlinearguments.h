@@ -25,7 +25,9 @@
 
 #pragma once
 
-#include <utils/port.h>
+#include <coreplugin/id.h>
+#include <projectexplorer/projectexplorerconstants.h>
+
 #include <QString>
 #include <QUrl>
 
@@ -69,9 +71,10 @@ inline QString qmlDebugCommandLineArguments(QmlDebugServicesPreset services,
 }
 
 inline QString qmlDebugTcpArguments(QmlDebugServicesPreset services,
-                                    Utils::Port port, bool block = true)
+                                    const QUrl &server, bool block = true)
 {
-    return qmlDebugCommandLineArguments(services, QString("port:%1").arg(port.number()), block);
+    //  TODO: Also generate host:<host> if applicable.
+    return qmlDebugCommandLineArguments(services, QString("port:%1").arg(server.port()), block);
 }
 
 inline QString qmlDebugNativeArguments(QmlDebugServicesPreset services, bool block = true)
@@ -83,6 +86,26 @@ inline QString qmlDebugLocalArguments(QmlDebugServicesPreset services, const QSt
                                       bool block = true)
 {
     return qmlDebugCommandLineArguments(services, QLatin1String("file:") + socket, block);
+}
+
+inline Core::Id runnerIdForRunMode(Core::Id runMode)
+{
+    if (runMode == ProjectExplorer::Constants::QML_PROFILER_RUN_MODE)
+        return ProjectExplorer::Constants::QML_PROFILER_RUNNER;
+    if (runMode == ProjectExplorer::Constants::QML_PREVIEW_RUN_MODE)
+        return ProjectExplorer::Constants::QML_PREVIEW_RUNNER;
+    return {};
+}
+
+inline QmlDebugServicesPreset servicesForRunMode(Core::Id runMode)
+{
+    if (runMode == ProjectExplorer::Constants::QML_PROFILER_RUN_MODE)
+        return QmlDebug::QmlProfilerServices;
+    if (runMode == ProjectExplorer::Constants::QML_PREVIEW_RUN_MODE)
+        return QmlDebug::QmlPreviewServices;
+    if (runMode == ProjectExplorer::Constants::DEBUG_RUN_MODE)
+        return QmlDebug::QmlDebuggerServices;
+    return {};
 }
 
 } // namespace QmlDebug

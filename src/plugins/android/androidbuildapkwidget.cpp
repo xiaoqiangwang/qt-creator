@@ -35,6 +35,7 @@
 #include "createandroidmanifestwizard.h"
 
 #include <projectexplorer/buildconfiguration.h>
+#include <projectexplorer/buildsystem.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectnodes.h>
 #include <projectexplorer/runconfiguration.h>
@@ -42,9 +43,9 @@
 
 #include <qtsupport/qtkitinformation.h>
 
+#include <utils/infolabel.h>
 #include <utils/fancylineedit.h>
 #include <utils/pathchooser.h>
-#include <utils/utilsicons.h>
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -98,12 +99,13 @@ QWidget *AndroidBuildApkWidget::createApplicationGroup()
 
     auto targetSDKComboBox = new QComboBox(group);
     targetSDKComboBox->addItems(targets);
-    targetSDKComboBox->setCurrentIndex(targets.indexOf(AndroidManager::buildTargetSDK(step()->target())));
+    targetSDKComboBox->setCurrentIndex(targets.indexOf(m_step->buildTargetSdk()));
 
     const auto cbActivated = QOverload<int>::of(&QComboBox::activated);
     connect(targetSDKComboBox, cbActivated, this, [this, targetSDKComboBox](int idx) {
        const QString sdk = targetSDKComboBox->itemText(idx);
        m_step->setBuildTargetSdk(sdk);
+       AndroidManager::updateGradleProperties(step()->target(), QString()); // FIXME: Use real key.
    });
 
     auto hbox = new QHBoxLayout(group);
@@ -155,13 +157,8 @@ QWidget *AndroidBuildApkWidget::createSignPackageGroup()
     m_signPackageCheckBox = new QCheckBox(tr("Sign package"), group);
     m_signPackageCheckBox->setChecked(m_step->signPackage());
 
-    m_signingDebugWarningIcon = new QLabel(group);
-    m_signingDebugWarningIcon->setSizePolicy(sizePolicy);
-    m_signingDebugWarningIcon->setPixmap(Icons::WARNING.pixmap());
-    m_signingDebugWarningIcon->hide();
-
-    m_signingDebugWarningLabel = new QLabel(tr("Signing a debug package"), group);
-    m_signingDebugWarningLabel->setSizePolicy(sizePolicy);
+    m_signingDebugWarningLabel = new Utils::InfoLabel(tr("Signing a debug package"),
+                                                      Utils::InfoLabel::Warning, group);
     m_signingDebugWarningLabel->hide();
 
     auto certificateAliasLabel = new QLabel(tr("Certificate alias:"), group);
@@ -181,7 +178,6 @@ QWidget *AndroidBuildApkWidget::createSignPackageGroup()
     horizontalLayout_2->addWidget(keystoreCreateButton);
 
     auto horizontalLayout_3 = new QHBoxLayout;
-    horizontalLayout_3->addWidget(m_signingDebugWarningIcon);
     horizontalLayout_3->addWidget(m_signingDebugWarningLabel);
     horizontalLayout_3->addWidget(certificateAliasLabel);
     horizontalLayout_3->addWidget(m_certificatesAliasComboBox);
@@ -196,7 +192,7 @@ QWidget *AndroidBuildApkWidget::createSignPackageGroup()
 
     auto updateAlias = [this](int idx) {
         QString alias = m_certificatesAliasComboBox->itemText(idx);
-        if (alias.length())
+        if (!alias.isEmpty())
             m_step->setCertificateAlias(alias);
     };
 
@@ -236,6 +232,13 @@ QWidget *AndroidBuildApkWidget::createAdvancedGroup()
             m_step, &AndroidBuildApkStep::setUseMinistro);
 
     auto vbox = new QVBoxLayout(group);
+    QtSupport::BaseQtVersion *version = QtSupport::QtKitAspect::qtVersion(step()->target()->kit());
+    if (version && version->qtVersion() >= QtSupport::QtVersionNumber{5,14}) {
+        auto buildAAB = new QCheckBox(tr("Build .aab (Android App Bundle)"), group);
+        buildAAB->setChecked(m_step->buildAAB());
+        connect(buildAAB, &QAbstractButton::toggled, m_step, &AndroidBuildApkStep::setBuildAAB);
+        vbox->addWidget(buildAAB);
+    }
     vbox->addWidget(openPackageLocationCheckBox);
     vbox->addWidget(verboseOutputCheckBox);
     vbox->addWidget(m_addDebuggerCheckBox);
@@ -254,7 +257,7 @@ QWidget *AndroidBuildApkWidget::createCreateTemplatesGroup()
 
     auto createAndroidTemplatesButton = new QPushButton(tr("Create Templates"));
     connect(createAndroidTemplatesButton, &QAbstractButton::clicked, this, [this] {
-        CreateAndroidManifestWizard wizard(m_step->target());
+        CreateAndroidManifestWizard wizard(m_step->buildConfiguration()->buildSystem());
         wizard.exec();
     });
 
@@ -271,8 +274,11 @@ QWidget *AndroidBuildApkWidget::createAdditionalLibrariesGroup()
     group->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
 
     auto libsModel = new AndroidExtraLibraryListModel(m_step->target(), this);
-    connect(libsModel, &AndroidExtraLibraryListModel::enabledChanged,
-            group, &QWidget::setEnabled);
+    connect(libsModel, &AndroidExtraLibraryListModel::enabledChanged, this,
+            [this, group](const bool enabled) {
+                group->setEnabled(enabled);
+                m_openSslCheckBox->setChecked(isOpenSslLibsIncluded());
+    });
 
     auto libsView = new QListView;
     libsView->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -306,9 +312,16 @@ QWidget *AndroidBuildApkWidget::createAdditionalLibrariesGroup()
     libsButtonLayout->addWidget(removeLibButton);
     libsButtonLayout->addStretch(1);
 
-    auto hbox = new QHBoxLayout(group);
-    hbox->addWidget(libsView);
-    hbox->addLayout(libsButtonLayout);
+    m_openSslCheckBox = new QCheckBox(tr("Include prebuilt OpenSSL libraries"));
+    m_openSslCheckBox->setToolTip(tr("This is useful for apps that use SSL operations. The path "
+                                     "can be defined in Tools > Options > Devices > Android."));
+    connect(m_openSslCheckBox, &QAbstractButton::clicked, this,
+            &AndroidBuildApkWidget::onOpenSslCheckBoxChanged);
+
+    auto grid = new QGridLayout(group);
+    grid->addWidget(m_openSslCheckBox, 0, 0);
+    grid->addWidget(libsView, 1, 0);
+    grid->addLayout(libsButtonLayout, 1, 1);
 
     QItemSelectionModel *libSelection = libsView->selectionModel();
     connect(libSelection, &QItemSelectionModel::selectionChanged, this, [libSelection, removeLibButton] {
@@ -335,6 +348,53 @@ void AndroidBuildApkWidget::signPackageCheckBoxToggled(bool checked)
         setCertificates();
 }
 
+void AndroidBuildApkWidget::onOpenSslCheckBoxChanged()
+{
+    Utils::FilePath projectPath = m_step->buildConfiguration()->buildSystem()->projectFilePath();
+    QFile projectFile(projectPath.toString());
+    if (!projectFile.open(QIODevice::ReadWrite | QIODevice::Text)) {
+        qWarning() << "Cound't open project file to add OpenSSL extra libs: " << projectPath;
+        return;
+    }
+
+    const QString searchStr = openSslIncludeFileContent(projectPath);
+    QTextStream textStream(&projectFile);
+
+    QString fileContent = textStream.readAll();
+    if (!m_openSslCheckBox->isChecked()) {
+        fileContent.remove("\n" + searchStr);
+    } else if (!fileContent.contains(searchStr, Qt::CaseSensitive)) {
+        fileContent.append(searchStr + "\n");
+    }
+
+    projectFile.resize(0);
+    textStream << fileContent;
+    projectFile.close();
+}
+
+bool AndroidBuildApkWidget::isOpenSslLibsIncluded()
+{
+    Utils::FilePath projectPath = m_step->buildConfiguration()->buildSystem()->projectFilePath();
+    const QString searchStr = openSslIncludeFileContent(projectPath);
+    QFile projectFile(projectPath.toString());
+    projectFile.open(QIODevice::ReadOnly);
+    QTextStream textStream(&projectFile);
+    QString fileContent = textStream.readAll();
+    projectFile.close();
+    return fileContent.contains(searchStr, Qt::CaseSensitive);
+}
+
+QString AndroidBuildApkWidget::openSslIncludeFileContent(const Utils::FilePath &projectPath)
+{
+    QString openSslPath = AndroidConfigurations::currentConfig().openSslLocation().toString();
+    if (projectPath.endsWith(".pro"))
+        return "android: include(" + openSslPath + "/openssl.pri)";
+    if (projectPath.endsWith("CMakeLists.txt"))
+        return "if (ANDROID)\n    include(" + openSslPath + "/CMakeLists.txt)\nendif()";
+
+    return QString();
+}
+
 void AndroidBuildApkWidget::setCertificates()
 {
     QAbstractItemModel *certificates = m_step->keystoreCertificates();
@@ -348,7 +408,6 @@ void AndroidBuildApkWidget::updateSigningWarning()
 {
     bool nonRelease = m_step->buildConfiguration()->buildType() != BuildConfiguration::Release;
     bool visible = m_step->signPackage() && nonRelease;
-    m_signingDebugWarningIcon->setVisible(visible);
     m_signingDebugWarningLabel->setVisible(visible);
 }
 

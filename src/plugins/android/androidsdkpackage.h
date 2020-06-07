@@ -53,9 +53,11 @@ public:
         SdkPlatformPackage      = 1 << 4,
         SystemImagePackage      = 1 << 5,
         EmulatorToolsPackage    = 1 << 6,
-        ExtraToolsPackage       = 1 << 7,
+        NDKPackage              = 1 << 7,
+        ExtraToolsPackage       = 1 << 8,
         AnyValidType = SdkToolsPackage | BuildToolsPackage | PlatformToolsPackage |
-        SdkPlatformPackage | SystemImagePackage | EmulatorToolsPackage | ExtraToolsPackage
+        SdkPlatformPackage | SystemImagePackage | EmulatorToolsPackage | NDKPackage |
+                       ExtraToolsPackage
     };
 
     enum PackageState {
@@ -114,10 +116,13 @@ public:
     const QString &abiName() const;
     const SdkPlatform *platform() const;
     void setPlatform(SdkPlatform *platform);
+    int apiLevel() const;
+    void setApiLevel(const int apiLevel);
 
 private:
     QPointer<SdkPlatform> m_platform;
     QString m_abiName;
+    int m_apiLevel = -1;
 };
 using SystemImageList = QList<SystemImage*>;
 
@@ -192,6 +197,23 @@ public:
     bool isValid() const override;
     PackageType type() const override;
 };
+
+class Ndk : public AndroidSdkPackage
+{
+public:
+    Ndk(QVersionNumber revision, QString sdkStylePathStr, QObject *parent = nullptr);
+
+    // AndroidSdkPackage Overrides
+    bool isValid() const override;
+    PackageType type() const override;
+
+    bool isNdkBundle() const;
+    void setAsNdkBundle(const bool isBundle);
+
+private:
+    bool m_isBundle = false;
+};
+using NdkList = QList<Ndk *>;
 
 class ExtraTools : public AndroidSdkPackage
 {

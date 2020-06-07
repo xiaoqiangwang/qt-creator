@@ -134,13 +134,17 @@ TimelineWidget::TimelineWidget(TimelineView *view)
     sizePolicy1.setHeightForWidth(m_graphicsView->sizePolicy().hasHeightForWidth());
 
     m_rulerView->setObjectName("RulerView");
-    m_rulerView->setScene(graphicsScene());
     m_rulerView->setFixedHeight(TimelineConstants::rulerHeight);
     m_rulerView->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-    m_rulerView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    m_rulerView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_rulerView->viewport()->installEventFilter(new Eventfilter(this));
     m_rulerView->viewport()->setFocusPolicy(Qt::NoFocus);
+    m_rulerView->setStyleSheet(css);
+    m_rulerView->setFrameShape(QFrame::NoFrame);
+    m_rulerView->setFrameShadow(QFrame::Plain);
+    m_rulerView->setLineWidth(0);
+    m_rulerView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_rulerView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_rulerView->setScene(graphicsScene());
 
     m_graphicsView->setStyleSheet(css);
     m_graphicsView->setObjectName("SceneView");
@@ -176,7 +180,7 @@ TimelineWidget::TimelineWidget(TimelineView *view)
     widgetLayout->addWidget(m_toolbar);
     widgetLayout->addWidget(m_addButton);
 
-    m_addButton->setIcon(TimelineIcons::ADD_TIMELINE.icon());
+    m_addButton->setIcon(TimelineIcons::ADD_TIMELINE_TOOLBAR.icon());
     m_addButton->setToolTip(tr("Add Timeline"));
     m_addButton->setFlat(true);
     m_addButton->setFixedSize(32, 32);
@@ -328,6 +332,25 @@ void TimelineWidget::updateAnimationCurve(DesignTools::PropertyTreeItem *item)
     QmlTimelineKeyframeGroup group = timelineKeyframeGroup(currentTimeline, item);
 
     if (group.isValid()) {
+        ModelNode groupNode = group.modelNode();
+
+        if (groupNode.isValid()) {
+            if (item->locked())
+                groupNode.setAuxiliaryData("locked", true);
+            else
+                groupNode.removeAuxiliaryData("locked");
+
+            if (item->pinned())
+                groupNode.setAuxiliaryData("pinned", true);
+            else
+                groupNode.removeAuxiliaryData("pinned");
+
+            if (item->hasUnified())
+                groupNode.setAuxiliaryData("unified", item->unifyString());
+            else
+                groupNode.removeAuxiliaryData("unified");
+        }
+
         auto replaceKeyframes = [&group, item, this]() {
             m_toolbar->setBlockReflection(true);
             for (auto frame : group.keyframes())
@@ -341,7 +364,8 @@ void TimelineWidget::updateAnimationCurve(DesignTools::PropertyTreeItem *item)
                 if (previous.isValid()) {
                     if (frame.interpolation() == DesignTools::Keyframe::Interpolation::Bezier) {
                         DesignTools::CurveSegment segment(previous, frame);
-                        attachEasingCurve(pos.x(), segment.easingCurve(), group);
+                        if (segment.isValid())
+                            attachEasingCurve(pos.x(), segment.easingCurve(), group);
                     } else if (frame.interpolation()
                                == DesignTools::Keyframe::Interpolation::Easing) {
                         QVariant data = frame.data();
@@ -405,14 +429,18 @@ void TimelineWidget::contextHelp(const Core::IContext::HelpCallback &callback) c
 void TimelineWidget::init()
 {
     QmlTimeline currentTimeline = m_timelineView->timelineForState(m_timelineView->currentState());
-    if (currentTimeline.isValid())
+    if (currentTimeline.isValid()) {
         setTimelineId(currentTimeline.modelNode().id());
-    else
+        m_statusBar->setText(
+            tr(TimelineConstants::statusBarPlayheadFrame).arg(getcurrentFrame(currentTimeline)));
+    } else {
         setTimelineId({});
+        m_statusBar->clear();
+    }
 
-    invalidateTimelineDuration(graphicsScene()->currentTimeline());
+    invalidateTimelineDuration(m_graphicsScene->currentTimeline());
 
-    graphicsScene()->setWidth(m_graphicsView->viewport()->width());
+    m_graphicsScene->setWidth(m_graphicsView->viewport()->width());
 
     // setScaleFactor uses QSignalBlocker.
     m_toolbar->setScaleFactor(0);
@@ -441,8 +469,21 @@ void TimelineWidget::invalidateTimelineDuration(const QmlTimeline &timeline)
     if (timelineView() && timelineView()->model()) {
         QmlTimeline currentTimeline = graphicsScene()->currentTimeline();
         if (currentTimeline.isValid() && currentTimeline == timeline) {
+            m_toolbar->setStartFrame(timeline.startKeyframe());
+            m_toolbar->setEndFrame(timeline.endKeyframe());
             graphicsScene()->setTimeline(timeline);
-            graphicsScene()->setCurrenFrame(timeline, getcurrentFrame(timeline));
+
+            qreal playHeadFrame = getcurrentFrame(timeline);
+            if (playHeadFrame < timeline.startKeyframe())
+                playHeadFrame = timeline.startKeyframe();
+            else if (playHeadFrame > timeline.endKeyframe())
+                playHeadFrame = timeline.endKeyframe();
+
+            /* We have to set the current frame asynchronously,
+             * because callbacks are not supposed to mutate the model. */
+            QTimer::singleShot(0, [this, playHeadFrame] {
+                graphicsScene()->setCurrentFrame(playHeadFrame);
+            });
         }
     }
 }
@@ -471,11 +512,15 @@ void TimelineWidget::setupScrollbar(int min, int max, int current)
 
 void TimelineWidget::setTimelineId(const QString &id)
 {
-    setTimelineActive(!m_timelineView->getTimelines().isEmpty());
-    if (m_timelineView->isAttached()) {
+    const bool empty = m_timelineView->getTimelines().isEmpty();
+    setTimelineActive(!empty);
+    if (m_timelineView->isAttached() && !empty) {
         m_toolbar->setCurrentTimeline(m_timelineView->modelNodeForId(id));
         m_toolbar->setCurrentState(m_timelineView->currentState().name());
         m_timelineView->setTimelineRecording(false);
+    } else {
+        m_toolbar->setCurrentTimeline({});
+        m_toolbar->setCurrentState({});
     }
 }
 

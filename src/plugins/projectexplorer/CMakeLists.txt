@@ -12,6 +12,9 @@ add_qtc_plugin(ProjectExplorer
     applicationlauncher.cpp applicationlauncher.h
     appoutputpane.cpp appoutputpane.h
     baseprojectwizarddialog.cpp baseprojectwizarddialog.h
+    buildaspects.cpp buildaspects.h
+    buildpropertiessettings.h
+    buildpropertiessettingspage.cpp buildpropertiessettingspage.h
     buildconfiguration.cpp buildconfiguration.h
     buildenvironmentwidget.cpp buildenvironmentwidget.h
     buildinfo.cpp buildinfo.h
@@ -21,7 +24,9 @@ add_qtc_plugin(ProjectExplorer
     buildstep.cpp buildstep.h
     buildsteplist.cpp buildsteplist.h
     buildstepspage.cpp buildstepspage.h
+    buildsystem.cpp buildsystem.h
     buildtargetinfo.h
+    buildtargettype.h
     clangparser.cpp clangparser.h
     codestylesettingspropertiespage.cpp codestylesettingspropertiespage.h codestylesettingspropertiespage.ui
     compileoutputwindow.cpp compileoutputwindow.h
@@ -41,10 +46,9 @@ add_qtc_plugin(ProjectExplorer
     deployablefile.cpp deployablefile.h
     deployconfiguration.cpp deployconfiguration.h
     deploymentdata.cpp deploymentdata.h
-    deploymentdatamodel.cpp deploymentdatamodel.h
-    deploymentdataview.cpp deploymentdataview.h deploymentdataview.ui
+    deploymentdataview.cpp deploymentdataview.h
+    desktoprunconfiguration.cpp desktoprunconfiguration.h
     devicesupport/desktopdevice.cpp devicesupport/desktopdevice.h
-    devicesupport/desktopdeviceconfigurationwidget.cpp devicesupport/desktopdeviceconfigurationwidget.h devicesupport/desktopdeviceconfigurationwidget.ui
     devicesupport/desktopdevicefactory.cpp devicesupport/desktopdevicefactory.h
     devicesupport/desktopdeviceprocess.cpp devicesupport/desktopdeviceprocess.h
     devicesupport/desktopprocesssignaloperation.cpp devicesupport/desktopprocesssignaloperation.h
@@ -109,6 +113,7 @@ add_qtc_plugin(ProjectExplorer
     kitmodel.cpp kitmodel.h
     kitoptionspage.cpp kitoptionspage.h
     ldparser.cpp ldparser.h
+    lldparser.cpp lldparser.h
     linuxiccparser.cpp linuxiccparser.h
     localenvironmentaspect.cpp localenvironmentaspect.h
     makestep.cpp makestep.h makestep.ui
@@ -128,7 +133,6 @@ add_qtc_plugin(ProjectExplorer
     projectexplorer.cpp projectexplorer.h
     projectexplorer.qrc
     projectexplorer_export.h
-    projectexplorer_global.h
     projectexplorerconstants.h
     projectexplorericons.cpp projectexplorericons.h
     projectexplorersettings.h
@@ -146,6 +150,7 @@ add_qtc_plugin(ProjectExplorer
     projectwelcomepage.cpp projectwelcomepage.h
     projectwindow.cpp projectwindow.h
     projectwizardpage.cpp projectwizardpage.h projectwizardpage.ui
+    rawprojectpart.cpp rawprojectpart.h
     removetaskhandler.cpp removetaskhandler.h
     runconfiguration.cpp runconfiguration.h
     runconfigurationaspects.cpp runconfigurationaspects.h
@@ -158,7 +163,7 @@ add_qtc_plugin(ProjectExplorer
     sessionview.cpp sessionview.h
     showineditortaskhandler.cpp showineditortaskhandler.h
     showoutputtaskhandler.cpp showoutputtaskhandler.h
-    subscription.cpp subscription.h
+    simpleprojectwizard.cpp simpleprojectwizard.h
     target.cpp target.h
     targetsettingspanel.cpp targetsettingspanel.h
     targetsetuppage.cpp targetsetuppage.h

@@ -83,12 +83,12 @@ QString GenericProjectWizardDialog::path() const
     return m_firstPage->path();
 }
 
-Utils::FilePathList GenericProjectWizardDialog::selectedPaths() const
+Utils::FilePaths GenericProjectWizardDialog::selectedPaths() const
 {
     return m_secondPage->selectedPaths();
 }
 
-Utils::FilePathList GenericProjectWizardDialog::selectedFiles() const
+Utils::FilePaths GenericProjectWizardDialog::selectedFiles() const
 {
     return m_secondPage->selectedFiles();
 }
@@ -211,7 +211,7 @@ Core::GeneratedFiles GenericProjectWizard::generateFiles(const QWizard *w,
 bool GenericProjectWizard::postGenerateFiles(const QWizard *w, const Core::GeneratedFiles &l,
                                              QString *errorMessage) const
 {
-    Q_UNUSED(w);
+    Q_UNUSED(w)
     return ProjectExplorer::CustomProjectWizard::postGenerateOpen(l, errorMessage);
 }
 

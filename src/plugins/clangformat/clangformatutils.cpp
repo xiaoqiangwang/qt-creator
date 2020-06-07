@@ -57,10 +57,18 @@ static clang::format::FormatStyle qtcStyle()
     style.AlignOperands = true;
     style.AlignTrailingComments = true;
     style.AllowAllParametersOfDeclarationOnNextLine = true;
+#if LLVM_VERSION_MAJOR >= 10
+    style.AllowShortBlocksOnASingleLine = FormatStyle::SBS_Never;
+#else
     style.AllowShortBlocksOnASingleLine = false;
+#endif
     style.AllowShortCaseLabelsOnASingleLine = false;
     style.AllowShortFunctionsOnASingleLine = FormatStyle::SFS_Inline;
+#if LLVM_VERSION_MAJOR >= 9
+    style.AllowShortIfStatementsOnASingleLine = FormatStyle::SIS_Never;
+#else
     style.AllowShortIfStatementsOnASingleLine = false;
+#endif
     style.AllowShortLoopsOnASingleLine = false;
     style.AlwaysBreakAfterReturnType = FormatStyle::RTBS_None;
     style.AlwaysBreakBeforeMultilineStrings = false;
@@ -68,7 +76,11 @@ static clang::format::FormatStyle qtcStyle()
     style.BinPackArguments = false;
     style.BinPackParameters = false;
     style.BraceWrapping.AfterClass = true;
+#if LLVM_VERSION_MAJOR >= 10
+    style.BraceWrapping.AfterControlStatement = FormatStyle::BWACS_Never;
+#else
     style.BraceWrapping.AfterControlStatement = false;
+#endif
     style.BraceWrapping.AfterEnum = false;
     style.BraceWrapping.AfterFunction = true;
     style.BraceWrapping.AfterNamespace = false;

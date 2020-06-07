@@ -42,7 +42,6 @@ namespace Internal {
 class AbstractPackagingStepPrivate
 {
 public:
-    BuildConfiguration *currentBuildConfiguration = nullptr;
     QString cachedPackageFilePath;
     QString cachedPackageDirectory;
     bool deploymentDataModified = false;
@@ -54,9 +53,6 @@ AbstractPackagingStep::AbstractPackagingStep(BuildStepList *bsl, Core::Id id)
     : BuildStep(bsl, id)
 {
     d = new Internal::AbstractPackagingStepPrivate;
-    connect(target(), &Target::activeBuildConfigurationChanged,
-            this, &AbstractPackagingStep::handleBuildConfigurationChanged);
-    handleBuildConfigurationChanged();
 
     connect(target(), &Target::deploymentDataChanged,
             this, &AbstractPackagingStep::setDeploymentDataModified);
@@ -69,18 +65,6 @@ AbstractPackagingStep::AbstractPackagingStep(BuildStepList *bsl, Core::Id id)
 AbstractPackagingStep::~AbstractPackagingStep()
 {
     delete d;
-}
-
-void AbstractPackagingStep::handleBuildConfigurationChanged()
-{
-    if (d->currentBuildConfiguration)
-        disconnect(d->currentBuildConfiguration, nullptr, this, nullptr);
-    d->currentBuildConfiguration = buildConfiguration();
-    if (d->currentBuildConfiguration) {
-        connect(d->currentBuildConfiguration, &BuildConfiguration::buildDirectoryChanged,
-                this, &AbstractPackagingStep::packageFilePathChanged);
-    }
-    emit packageFilePathChanged();
 }
 
 QString AbstractPackagingStep::cachedPackageFilePath() const
@@ -102,8 +86,7 @@ QString AbstractPackagingStep::cachedPackageDirectory() const
 
 QString AbstractPackagingStep::packageDirectory() const
 {
-    return d->currentBuildConfiguration
-            ? d->currentBuildConfiguration->buildDirectory().toString() : QString();
+    return buildConfiguration()->buildDirectory().toString();
 }
 
 bool AbstractPackagingStep::isPackagingNeeded() const
@@ -152,17 +135,13 @@ void AbstractPackagingStep::setDeploymentDataModified()
 
 void AbstractPackagingStep::raiseError(const QString &errorMessage)
 {
-    Task task = Task(Task::Error, errorMessage, Utils::FilePath(), -1,
-                     Constants::TASK_CATEGORY_DEPLOYMENT);
-    emit addTask(task);
+    emit addTask(DeploymentTask(Task::Error, errorMessage));
     emit addOutput(errorMessage, BuildStep::OutputFormat::Stderr);
 }
 
 void AbstractPackagingStep::raiseWarning(const QString &warningMessage)
 {
-    Task task = Task(Task::Warning, warningMessage, Utils::FilePath(), -1,
-                     Constants::TASK_CATEGORY_DEPLOYMENT);
-    emit addTask(task);
+    emit addTask(DeploymentTask(Task::Warning, warningMessage));
     emit addOutput(warningMessage, OutputFormat::ErrorMessage);
 }
 

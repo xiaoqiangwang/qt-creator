@@ -60,9 +60,9 @@ class QnxPortsGatheringMethod : public PortsGatheringMethod
     // used to be fixed. These two can now be matched to each other.
     Runnable runnable(QAbstractSocket::NetworkLayerProtocol protocol) const override
     {
-        Q_UNUSED(protocol);
+        Q_UNUSED(protocol)
         Runnable runnable;
-        runnable.executable = "netstat";
+        runnable.executable = FilePath::fromString("netstat");
         runnable.commandLineArguments = "-na";
         return runnable;
     }
@@ -82,20 +82,14 @@ class QnxPortsGatheringMethod : public PortsGatheringMethod
 
 QnxDevice::QnxDevice()
 {
+    setDisplayType(tr("QNX"));
+    setDefaultDisplayName(tr("QNX Device"));
+    setOsType(OsTypeOtherUnix);
+
     addDeviceAction({tr("Deploy Qt libraries..."), [](const IDevice::Ptr &device, QWidget *parent) {
         QnxDeployQtLibrariesDialog dialog(device, parent);
         dialog.exec();
     }});
-}
-
-QString QnxDevice::displayType() const
-{
-    return tr("QNX");
-}
-
-OsType QnxDevice::osType() const
-{
-    return OsTypeOtherUnix;
 }
 
 int QnxDevice::qnxVersion() const
@@ -114,7 +108,7 @@ void QnxDevice::updateVersionNumber() const
     QObject::connect(&versionNumberProcess, &DeviceProcess::error, &eventLoop, &QEventLoop::quit);
 
     Runnable r;
-    r.executable = QLatin1String("uname");
+    r.executable = FilePath::fromString("uname");
     r.commandLineArguments = QLatin1String("-r");
     versionNumberProcess.start(r);
 
@@ -182,7 +176,7 @@ DeviceProcessSignalOperation::Ptr QnxDevice::signalOperation() const
 QnxDeviceFactory::QnxDeviceFactory()
     : ProjectExplorer::IDeviceFactory(Constants::QNX_QNX_OS_TYPE)
 {
-    setDisplayName(tr("QNX Device"));
+    setDisplayName(QnxDevice::tr("QNX Device"));
     setCombinedIcon(":/qnx/images/qnxdevicesmall.png",
                     ":/qnx/images/qnxdevice.png");
     setCanCreate(true);

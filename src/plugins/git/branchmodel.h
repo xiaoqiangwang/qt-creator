@@ -66,7 +66,6 @@ public:
     void renameTag(const QString &oldName, const QString &newName);
 
     QString workingDirectory() const;
-    GitClient *client() const;
 
     QModelIndex currentBranch() const;
     QString fullName(const QModelIndex &idx, bool includePrefix = false) const;
@@ -86,12 +85,14 @@ public:
     void setRemoteTracking(const QModelIndex &trackingIndex);
     void setOldBranchesIncluded(bool value);
     Utils::optional<QString> remoteName(const QModelIndex &idx) const;
+    void refreshCurrentBranch();
 
 private:
     void setCurrentBranch();
     BranchNode *indexToNode(const QModelIndex &index) const;
     QModelIndex nodeToIndex(BranchNode *node, int column) const;
     void removeNode(const QModelIndex &idx);
+    void updateUpstreamStatus(BranchNode *node);
 
     QString toolTip(const QString &sha) const;
 

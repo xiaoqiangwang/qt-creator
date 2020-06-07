@@ -138,7 +138,7 @@ void DescriptionEditorWidget::setDisplaySettings(const DisplaySettings &ds)
 
 void DescriptionEditorWidget::setMarginSettings(const MarginSettings &ms)
 {
-    Q_UNUSED(ms);
+    Q_UNUSED(ms)
     TextEditorWidget::setMarginSettings(MarginSettings());
 }
 
@@ -200,7 +200,7 @@ DiffEditor::DiffEditor()
     m_toggleDescriptionAction = m_toolBar->addAction(Icons::TOP_BAR.icon(), QString());
     m_toggleDescriptionAction->setCheckable(true);
 
-    m_reloadAction = m_toolBar->addAction(Utils::Icons::RELOAD.icon(), tr("Reload Diff"));
+    m_reloadAction = m_toolBar->addAction(Utils::Icons::RELOAD_TOOLBAR.icon(), tr("Reload Diff"));
     m_reloadAction->setToolTip(tr("Reload Diff"));
 
     m_toggleSyncAction = m_toolBar->addAction(Utils::Icons::LINK_TOOLBAR.icon(), QString());

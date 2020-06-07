@@ -59,6 +59,7 @@ class PROJECTEXPLORER_EXPORT Kit
 {
 public:
     using Predicate = std::function<bool(const Kit *)>;
+    static Predicate defaultPredicate();
 
     explicit Kit(Core::Id id = Core::Id());
     explicit Kit(const QVariantMap &data);
@@ -117,7 +118,7 @@ public:
     void addToEnvironment(Utils::Environment &env) const;
     IOutputParser *createOutputParser() const;
 
-    QString toHtml(const Tasks &additional = Tasks()) const;
+    QString toHtml(const Tasks &additional = Tasks(), const QString &extraText = QString()) const;
     Kit *clone(bool keepName = false) const;
     void copyFrom(const Kit *k);
 
@@ -146,11 +147,9 @@ private:
     static void copyKitCommon(Kit *target, const Kit *source);
     void setSdkProvided(bool sdkProvided);
 
-    // Unimplemented.
-    Kit(const Kit &other);
-    void operator=(const Kit &other);
+    Kit(const Kit &other) = delete;
+    void operator=(const Kit &other) = delete;
 
-    void kitDisplayNameChanged();
     void kitUpdated();
 
     QVariantMap toMap() const;
@@ -173,6 +172,8 @@ public:
 private:
     Kit *m_kit;
 };
+
+using TasksGenerator = std::function<Tasks(const Kit *)>;
 
 } // namespace ProjectExplorer
 

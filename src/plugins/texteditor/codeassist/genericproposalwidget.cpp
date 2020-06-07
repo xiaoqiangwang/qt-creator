@@ -119,7 +119,7 @@ public:
         : FakeToolTip(parent), m_label(new QLabel(this))
     {
         auto layout = new QVBoxLayout(this);
-        layout->setMargin(0);
+        layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(0);
         layout->addWidget(m_label);
 
@@ -361,7 +361,7 @@ GenericProposalWidget::GenericProposalWidget()
             this, &GenericProposalWidget::turnOnAutoWidth);
 
     auto layout = new QVBoxLayout(this);
-    layout->setMargin(0);
+    layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(d->m_completionListView);
 
     d->m_completionListView->installEventFilter(this);
@@ -476,7 +476,7 @@ bool GenericProposalWidget::updateAndCheck(const QString &prefix)
         d->m_model->sort(prefix);
     d->m_completionListView->reset();
 
-    // Try to find the previosly explicit selection (if any). If we can find the item set it
+    // Try to find the previously explicit selection (if any). If we can find the item set it
     // as the current. Otherwise (it might have been filtered out) select the first row.
     if (d->m_explicitlySelected) {
         Q_ASSERT(preferredItemId != -1);
@@ -665,8 +665,6 @@ bool GenericProposalWidget::eventFilter(QObject *o, QEvent *e)
         }
 
         QApplication::sendEvent(const_cast<QWidget *>(d->m_underlyingWidget), e);
-        if (isVisible())
-            d->m_assistant->notifyChange();
 
         return true;
     }

@@ -1,5 +1,5 @@
 add_qtc_plugin(QmakeProjectManager
-  DEPENDS qmljs
+  DEPENDS QmlJS
   PLUGIN_DEPENDS Core CppTools QtSupport ResourceEditor TextEditor
   PLUGIN_RECOMMENDS Designer
   SOURCES
@@ -14,7 +14,6 @@ add_qtc_plugin(QmakeProjectManager
     customwidgetwizard/filenamingparameters.h
     customwidgetwizard/plugingenerator.cpp customwidgetwizard/plugingenerator.h
     customwidgetwizard/pluginoptions.h
-    desktopqmakerunconfiguration.cpp desktopqmakerunconfiguration.h
     externaleditors.cpp externaleditors.h
     librarydetailscontroller.cpp librarydetailscontroller.h
     librarydetailswidget.ui
@@ -32,7 +31,6 @@ add_qtc_plugin(QmakeProjectManager
     qmakeparser.cpp qmakeparser.h
     qmakeparsernodes.cpp qmakeparsernodes.h
     qmakeproject.cpp qmakeproject.h
-    qmakeprojectconfigwidget.cpp qmakeprojectconfigwidget.h
     qmakeprojectimporter.cpp qmakeprojectimporter.h
     qmakeprojectmanager.cpp qmakeprojectmanager.h
     qmakeprojectmanager.qrc
@@ -40,13 +38,9 @@ add_qtc_plugin(QmakeProjectManager
     qmakeprojectmanagerconstants.h
     qmakeprojectmanagerplugin.cpp qmakeprojectmanagerplugin.h
     qmakesettings.cpp qmakesettings.h
-    qmakestep.cpp qmakestep.h qmakestep.ui
-    qtmodulesinfo.cpp qtmodulesinfo.h
-    wizards/filespage.cpp wizards/filespage.h
-    wizards/modulespage.cpp wizards/modulespage.h
+    qmakestep.cpp qmakestep.h
     wizards/qtprojectparameters.cpp wizards/qtprojectparameters.h
     wizards/qtwizard.cpp wizards/qtwizard.h
-    wizards/simpleprojectwizard.cpp wizards/simpleprojectwizard.h
     wizards/subdirsprojectwizard.cpp wizards/subdirsprojectwizard.h
     wizards/subdirsprojectwizarddialog.cpp wizards/subdirsprojectwizarddialog.h
     wizards/wizards.qrc

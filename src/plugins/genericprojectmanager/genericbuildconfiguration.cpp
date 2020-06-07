@@ -55,26 +55,17 @@ GenericBuildConfiguration::GenericBuildConfiguration(Target *parent, Core::Id id
     setConfigWidgetDisplayName(tr("Generic Manager"));
     setBuildDirectoryHistoryCompleter("Generic.BuildDir.History");
 
-    updateCacheAndEmitEnvironmentChanged();
-}
-
-void GenericBuildConfiguration::initialize(const BuildInfo &info)
-{
-    BuildConfiguration::initialize(info);
-
-    BuildStepList *buildSteps = stepList(ProjectExplorer::Constants::BUILDSTEPS_BUILD);
-    buildSteps->appendStep(new GenericMakeStep(buildSteps, "all"));
-
-    BuildStepList *cleanSteps = stepList(ProjectExplorer::Constants::BUILDSTEPS_CLEAN);
-    cleanSteps->appendStep(new GenericMakeStep(cleanSteps, "clean"));
+    setInitializer([this](const BuildInfo &) {
+        buildSteps()->appendStep(Constants::GENERIC_MS_ID);
+        cleanSteps()->appendStep(Constants::GENERIC_MS_ID);
+        updateCacheAndEmitEnvironmentChanged();
+    });
 
     updateCacheAndEmitEnvironmentChanged();
 }
 
 
-/*!
-  \class GenericBuildConfigurationFactory
-*/
+// GenericBuildConfigurationFactory
 
 GenericBuildConfigurationFactory::GenericBuildConfigurationFactory()
 {
@@ -83,36 +74,19 @@ GenericBuildConfigurationFactory::GenericBuildConfigurationFactory()
 
     setSupportedProjectType(Constants::GENERICPROJECT_ID);
     setSupportedProjectMimeTypeName(Constants::GENERICMIMETYPE);
-}
 
-GenericBuildConfigurationFactory::~GenericBuildConfigurationFactory() = default;
+    setBuildGenerator([](const Kit *, const FilePath &projectPath, bool forSetup) {
+        BuildInfo info;
+        info.typeName = BuildConfiguration::tr("Build");
+        info.buildDirectory = forSetup ? Project::projectDirectory(projectPath) : projectPath;
 
-QList<BuildInfo> GenericBuildConfigurationFactory::availableBuilds(const Target *parent) const
-{
-    return {createBuildInfo(parent->kit(), parent->project()->projectDirectory())};
-}
+        if (forSetup)  {
+            //: The name of the build configuration created by default for a generic project.
+            info.displayName = BuildConfiguration::tr("Default");
+        }
 
-QList<BuildInfo> GenericBuildConfigurationFactory::availableSetups(const Kit *k, const QString &projectPath) const
-{
-    BuildInfo info = createBuildInfo(k, Project::projectDirectory(Utils::FilePath::fromString(projectPath)));
-    //: The name of the build configuration created by default for a generic project.
-    info.displayName = tr("Default");
-    return {info};
-}
-
-BuildInfo GenericBuildConfigurationFactory::createBuildInfo(const Kit *k,
-                                                            const Utils::FilePath &buildDir) const
-{
-    BuildInfo info(this);
-    info.typeName = tr("Build");
-    info.buildDirectory = buildDir;
-    info.kitId = k->id();
-    return info;
-}
-
-BuildConfiguration::BuildType GenericBuildConfiguration::buildType() const
-{
-    return Unknown;
+        return QList<BuildInfo>{info};
+    });
 }
 
 void GenericBuildConfiguration::addToEnvironment(Utils::Environment &env) const
@@ -120,7 +94,7 @@ void GenericBuildConfiguration::addToEnvironment(Utils::Environment &env) const
     prependCompilerPathToEnvironment(target()->kit(), env);
     const QtSupport::BaseQtVersion *qt = QtSupport::QtKitAspect::qtVersion(target()->kit());
     if (qt)
-        env.prependOrSetPath(qt->binPath().toString());
+        env.prependOrSetPath(qt->hostBinPath().toString());
 }
 
 } // namespace Internal

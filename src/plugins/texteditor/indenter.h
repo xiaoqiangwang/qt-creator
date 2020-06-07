@@ -27,6 +27,7 @@
 
 #include <utils/fileutils.h>
 #include <utils/optional.h>
+#include <utils/textutils.h>
 
 #include <QMap>
 #include <QTextBlock>
@@ -42,21 +43,6 @@ class ICodeStylePreferences;
 class TabSettings;
 
 using IndentationForBlock = QMap<int, int>;
-
-class Replacement
-{
-public:
-    Replacement(int offset, int length, const QString &text)
-        : offset(offset)
-        , length(length)
-        , text(text)
-    {}
-    int offset;
-    int length;
-    QString text;
-};
-
-using Replacements = std::vector<Replacement>;
 
 class RangeInLines
 {
@@ -92,17 +78,17 @@ public:
         return -1;
     }
 
-    virtual void formatOrIndent(const QTextCursor &cursor,
-                                const TabSettings &tabSettings,
-                                int cursorPositionInEditor = -1)
+    virtual void autoIndent(const QTextCursor &cursor,
+                            const TabSettings &tabSettings,
+                            int cursorPositionInEditor = -1)
     {
         indent(cursor, QChar::Null, tabSettings, cursorPositionInEditor);
     }
 
     // By default just calls indent with default settings.
-    virtual Replacements format(const RangesInLines & /*rangesInLines*/ = RangesInLines())
+    virtual Utils::Text::Replacements format(const RangesInLines & /*rangesInLines*/)
     {
-        return Replacements();
+        return Utils::Text::Replacements();
     }
 
     virtual bool formatOnSave() const { return false; }

@@ -36,8 +36,8 @@
 // We mean it.
 //
 
-#include "qmljsglobal_p.h"
-#include "qmljsgrammar_p.h"
+#include "qmljs/parser/qmljsglobal_p.h"
+#include "qmljs/parser/qmljsgrammar_p.h"
 
 #include <QtCore/qstring.h>
 #include <QtCore/qstack.h>
@@ -109,6 +109,11 @@ public:
         StaticIsKeyword = 0x4
     };
 
+    enum class ImportState {
+        SawImport,
+        NoQmlImport
+    };
+
 public:
     Lexer(Engine *engine);
 
@@ -173,6 +178,7 @@ private:
     inline void scanChar();
     int scanToken();
     int scanNumber(QChar ch);
+    int scanVersionNumber(QChar ch);
     enum ScanStringMode {
         SingleQuote = '\'',
         DoubleQuote = '"',
@@ -227,6 +233,7 @@ private:
     int _tokenLength;
     int _tokenLine;
     int _tokenColumn;
+    ImportState _importState = ImportState::NoQmlImport;
 
     bool _validTokenText;
     bool _prohibitAutomaticSemicolon;
@@ -238,6 +245,7 @@ private:
     bool _skipLinefeed = false;
     int _generatorLevel = 0;
     bool _staticIsKeyword = false;
+    bool _handlingDirectives = false;
 };
 
 } // end of namespace QmlJS

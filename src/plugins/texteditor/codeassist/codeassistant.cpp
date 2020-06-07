@@ -288,6 +288,8 @@ void CodeAssistantPrivate::cancelCurrentRequest()
         m_requestRunner->setDiscardProposal(true);
         disconnect(m_runnerConnection);
     }
+    if (m_asyncProcessor)
+        m_asyncProcessor->cancel();
     invalidateCurrentRequestData();
 }
 
@@ -554,7 +556,7 @@ bool CodeAssistantPrivate::isDestroyEvent(int key, const QString &keyText)
 
 bool CodeAssistantPrivate::eventFilter(QObject *o, QEvent *e)
 {
-    Q_UNUSED(o);
+    Q_UNUSED(o)
 
     if (isWaitingForProposal()) {
         QEvent::Type type = e->type();

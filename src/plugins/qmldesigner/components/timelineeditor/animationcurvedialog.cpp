@@ -33,14 +33,12 @@ AnimationCurveDialog::AnimationCurveDialog(QWidget *parent)
     : QDialog(parent)
     , m_editor(nullptr)
 {
-    setWindowFlag(Qt::WindowContextHelpButtonHint, false);
 }
 
 AnimationCurveDialog::AnimationCurveDialog(DesignTools::CurveEditorModel *model, QWidget *parent)
     : QDialog(parent)
     , m_editor(nullptr)
 {
-    setWindowFlag(Qt::WindowContextHelpButtonHint, false);
     setModel(model);
 }
 
@@ -56,9 +54,10 @@ void AnimationCurveDialog::setModel(DesignTools::CurveEditorModel *model)
     setLayout(layout);
 }
 
-void AnimationCurveDialog::showEvent(QShowEvent *)
+void AnimationCurveDialog::refresh()
 {
-    m_editor->clearCanvas();
+    if (m_editor)
+        m_editor->clearCanvas();
 }
 
 } // namespace QmlDesigner

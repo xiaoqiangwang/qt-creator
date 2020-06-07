@@ -51,6 +51,8 @@ namespace Internal {
 
 class KitOptionsPageWidget : public QWidget
 {
+    Q_DECLARE_TR_FUNCTIONS(ProjextExplorer::Internal::KitOptionsPageWidget)
+
 public:
     KitOptionsPageWidget();
 
@@ -86,16 +88,14 @@ KitOptionsPageWidget::KitOptionsPageWidget()
     m_kitsView->setSizePolicy(m_kitsView->sizePolicy().horizontalPolicy(),
                               QSizePolicy::Ignored);
 
-    m_addButton = new QPushButton(KitOptionsPage::tr("Add"), this);
-    m_cloneButton = new QPushButton(KitOptionsPage::tr("Clone"), this);
-    m_delButton = new QPushButton(KitOptionsPage::tr("Remove"), this);
-    m_makeDefaultButton = new QPushButton(KitOptionsPage::tr("Make Default"), this);
-    m_filterButton = new QPushButton(KitOptionsPage::tr("Settings Filter..."), this);
-    m_filterButton->setToolTip(KitOptionsPage::tr(
-                                   "Choose which settings to display for this kit."));
-    m_defaultFilterButton = new QPushButton(KitOptionsPage::tr("Default Settings Filter..."), this);
-    m_defaultFilterButton->setToolTip(KitOptionsPage::tr(
-                                          "Choose which kit settings to display by default."));
+    m_addButton = new QPushButton(tr("Add"), this);
+    m_cloneButton = new QPushButton(tr("Clone"), this);
+    m_delButton = new QPushButton(tr("Remove"), this);
+    m_makeDefaultButton = new QPushButton(tr("Make Default"), this);
+    m_filterButton = new QPushButton(tr("Settings Filter..."), this);
+    m_filterButton->setToolTip(tr("Choose which settings to display for this kit."));
+    m_defaultFilterButton = new QPushButton(tr("Default Settings Filter..."), this);
+    m_defaultFilterButton->setToolTip(tr("Choose which kit settings to display by default."));
 
     auto buttonLayout = new QVBoxLayout;
     buttonLayout->setSpacing(6);
@@ -269,11 +269,10 @@ KitOptionsPage::KitOptionsPage()
 {
     theKitOptionsPage = this;
     setId(Constants::KITS_SETTINGS_PAGE_ID);
-    setDisplayName(tr("Kits"));
+    setDisplayName(Internal::KitOptionsPageWidget::tr("Kits"));
     setCategory(Constants::KITS_SETTINGS_CATEGORY);
     setDisplayCategory(QCoreApplication::translate("ProjectExplorer", "Kits"));
-    setCategoryIcon(Utils::Icon({{":/projectexplorer/images/settingscategory_kits.png",
-                    Utils::Theme::PanelTextColorDark}}, Utils::Icon::Tint));
+    setCategoryIconPath(":/projectexplorer/images/settingscategory_kits.png");
 }
 
 QWidget *KitOptionsPage::widget()

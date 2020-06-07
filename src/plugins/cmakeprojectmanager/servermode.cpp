@@ -57,7 +57,7 @@ const char HANDSHAKE_TYPE[] = "handshake";
 const char START_MAGIC[] = "\n[== \"CMake Server\" ==[\n";
 const char END_MAGIC[] = "\n]== \"CMake Server\" ==]\n";
 
-Q_LOGGING_CATEGORY(cmakeServerMode, "qtc.cmake.serverMode", QtWarningMsg);
+static Q_LOGGING_CATEGORY(cmakeServerMode, "qtc.cmake.serverMode", QtWarningMsg);
 
 // ----------------------------------------------------------------------
 // Helpers:
@@ -207,8 +207,15 @@ void ServerMode::connectToServer()
 
     auto socket = new QLocalSocket(m_cmakeProcess.get());
     connect(socket, &QLocalSocket::readyRead, this, &ServerMode::handleRawCMakeServerData);
-    connect(socket, QOverload<QLocalSocket::LocalSocketError>::of(&QLocalSocket::error),
-            this, [this, socket]() {
+
+    constexpr void (QLocalSocket::*LocalSocketErrorFunction)(QLocalSocket::LocalSocketError)
+#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
+                = &QLocalSocket::error;
+#else
+                = &QLocalSocket::errorOccurred;
+#endif
+
+    connect(socket, LocalSocketErrorFunction, this, [this, socket]() {
         reportError(socket->errorString());
         m_cmakeSocket = nullptr;
         socket->disconnect();
@@ -453,7 +460,7 @@ void ServerMode::parseJson(const QVariantMap &data)
 
 void ServerMode::handleHello(const QVariantMap &data)
 {
-    Q_UNUSED(data);
+    Q_UNUSED(data)
     QVariantMap extra;
     QVariantMap version;
     version.insert("major", m_majorProtocol);

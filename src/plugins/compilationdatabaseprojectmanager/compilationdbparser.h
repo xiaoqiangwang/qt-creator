@@ -27,6 +27,8 @@
 
 #include "compilationdatabaseutils.h"
 
+#include <projectexplorer/buildsystem.h>
+
 #include <utils/fileutils.h>
 
 #include <QFutureWatcher>
@@ -44,26 +46,40 @@ class TreeScanner;
 namespace CompilationDatabaseProjectManager {
 namespace Internal {
 
+enum class ParseResult { Success, Failure, Cached };
+
 class CompilationDbParser : public QObject
 {
     Q_OBJECT
 public:
-    explicit CompilationDbParser(const QString &projectName, const Utils::FilePath &projectPath,
-                                 const Utils::FilePath &rootPath, MimeBinaryCache &mimeBinaryCache,
+    explicit CompilationDbParser(const QString &projectName,
+                                 const Utils::FilePath &projectPath,
+                                 const Utils::FilePath &rootPath,
+                                 MimeBinaryCache &mimeBinaryCache,
+                                 ProjectExplorer::BuildSystem::ParseGuard &&guard,
                                  QObject *parent = nullptr);
+
+
+    void setPreviousProjectFileHash(const QByteArray &fileHash) { m_projectFileHash = fileHash; }
+    QByteArray projectFileHash() const { return m_projectFileHash; }
 
     void start();
     void stop();
 
     QList<ProjectExplorer::FileNode *> scannedFiles() const;
-    DbContents dbContents() const { return m_dbContents; }
+    DbContents dbContents() const
+    {
+        m_guard.markAsSuccess();
+        return m_dbContents;
+    }
 
 signals:
-    void finished(bool success);
+    void finished(ParseResult result);
 
 private:
-    void finish();
+    void finish(ParseResult result);
     DbContents parseProject();
+    std::vector<DbEntry> readJsonObjects() const;
 
     const QString m_projectName;
     const Utils::FilePath m_projectFilePath;
@@ -72,6 +88,10 @@ private:
     ProjectExplorer::TreeScanner *m_treeScanner = nullptr;
     QFutureWatcher<DbContents> m_parserWatcher;
     DbContents m_dbContents;
+    QByteArray m_projectFileContents;
+    QByteArray m_projectFileHash;
+
+    ProjectExplorer::BuildSystem::ParseGuard m_guard;
 };
 
 } // namespace Internal

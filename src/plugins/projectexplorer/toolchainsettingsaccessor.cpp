@@ -299,31 +299,29 @@ const char TestToolChainType[] = "TestToolChainType";
 class TTC : public ToolChain
 {
 public:
-    TTC() : ToolChain(TestToolChainType) {}
-
-    TTC(const QByteArray &t, bool v = true) :
+    TTC(const QByteArray &t = {}, bool v = true) :
         ToolChain(TestToolChainType),
         token(t),
         m_valid(v)
     {
         m_toolChains.append(this);
         setLanguage(Constants::CXX_LANGUAGE_ID);
+        setTypeDisplayName("Test Tool Chain");
     }
 
-    static QList<TTC *> toolChains();
+    static QList<TTC *> toolChains() { return m_toolChains; }
     static bool hasToolChains() { return !m_toolChains.isEmpty(); }
 
-    QString typeDisplayName() const override { return QString("Test Tool Chain"); }
     Abi targetAbi() const override { return Abi::hostAbi(); }
     bool isValid() const override { return m_valid; }
     MacroInspectionRunner createMacroInspectionRunner() const override { return MacroInspectionRunner(); }
-    Macros predefinedMacros(const QStringList &cxxflags) const override { Q_UNUSED(cxxflags); return Macros(); }
-    LanguageExtensions languageExtensions(const QStringList &cxxflags) const override { Q_UNUSED(cxxflags); return LanguageExtension::None; }
-    WarningFlags warningFlags(const QStringList &cflags) const override { Q_UNUSED(cflags); return WarningFlags::NoWarnings; }
-    BuiltInHeaderPathsRunner createBuiltInHeaderPathsRunner() const override { return BuiltInHeaderPathsRunner(); }
-    HeaderPaths builtInHeaderPaths(const QStringList &cxxflags, const FilePath &sysRoot) const override
-    { Q_UNUSED(cxxflags); Q_UNUSED(sysRoot); return {}; }
-    void addToEnvironment(Environment &env) const override { Q_UNUSED(env); }
+    Macros predefinedMacros(const QStringList &cxxflags) const override { Q_UNUSED(cxxflags) return Macros(); }
+    LanguageExtensions languageExtensions(const QStringList &cxxflags) const override { Q_UNUSED(cxxflags) return LanguageExtension::None; }
+    WarningFlags warningFlags(const QStringList &cflags) const override { Q_UNUSED(cflags) return WarningFlags::NoWarnings; }
+    BuiltInHeaderPathsRunner createBuiltInHeaderPathsRunner(const Utils::Environment &) const override { return BuiltInHeaderPathsRunner(); }
+    HeaderPaths builtInHeaderPaths(const QStringList &cxxflags, const FilePath &sysRoot, const Utils::Environment &) const override
+    { Q_UNUSED(cxxflags) Q_UNUSED(sysRoot) return {}; }
+    void addToEnvironment(Environment &env) const override { Q_UNUSED(env) }
     FilePath makeCommand(const Environment &) const override { return FilePath::fromString("make"); }
     FilePath compilerCommand() const override { return Utils::FilePath::fromString("/tmp/test/gcc"); }
     IOutputParser *outputParser() const override { return nullptr; }
@@ -507,6 +505,11 @@ void ProjectExplorerPlugin::testToolChainMerging()
     QCOMPARE(expToDemote, actToDemote);
     QCOMPARE(Utils::toSet(system + user + autodetect),
              Utils::toSet(ops.toRegister + ops.toDemote + ops.toDelete));
+}
+
+void ProjectExplorerPlugin::deleteTestToolchains()
+{
+    qDeleteAll(TTC::toolChains());
 }
 
 } // namespace ProjectExplorer

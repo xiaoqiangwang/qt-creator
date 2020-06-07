@@ -34,6 +34,7 @@
 #include <QRegularExpression>
 
 using namespace ProjectExplorer;
+using namespace Utils;
 
 namespace BareMetal {
 namespace Internal {
@@ -70,20 +71,123 @@ void KeilParser::newTask(const Task &task)
     m_lines = 1;
 }
 
-void KeilParser::amendDescription(const QString &desc)
+void KeilParser::amendDescription()
 {
-    const int start = m_lastTask.description.count() + 1;
-    m_lastTask.description.append(QLatin1Char('\n'));
-    m_lastTask.description.append(desc);
+    while (!m_snippets.isEmpty()) {
+        const QString snippet = m_snippets.takeFirst();
 
-    QTextLayout::FormatRange fr;
-    fr.start = start;
-    fr.length = m_lastTask.description.count() + 1;
-    fr.format.setFont(TextEditor::TextEditorSettings::fontSettings().font());
-    fr.format.setFontStyleHint(QFont::Monospace);
-    m_lastTask.formats.append(fr);
+        const int start = m_lastTask.description.count() + 1;
+        m_lastTask.description.append('\n');
+        m_lastTask.description.append(snippet);
 
-    ++m_lines;
+        QTextLayout::FormatRange fr;
+        fr.start = start;
+        fr.length = m_lastTask.description.count() + 1;
+        fr.format.setFont(TextEditor::TextEditorSettings::fontSettings().font());
+        fr.format.setFontStyleHint(QFont::Monospace);
+        m_lastTask.formats.append(fr);
+
+        ++m_lines;
+    }
+}
+
+// ARM compiler specific parsers.
+
+bool KeilParser::parseArmWarningOrErrorDetailsMessage(const QString &lne)
+{
+    const QRegularExpression re("^\"(.+)\", line (\\d+).*:\\s+(Warning|Error):(\\s+|.+)([#|L].+)$");
+    const QRegularExpressionMatch match = re.match(lne);
+    if (!match.hasMatch())
+        return false;
+    enum CaptureIndex { FilePathIndex = 1, LineNumberIndex,
+                        MessageTypeIndex, MessageNoteIndex, DescriptionIndex };
+    const Utils::FilePath fileName = Utils::FilePath::fromUserInput(
+                match.captured(FilePathIndex));
+    const int lineno = match.captured(LineNumberIndex).toInt();
+    const Task::TaskType type = taskType(match.captured(MessageTypeIndex));
+    const QString descr = match.captured(DescriptionIndex);
+    newTask(CompileTask(type, descr, fileName, lineno));
+    return true;
+}
+
+bool KeilParser::parseArmErrorOrFatalErorrMessage(const QString &lne)
+{
+    const QRegularExpression re("^(Error|Fatal error):\\s(.+)$");
+    const QRegularExpressionMatch match = re.match(lne);
+    if (!match.hasMatch())
+        return false;
+    enum CaptureIndex { MessageTypeIndex = 1, DescriptionIndex };
+    const Task::TaskType type = taskType(match.captured(MessageTypeIndex));
+    const QString descr = match.captured(DescriptionIndex);
+    newTask(CompileTask(type, descr));
+    return true;
+}
+
+// MCS51 compiler specific parsers.
+
+bool KeilParser::parseMcs51WarningOrErrorDetailsMessage1(const QString &lne)
+{
+    const QRegularExpression re("^\\*{3} (WARNING|ERROR) (\\w+) IN LINE (\\d+) OF (.+\\.\\S+): (.+)$");
+    const QRegularExpressionMatch match = re.match(lne);
+    if (!match.hasMatch())
+        return false;
+    enum CaptureIndex { MessageTypeIndex = 1, MessageCodeIndex, LineNumberIndex,
+                        FilePathIndex, MessageTextIndex };
+    const Task::TaskType type = taskType(match.captured(MessageTypeIndex));
+    const int lineno = match.captured(LineNumberIndex).toInt();
+    const Utils::FilePath fileName = Utils::FilePath::fromUserInput(
+                match.captured(FilePathIndex));
+    const QString descr = QString("%1: %2").arg(match.captured(MessageCodeIndex),
+                                                match.captured(MessageTextIndex));
+    newTask(CompileTask(type, descr, fileName, lineno));
+    return true;
+}
+
+bool KeilParser::parseMcs51WarningOrErrorDetailsMessage2(const QString &lne)
+{
+    const QRegularExpression re("^\\*{3} (WARNING|ERROR) (#\\w+) IN (\\d+) \\((.+), LINE \\d+\\): (.+)$");
+    const QRegularExpressionMatch match = re.match(lne);
+    if (!match.hasMatch())
+        return false;
+    enum CaptureIndex { MessageTypeIndex = 1, MessageCodeIndex, LineNumberIndex,
+                        FilePathIndex, MessageTextIndex };
+    const Task::TaskType type = taskType(match.captured(MessageTypeIndex));
+    const int lineno = match.captured(LineNumberIndex).toInt();
+    const Utils::FilePath fileName = Utils::FilePath::fromUserInput(
+                match.captured(FilePathIndex));
+    const QString descr = QString("%1: %2").arg(match.captured(MessageCodeIndex),
+                                                match.captured(MessageTextIndex));
+    newTask(CompileTask(type, descr, fileName, lineno));
+    return true;
+}
+
+bool KeilParser::parseMcs51WarningOrFatalErrorMessage(const QString &lne)
+{
+    const QRegularExpression re("^\\*{3} (WARNING|FATAL ERROR) (.+)$");
+    const QRegularExpressionMatch match = re.match(lne);
+    if (!match.hasMatch())
+        return false;
+    enum CaptureIndex { MessageTypeIndex = 1, MessageDescriptionIndex };
+    const Task::TaskType type = taskType(match.captured(MessageTypeIndex));
+    const QString descr = match.captured(MessageDescriptionIndex);
+    newTask(CompileTask(type, descr));
+    return true;
+}
+
+bool KeilParser::parseMcs51FatalErrorMessage2(const QString &lne)
+{
+    const QRegularExpression re("^(A|C)51 FATAL[ |-]ERROR");
+    const QRegularExpressionMatch match = re.match(lne);
+    if (!match.hasMatch())
+        return false;
+    const QString key = match.captured(1);
+    QString descr;
+    if (key == 'A')
+        descr = "Assembler fatal error";
+    else if (key == 'C')
+        descr = "Compiler fatal error";
+    newTask(CompileTask(Task::TaskType::Error, descr));
+    return true;
 }
 
 void KeilParser::stdError(const QString &line)
@@ -92,115 +196,73 @@ void KeilParser::stdError(const QString &line)
 
     const QString lne = rightTrimmed(line);
 
-    QRegularExpression re;
-    QRegularExpressionMatch match;
-
-    // ARM compiler specific patterns.
-
-    re.setPattern("^\"(.+)\", line (\\d+).*:\\s+(Warning|Error):(\\s+|.+)([#|L].+)$");
-    match = re.match(lne);
-    if (match.hasMatch()) {
-        enum CaptureIndex { FilePathIndex = 1, LineNumberIndex,
-                            MessageTypeIndex, MessageNoteIndex, DescriptionIndex };
-        const Utils::FilePath fileName = Utils::FilePath::fromUserInput(
-                    match.captured(FilePathIndex));
-        const int lineno = match.captured(LineNumberIndex).toInt();
-        const Task::TaskType type = taskType(match.captured(MessageTypeIndex));
-        const QString descr = match.captured(DescriptionIndex);
-        const Task task(type, descr, fileName, lineno, Constants::TASK_CATEGORY_COMPILE);
-        newTask(task);
+    // Check for ARM compiler specific patterns.
+    if (parseArmWarningOrErrorDetailsMessage(lne))
         return;
-    }
-
-    re.setPattern("^(Error|Fatal error):\\s(.+)$");
-    match = re.match(lne);
-    if (match.hasMatch()) {
-        enum CaptureIndex { MessageTypeIndex = 1, DescriptionIndex };
-        const Task::TaskType type = taskType(match.captured(MessageTypeIndex));
-        const QString descr = match.captured(DescriptionIndex);
-        const Task task(type, descr, {}, -1, Constants::TASK_CATEGORY_COMPILE);
-        newTask(task);
+    if (parseArmErrorOrFatalErorrMessage(lne))
         return;
-    }
 
-    if (lne.startsWith(QLatin1Char(' '))) {
-        amendDescription(lne);
+    if (lne.startsWith(' ')) {
+        m_snippets.push_back(lne);
         return;
     }
 
     doFlush();
 }
 
+static bool hasDetailsEntry(const QString &trimmedLine)
+{
+    const QRegularExpression re("^([0-9A-F]{4})");
+    const QRegularExpressionMatch match = re.match(trimmedLine);
+    return match.hasMatch();
+}
+
+static bool hasDetailsPointer(const QString &trimmedLine)
+{
+    if (!trimmedLine.startsWith("*** "))
+        return false;
+    if (!trimmedLine.endsWith('^'))
+        return false;
+    return trimmedLine.contains('_');
+}
+
 void KeilParser::stdOutput(const QString &line)
 {
     IOutputParser::stdOutput(line);
 
-    const QString lne = rightTrimmed(line);
+    QString lne = rightTrimmed(line);
 
-    QRegularExpression re;
-    QRegularExpressionMatch match;
-
-    // MSC51 compiler specific patterns.
-
-    re.setPattern("^\\*{3} (WARNING|ERROR) (\\w+) IN LINE (\\d+) OF (.+\\.\\S+): (.+)$");
-    match = re.match(lne);
-    if (match.hasMatch()) {
-        enum CaptureIndex { MessageTypeIndex = 1, MessageCodeIndex, LineNumberIndex,
-                            FilePathIndex, MessageTextIndex };
-        const Task::TaskType type = taskType(match.captured(MessageTypeIndex));
-        const int lineno = match.captured(LineNumberIndex).toInt();
-        const Utils::FilePath fileName = Utils::FilePath::fromUserInput(
-                    match.captured(FilePathIndex));
-        const QString descr = QString("%1: %2").arg(match.captured(MessageCodeIndex),
-                                                    match.captured(MessageTextIndex));
-        const Task task(type, descr, fileName, lineno, Constants::TASK_CATEGORY_COMPILE);
-        newTask(task);
+    // Check for MSC51 compiler specific patterns.
+    const bool parsed = parseMcs51WarningOrErrorDetailsMessage1(lne)
+            || parseMcs51WarningOrErrorDetailsMessage2(lne);
+    if (!parsed) {
+        if (parseMcs51WarningOrFatalErrorMessage(lne))
+            return;
+        if (parseMcs51FatalErrorMessage2(lne))
+            return;
     }
 
-    re.setPattern("^\\*{3} (WARNING|ERROR) (#\\w+) IN (\\d+) \\((.+), LINE \\d+\\): (.+)$");
-    match = re.match(lne);
-    if (match.hasMatch()) {
-        enum CaptureIndex { MessageTypeIndex = 1, MessageCodeIndex, LineNumberIndex,
-                            FilePathIndex, MessageTextIndex };
-        const Task::TaskType type = taskType(match.captured(MessageTypeIndex));
-        const int lineno = match.captured(LineNumberIndex).toInt();
-        const Utils::FilePath fileName = Utils::FilePath::fromUserInput(
-                    match.captured(FilePathIndex));
-        const QString descr = QString("%1: %2").arg(match.captured(MessageCodeIndex),
-                                                    match.captured(MessageTextIndex));
-        const Task task(type, descr, fileName, lineno, Constants::TASK_CATEGORY_COMPILE);
-        newTask(task);
-    }
+    if (m_lastTask.isNull()) {
+        // Check for details, which are comes on a previous
+        // lines, before the message.
 
-    re.setPattern("^\\*{3} (FATAL ERROR) (.+)$");
-    match = re.match(lne);
-    if (match.hasMatch()) {
-        enum CaptureIndex { MessageTypeIndex = 1, MessageDescriptionIndex };
-        const Task::TaskType type = taskType(match.captured(MessageTypeIndex));
-        const QString descr = match.captured(MessageDescriptionIndex);
-        const Task task(type, descr, {}, -1, Constants::TASK_CATEGORY_COMPILE);
-        newTask(task);
-        return;
-    }
-
-    re.setPattern("^(A|C)51 FATAL[ |-]ERROR");
-    match = re.match(lne);
-    if (match.hasMatch()) {
-        const QString key = match.captured(1);
-        QString descr;
-        if (key == QLatin1Char('A'))
-            descr = "Assembler fatal error";
-        else if (key == QLatin1Char('C'))
-            descr = "Compiler fatal error";
-        const Task task(Task::TaskType::Error, descr, {}, -1,
-                        Constants::TASK_CATEGORY_COMPILE);
-        newTask(task);
-        return;
-    }
-
-    if (lne.startsWith(QLatin1Char(' '))) {
-        amendDescription(lne);
-        return;
+        // This code handles the details in a form like:
+        // 0000                  24         ljmp    usb_stub_isr ; (00) Setup data available.
+        // *** _____________________________________^
+        // 003C                  54         ljmp    usb_stub_isr ; (3C) EP8 in/out.
+        // *** _____________________________________^
+        if (hasDetailsEntry(lne) || hasDetailsPointer(lne)) {
+            lne.replace(0, 4, "    ");
+            m_snippets.push_back(lne);
+            return;
+        }
+    } else {
+        // Check for details, which are comes on a next
+        // lines, after the message.
+        if (lne.startsWith(' ')) {
+            m_snippets.push_back(lne);
+            return;
+        }
     }
 
     doFlush();
@@ -210,6 +272,8 @@ void KeilParser::doFlush()
 {
     if (m_lastTask.isNull())
         return;
+
+    amendDescription();
 
     Task t = m_lastTask;
     m_lastTask.clear();
@@ -250,8 +314,6 @@ void BareMetalPlugin::testKeilOutputParsers_data()
             << Tasks()
             << QString();
 
-    const Core::Id categoryCompile = Constants::TASK_CATEGORY_COMPILE;
-
     // ARM compiler specific patterns.
 
     QTest::newRow("ARM: No details warning")
@@ -259,11 +321,10 @@ void BareMetalPlugin::testKeilOutputParsers_data()
             << OutputParserTester::STDERR
             << QString()
             << QString::fromLatin1("\"c:\\foo\\main.c\", line 63: Warning: #1234: Some warning\n")
-            << (Tasks() << Task(Task::Warning,
-                                      QLatin1String("#1234: Some warning"),
-                                      Utils::FilePath::fromUserInput(QLatin1String("c:\\foo\\main.c")),
-                                      63,
-                                      categoryCompile))
+            << (Tasks() << CompileTask(Task::Warning,
+                                       "#1234: Some warning",
+                                       FilePath::fromUserInput("c:\\foo\\main.c"),
+                                       63))
             << QString();
 
     QTest::newRow("ARM: Details warning")
@@ -275,13 +336,12 @@ void BareMetalPlugin::testKeilOutputParsers_data()
             << QString::fromLatin1("\"c:\\foo\\main.c\", line 63: Warning: #1234: Some warning\n"
                                    "      int f;\n"
                                    "          ^\n")
-            << (Tasks() << Task(Task::Warning,
-                                      QLatin1String("#1234: Some warning\n"
-                                                    "      int f;\n"
-                                                    "          ^"),
-                                      Utils::FilePath::fromUserInput(QLatin1String("c:\\foo\\main.c")),
-                                      63,
-                                      categoryCompile))
+            << (Tasks() << CompileTask(Task::Warning,
+                                       "#1234: Some warning\n"
+                                       "      int f;\n"
+                                       "          ^",
+                                       FilePath::fromUserInput("c:\\foo\\main.c"),
+                                       63))
             << QString();
 
     QTest::newRow("ARM: No details error")
@@ -289,11 +349,10 @@ void BareMetalPlugin::testKeilOutputParsers_data()
             << OutputParserTester::STDERR
             << QString()
             << QString::fromLatin1("\"c:\\foo\\main.c\", line 63: Error: #1234: Some error\n")
-            << (Tasks() << Task(Task::Error,
-                                      QLatin1String("#1234: Some error"),
-                                      Utils::FilePath::fromUserInput(QLatin1String("c:\\foo\\main.c")),
-                                      63,
-                                      categoryCompile))
+            << (Tasks() << CompileTask(Task::Error,
+                                       "#1234: Some error",
+                                       FilePath::fromUserInput("c:\\foo\\main.c"),
+                                       63))
             << QString();
 
     QTest::newRow("ARM: No details error with column")
@@ -301,11 +360,10 @@ void BareMetalPlugin::testKeilOutputParsers_data()
             << OutputParserTester::STDERR
             << QString()
             << QString::fromLatin1("\"flash.sct\", line 51 (column 20): Error: L1234: Some error\n")
-            << (Tasks() << Task(Task::Error,
-                                      QLatin1String("L1234: Some error"),
-                                      Utils::FilePath::fromUserInput(QLatin1String("flash.sct")),
-                                      51,
-                                      categoryCompile))
+            << (Tasks() << CompileTask(Task::Error,
+                                       "L1234: Some error",
+                                       FilePath::fromUserInput("flash.sct"),
+                                       51))
             << QString();
 
     QTest::newRow("ARM: Details error")
@@ -317,13 +375,12 @@ void BareMetalPlugin::testKeilOutputParsers_data()
             << QString::fromLatin1("\"c:\\foo\\main.c\", line 63: Error: #1234: Some error\n"
                                    "      int f;\n"
                                    "          ^\n")
-            << (Tasks() << Task(Task::Error,
-                                      QLatin1String("#1234: Some error\n"
-                                                    "      int f;\n"
-                                                    "          ^"),
-                                      Utils::FilePath::fromUserInput(QLatin1String("c:\\foo\\main.c")),
-                                      63,
-                                      categoryCompile))
+            << (Tasks() << CompileTask(Task::Error,
+                                       "#1234: Some error\n"
+                                       "      int f;\n"
+                                       "          ^",
+                                       FilePath::fromUserInput("c:\\foo\\main.c"),
+                                       63))
             << QString();
 
     QTest::newRow("ARM: At end of source")
@@ -331,11 +388,10 @@ void BareMetalPlugin::testKeilOutputParsers_data()
             << OutputParserTester::STDERR
             << QString()
             << QString::fromLatin1("\"c:\\foo\\main.c\", line 71: Error: At end of source:  #40: Some error\n")
-            << (Tasks() << Task(Task::Error,
-                                      QLatin1String("#40: Some error"),
-                                      Utils::FilePath::fromUserInput(QLatin1String("c:\\foo\\main.c")),
-                                      71,
-                                      categoryCompile))
+            << (Tasks() << CompileTask(Task::Error,
+                                       "#40: Some error",
+                                       FilePath::fromUserInput("c:\\foo\\main.c"),
+                                       71))
             << QString();
 
     QTest::newRow("ARM: Starts with error")
@@ -343,11 +399,8 @@ void BareMetalPlugin::testKeilOutputParsers_data()
             << OutputParserTester::STDERR
             << QString()
             << QString::fromLatin1("Error: L6226E: Some error.\n")
-            << (Tasks() << Task(Task::Error,
-                                      QLatin1String("L6226E: Some error."),
-                                      Utils::FilePath(),
-                                      -1,
-                                      categoryCompile))
+            << (Tasks() << CompileTask(Task::Error,
+                                       "L6226E: Some error."))
             << QString();
 
     // MCS51 compiler specific patterns.
@@ -358,11 +411,10 @@ void BareMetalPlugin::testKeilOutputParsers_data()
             << OutputParserTester::STDOUT
             << QString::fromLatin1("*** WARNING #A9 IN 15 (c:\\foo\\dscr.a51, LINE 15): Some warning\n")
             << QString()
-            << (Tasks() << Task(Task::Warning,
-                                      QLatin1String("#A9: Some warning"),
-                                      Utils::FilePath::fromUserInput(QLatin1String("c:\\foo\\dscr.a51")),
-                                      15,
-                                      categoryCompile))
+            << (Tasks() << CompileTask(Task::Warning,
+                                       "#A9: Some warning",
+                                       FilePath::fromUserInput("c:\\foo\\dscr.a51"),
+                                       15))
             << QString();
 
     QTest::newRow("MCS51: Assembler simple error")
@@ -370,11 +422,10 @@ void BareMetalPlugin::testKeilOutputParsers_data()
             << OutputParserTester::STDOUT
             << QString::fromLatin1("*** ERROR #A9 IN 15 (c:\\foo\\dscr.a51, LINE 15): Some error\n")
             << QString()
-            << (Tasks() << Task(Task::Error,
-                                      QLatin1String("#A9: Some error"),
-                                      Utils::FilePath::fromUserInput(QLatin1String("c:\\foo\\dscr.a51")),
-                                      15,
-                                      categoryCompile))
+            << (Tasks() << CompileTask(Task::Error,
+                                       "#A9: Some error",
+                                       FilePath::fromUserInput("c:\\foo\\dscr.a51"),
+                                       15))
             << QString();
 
     QTest::newRow("MCS51: Assembler fatal error")
@@ -386,13 +437,27 @@ void BareMetalPlugin::testKeilOutputParsers_data()
                                    "  Some detail 1\n"
                                    "  Some detail N\n")
             << QString()
-            << (Tasks() << Task(Task::Error,
-                                      QLatin1String("Assembler fatal error\n"
-                                                    "  Some detail 1\n"
-                                                    "  Some detail N"),
-                                      Utils::FilePath(),
-                                      -1,
-                                      categoryCompile))
+            << (Tasks() << CompileTask(Task::Error,
+                                       "Assembler fatal error\n"
+                                       "  Some detail 1\n"
+                                       "  Some detail N"))
+            << QString();
+
+    QTest::newRow("MCS51: Assembler details error")
+            << QString::fromLatin1("01AF   Some detail\n"
+                                   "*** ___^\n"
+                                   "*** ERROR #A45 IN 28 (d:\\foo.a51, LINE 28): Some error")
+            << OutputParserTester::STDOUT
+            << QString::fromLatin1("01AF   Some detail\n"
+                                   "*** ___^\n"
+                                   "*** ERROR #A45 IN 28 (d:\\foo.a51, LINE 28): Some error\n")
+            << QString()
+            << (Tasks() << CompileTask(Task::Error,
+                                       "#A45: Some error\n"
+                                       "       Some detail\n"
+                                       "    ___^",
+                                       FilePath::fromUserInput("d:\\foo.a51"),
+                                       28))
             << QString();
 
     // Compiler messages.
@@ -401,11 +466,10 @@ void BareMetalPlugin::testKeilOutputParsers_data()
             << OutputParserTester::STDOUT
             << QString::fromLatin1("*** WARNING C123 IN LINE 13 OF c:\\foo.c: Some warning\n")
             << QString()
-            << (Tasks() << Task(Task::Warning,
-                                      QLatin1String("C123: Some warning"),
-                                      Utils::FilePath::fromUserInput(QLatin1String("c:\\foo.c")),
-                                      13,
-                                      categoryCompile))
+            << (Tasks() << CompileTask(Task::Warning,
+                                       "C123: Some warning",
+                                       FilePath::fromUserInput("c:\\foo.c"),
+                                       13))
             << QString();
 
     QTest::newRow("MCS51: Compiler extended warning")
@@ -413,11 +477,10 @@ void BareMetalPlugin::testKeilOutputParsers_data()
             << OutputParserTester::STDOUT
             << QString::fromLatin1("*** WARNING C123 IN LINE 13 OF c:\\foo.c: Some warning : 'extended text'\n")
             << QString()
-            << (Tasks() << Task(Task::Warning,
-                                      QLatin1String("C123: Some warning : 'extended text'"),
-                                      Utils::FilePath::fromUserInput(QLatin1String("c:\\foo.c")),
-                                      13,
-                                      categoryCompile))
+            << (Tasks() << CompileTask(Task::Warning,
+                                       "C123: Some warning : 'extended text'",
+                                       FilePath::fromUserInput("c:\\foo.c"),
+                                       13))
             << QString();
 
     QTest::newRow("MCS51: Compiler simple error")
@@ -425,11 +488,10 @@ void BareMetalPlugin::testKeilOutputParsers_data()
             << OutputParserTester::STDOUT
             << QString::fromLatin1("*** ERROR C123 IN LINE 13 OF c:\\foo.c: Some error\n")
             << QString()
-            << (Tasks() << Task(Task::Error,
-                                      QLatin1String("C123: Some error"),
-                                      Utils::FilePath::fromUserInput(QLatin1String("c:\\foo.c")),
-                                      13,
-                                      categoryCompile))
+            << (Tasks() << CompileTask(Task::Error,
+                                       "C123: Some error",
+                                       FilePath::fromUserInput("c:\\foo.c"),
+                                       13))
             << QString();
 
     QTest::newRow("MCS51: Compiler extended error")
@@ -437,11 +499,10 @@ void BareMetalPlugin::testKeilOutputParsers_data()
             << OutputParserTester::STDOUT
             << QString::fromLatin1("*** ERROR C123 IN LINE 13 OF c:\\foo.c: Some error : 'extended text'\n")
             << QString()
-            << (Tasks() << Task(Task::Error,
-                                      QLatin1String("C123: Some error : 'extended text'"),
-                                      Utils::FilePath::fromUserInput(QLatin1String("c:\\foo.c")),
-                                      13,
-                                      categoryCompile))
+            << (Tasks() << CompileTask(Task::Error,
+                                       "C123: Some error : 'extended text'",
+                                       FilePath::fromUserInput("c:\\foo.c"),
+                                       13))
             << QString();
 
     QTest::newRow("MCS51: Compiler fatal error")
@@ -453,26 +514,32 @@ void BareMetalPlugin::testKeilOutputParsers_data()
                                    "  Some detail 1\n"
                                    "  Some detail N\n")
             << QString()
-            << (Tasks() << Task(Task::Error,
-                                      QLatin1String("Compiler fatal error\n"
-                                                    "  Some detail 1\n"
-                                                    "  Some detail N"),
-                                      Utils::FilePath(),
-                                      -1,
-                                      categoryCompile))
+            << (Tasks() << CompileTask(Task::Error,
+                                       "Compiler fatal error\n"
+                                       "  Some detail 1\n"
+                                       "  Some detail N"))
             << QString();
 
     // Linker messages.
+    QTest::newRow("MCS51: Linker warning")
+            << QString::fromLatin1("*** WARNING L16: Some warning\n"
+                                   "    Some detail 1")
+            << OutputParserTester::STDOUT
+            << QString::fromLatin1("*** WARNING L16: Some warning\n"
+                                   "    Some detail 1\n")
+            << QString()
+            << (Tasks() << CompileTask(Task::Warning,
+                                       "L16: Some warning\n"
+                                       "    Some detail 1"))
+            << QString();
+
     QTest::newRow("MCS51: Linker simple fatal error")
             << QString::fromLatin1("*** FATAL ERROR L456: Some error")
             << OutputParserTester::STDOUT
             << QString::fromLatin1("*** FATAL ERROR L456: Some error\n")
             << QString()
-            << (Tasks() << Task(Task::Error,
-                                      QLatin1String("L456: Some error"),
-                                      Utils::FilePath(),
-                                      -1,
-                                      categoryCompile))
+            << (Tasks() << CompileTask(Task::Error,
+                                       "L456: Some error"))
             << QString();
 
     QTest::newRow("MCS51: Linker extended fatal error")
@@ -484,13 +551,10 @@ void BareMetalPlugin::testKeilOutputParsers_data()
                                    "    Some detail 1\n"
                                    "    Some detail N\n")
             << QString()
-            << (Tasks() << Task(Task::Error,
-                                      QLatin1String("L456: Some error\n"
-                                                    "    Some detail 1\n"
-                                                    "    Some detail N"),
-                                      Utils::FilePath(),
-                                      -1,
-                                      categoryCompile))
+            << (Tasks() << CompileTask(Task::Error,
+                                       "L456: Some error\n"
+                                       "    Some detail 1\n"
+                                       "    Some detail N"))
             << QString();
 }
 

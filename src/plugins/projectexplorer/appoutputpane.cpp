@@ -51,6 +51,8 @@
 
 #include <QAction>
 #include <QCheckBox>
+#include <QComboBox>
+#include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLoggingCategory>
@@ -118,9 +120,6 @@ private:
     int m_tabIndexForMiddleClick = -1;
 };
 
-}
-}
-
 TabWidget::TabWidget(QWidget *parent)
     : QTabWidget(parent)
 {
@@ -185,14 +184,14 @@ AppOutputPane::AppOutputPane() :
 
     // Rerun
     m_reRunButton->setIcon(Utils::Icons::RUN_SMALL_TOOLBAR.icon());
-    m_reRunButton->setToolTip(tr("Re-run this run-configuration"));
+    m_reRunButton->setToolTip(tr("Re-run this run-configuration."));
     m_reRunButton->setEnabled(false);
     connect(m_reRunButton, &QToolButton::clicked,
             this, &AppOutputPane::reRunRunControl);
 
     // Stop
     m_stopAction->setIcon(Utils::Icons::STOP_SMALL_TOOLBAR.icon());
-    m_stopAction->setToolTip(tr("Stop Running Program"));
+    m_stopAction->setToolTip(tr("Stop running program."));
     m_stopAction->setEnabled(false);
 
     Core::Command *cmd = Core::ActionManager::registerAction(m_stopAction, Constants::STOP);
@@ -228,7 +227,7 @@ AppOutputPane::AppOutputPane() :
     // Spacer (?)
 
     auto *layout = new QVBoxLayout;
-    layout->setMargin(0);
+    layout->setContentsMargins(0, 0, 0, 0);
     m_tabWidget->setDocumentMode(true);
     m_tabWidget->setTabsClosable(true);
     m_tabWidget->setMovable(true);
@@ -376,7 +375,7 @@ void AppOutputPane::updateFilter()
     const int index = currentIndex();
     if (index != -1) {
         m_runControlTabs.at(index).window->updateFilterProperties(
-                    filterText(), filterCaseSensitivity(), filterUsesRegexp());
+                    filterText(), filterCaseSensitivity(), filterUsesRegexp(), filterIsInverted());
     }
 }
 
@@ -497,10 +496,18 @@ void AppOutputPane::appendMessage(RunControl *rc, const QString &out, Utils::Out
         stringToWrite += out;
         window->appendMessage(stringToWrite, format);
         if (format != Utils::NormalMessageFormat) {
-            if (m_runControlTabs.at(index).behaviorOnOutput == Flash)
+            RunControlTab &tab = m_runControlTabs[index];
+            switch (tab.behaviorOnOutput) {
+            case AppOutputPaneMode::FlashOnOutput:
                 flash();
-            else
+                break;
+            case AppOutputPaneMode::PopupOnFirstOutput:
+                tab.behaviorOnOutput = AppOutputPaneMode::FlashOnOutput;
+                Q_FALLTHROUGH();
+            case AppOutputPaneMode::PopupOnOutput:
                 popup(NoModeSwitch);
+                break;
+            }
         }
     }
 }
@@ -515,8 +522,8 @@ void AppOutputPane::setSettings(const AppOutputSettings &settings)
 void AppOutputPane::storeSettings() const
 {
     QSettings * const s = Core::ICore::settings();
-    s->setValue(POP_UP_FOR_RUN_OUTPUT_KEY, m_settings.popUpForRunOutput);
-    s->setValue(POP_UP_FOR_DEBUG_OUTPUT_KEY, m_settings.popUpForDebugOutput);
+    s->setValue(POP_UP_FOR_RUN_OUTPUT_KEY, int(m_settings.runOutputMode));
+    s->setValue(POP_UP_FOR_DEBUG_OUTPUT_KEY, int(m_settings.debugOutputMode));
     s->setValue(CLEAN_OLD_OUTPUT_KEY, m_settings.cleanOldOutput);
     s->setValue(MERGE_CHANNELS_KEY, m_settings.mergeChannels);
     s->setValue(WRAP_OUTPUT_KEY, m_settings.wrapOutput);
@@ -526,8 +533,13 @@ void AppOutputPane::storeSettings() const
 void AppOutputPane::loadSettings()
 {
     QSettings * const s = Core::ICore::settings();
-    m_settings.popUpForRunOutput = s->value(POP_UP_FOR_RUN_OUTPUT_KEY, true).toBool();
-    m_settings.popUpForDebugOutput = s->value(POP_UP_FOR_DEBUG_OUTPUT_KEY, false).toBool();
+    const auto modeFromSettings = [s](const QString key, AppOutputPaneMode defaultValue) {
+        return static_cast<AppOutputPaneMode>(s->value(key, int(defaultValue)).toInt());
+    };
+    m_settings.runOutputMode = modeFromSettings(POP_UP_FOR_RUN_OUTPUT_KEY,
+                                                AppOutputPaneMode::PopupOnFirstOutput);
+    m_settings.debugOutputMode = modeFromSettings(POP_UP_FOR_DEBUG_OUTPUT_KEY,
+                                                  AppOutputPaneMode::FlashOnOutput);
     m_settings.cleanOldOutput = s->value(CLEAN_OLD_OUTPUT_KEY, false).toBool();
     m_settings.mergeChannels = s->value(MERGE_CHANNELS_KEY, false).toBool();
     m_settings.wrapOutput = s->value(WRAP_OUTPUT_KEY, true).toBool();
@@ -540,7 +552,7 @@ void AppOutputPane::showTabFor(RunControl *rc)
     m_tabWidget->setCurrentIndex(tabWidgetIndexOf(indexOf(rc)));
 }
 
-void AppOutputPane::setBehaviorOnOutput(RunControl *rc, AppOutputPane::BehaviorOnOutput mode)
+void AppOutputPane::setBehaviorOnOutput(RunControl *rc, AppOutputPaneMode mode)
 {
     const int index = indexOf(rc);
     if (index != -1)
@@ -709,7 +721,7 @@ void AppOutputPane::tabChanged(int i)
     if (i != -1 && index != -1) {
         const RunControlTab &controlTab = m_runControlTabs[index];
         controlTab.window->updateFilterProperties(filterText(), filterCaseSensitivity(),
-                                                  filterUsesRegexp());
+                                                  filterUsesRegexp(), filterIsInverted());
         enableButtons(controlTab.runControl);
     } else {
         enableDefaultButtons();
@@ -765,7 +777,7 @@ void AppOutputPane::slotRunControlFinished2(RunControl *sender)
     if (current && current == sender)
         enableButtons(current);
 
-    emit ProjectExplorerPlugin::instance()->updateRunActions();
+    ProjectExplorerPlugin::updateRunActions();
 
 #ifdef Q_OS_WIN
     const bool isRunning = Utils::anyOf(m_runControlTabs, [](const RunControlTab &rt) {
@@ -802,11 +814,11 @@ bool AppOutputPane::canNavigate() const
     return false;
 }
 
-class AppOutputSettingsPage::SettingsWidget : public QWidget
+class AppOutputSettingsWidget : public Core::IOptionsPageWidget
 {
     Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::Internal::AppOutputSettingsPage)
 public:
-    SettingsWidget()
+    AppOutputSettingsWidget()
     {
         const AppOutputSettings &settings = ProjectExplorerPlugin::appOutputSettings();
         m_wrapOutputCheckBox.setText(tr("Word-wrap output"));
@@ -815,18 +827,23 @@ public:
         m_cleanOldOutputCheckBox.setChecked(settings.cleanOldOutput);
         m_mergeChannelsCheckBox.setText(tr("Merge stderr and stdout"));
         m_mergeChannelsCheckBox.setChecked(settings.mergeChannels);
-        m_popUpForRunOutputCheckBox.setText(tr("Open pane on output when running"));
-        m_popUpForRunOutputCheckBox.setChecked(settings.popUpForRunOutput);
-        m_popUpForDebugOutputCheckBox.setText(tr("Open pane on output when debugging"));
-        m_popUpForDebugOutputCheckBox.setChecked(settings.popUpForDebugOutput);
+        for (QComboBox * const modeComboBox
+             : {&m_runOutputModeComboBox, &m_debugOutputModeComboBox}) {
+            modeComboBox->addItem(tr("Always"), int(AppOutputPaneMode::PopupOnOutput));
+            modeComboBox->addItem(tr("Never"), int(AppOutputPaneMode::FlashOnOutput));
+            modeComboBox->addItem(tr("On First Output Only"),
+                                  int(AppOutputPaneMode::PopupOnFirstOutput));
+        }
+        m_runOutputModeComboBox.setCurrentIndex(m_runOutputModeComboBox
+                                                .findData(int(settings.runOutputMode)));
+        m_debugOutputModeComboBox.setCurrentIndex(m_debugOutputModeComboBox
+                                                  .findData(int(settings.debugOutputMode)));
         m_maxCharsBox.setMaximum(100000000);
         m_maxCharsBox.setValue(settings.maxCharCount);
         const auto layout = new QVBoxLayout(this);
         layout->addWidget(&m_wrapOutputCheckBox);
         layout->addWidget(&m_cleanOldOutputCheckBox);
         layout->addWidget(&m_mergeChannelsCheckBox);
-        layout->addWidget(&m_popUpForRunOutputCheckBox);
-        layout->addWidget(&m_popUpForDebugOutputCheckBox);
         const auto maxCharsLayout = new QHBoxLayout;
         const QString msg = tr("Limit output to %1 characters");
         const QStringList parts = msg.split("%1") << QString() << QString();
@@ -834,55 +851,49 @@ public:
         maxCharsLayout->addWidget(&m_maxCharsBox);
         maxCharsLayout->addWidget(new QLabel(parts.at(1).trimmed()));
         maxCharsLayout->addStretch(1);
+        const auto outputModeLayout = new QFormLayout;
+        outputModeLayout->addRow(tr("Open pane on output when running:"), &m_runOutputModeComboBox);
+        outputModeLayout->addRow(tr("Open pane on output when debugging:"),
+                                 &m_debugOutputModeComboBox);
+        layout->addLayout(outputModeLayout);
         layout->addLayout(maxCharsLayout);
         layout->addStretch(1);
     }
 
-    AppOutputSettings settings() const
+    void apply() final
     {
         AppOutputSettings s;
         s.wrapOutput = m_wrapOutputCheckBox.isChecked();
         s.cleanOldOutput = m_cleanOldOutputCheckBox.isChecked();
         s.mergeChannels = m_mergeChannelsCheckBox.isChecked();
-        s.popUpForRunOutput = m_popUpForRunOutputCheckBox.isChecked();
-        s.popUpForDebugOutput = m_popUpForDebugOutputCheckBox.isChecked();
+        s.runOutputMode = static_cast<AppOutputPaneMode>(
+                    m_runOutputModeComboBox.currentData().toInt());
+        s.debugOutputMode = static_cast<AppOutputPaneMode>(
+                    m_debugOutputModeComboBox.currentData().toInt());
         s.maxCharCount = m_maxCharsBox.value();
-        return s;
+
+        ProjectExplorerPlugin::setAppOutputSettings(s);
     }
 
 private:
     QCheckBox m_wrapOutputCheckBox;
     QCheckBox m_cleanOldOutputCheckBox;
     QCheckBox m_mergeChannelsCheckBox;
-    QCheckBox m_popUpForRunOutputCheckBox;
-    QCheckBox m_popUpForDebugOutputCheckBox;
+    QComboBox m_runOutputModeComboBox;
+    QComboBox m_debugOutputModeComboBox;
     QSpinBox m_maxCharsBox;
 };
 
 AppOutputSettingsPage::AppOutputSettingsPage()
 {
     setId(OPTIONS_PAGE_ID);
-    setDisplayName(tr("Application Output"));
+    setDisplayName(AppOutputSettingsWidget::tr("Application Output"));
     setCategory(Constants::BUILD_AND_RUN_SETTINGS_CATEGORY);
+    setWidgetCreator([] { return new AppOutputSettingsWidget; });
 }
 
-QWidget *AppOutputSettingsPage::widget()
-{
-    if (!m_widget)
-        m_widget = new SettingsWidget;
-    return m_widget;
-}
-
-void AppOutputSettingsPage::apply()
-{
-    if (m_widget)
-        ProjectExplorerPlugin::setAppOutputSettings(m_widget->settings());
-}
-
-void AppOutputSettingsPage::finish()
-{
-    delete m_widget;
-}
+} // namespace Internal
+} // namespace ProjectExplorer
 
 #include "appoutputpane.moc"
 

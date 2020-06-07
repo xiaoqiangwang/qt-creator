@@ -86,7 +86,7 @@ void HoverHandler::identifyMatch(TextEditor::TextEditorWidget *editorWidget,
     }
 
     m_report = report;
-    auto uri = DocumentUri::fromFileName(editorWidget->textDocument()->filePath());
+    auto uri = DocumentUri::fromFilePath(editorWidget->textDocument()->filePath());
     QTextCursor cursor = editorWidget->textCursor();
     cursor.setPosition(pos);
     TextDocumentPositionParams params(uri, Position(cursor));
@@ -94,14 +94,6 @@ void HoverHandler::identifyMatch(TextEditor::TextEditorWidget *editorWidget,
     request.setResponseCallback(
         [this](const HoverRequest::Response &response) { handleResponse(response); });
     m_client->sendContent(request);
-}
-
-void HoverHandler::operateTooltip(TextEditor::TextEditorWidget *editorWidget, const QPoint &point)
-{
-    if (toolTip().isEmpty())
-        Utils::ToolTip::hide();
-    else
-        Utils::ToolTip::show(point, toolTip(), editorWidget);
 }
 
 void HoverHandler::handleResponse(const HoverRequest::Response &response)
@@ -134,10 +126,17 @@ void HoverHandler::setContent(const HoverContent &hoverContent)
 {
     if (auto markupContent = Utils::get_if<MarkupContent>(&hoverContent)) {
         const QString &content = markupContent->content();
-        if (markupContent->kind() == MarkupKind::plaintext)
+        if (markupContent->kind() == MarkupKind::plaintext) {
             setToolTip(content);
-        else if (m_client)
-            m_client->log(tr("Got unsupported markup hover content: ") + content);
+        } else if (m_client) {
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+            setToolTip(content, Qt::MarkdownText);
+#else
+            m_client->log(tr("Got unsupported markup hover content: ") + content,
+                          Core::MessageManager::Silent);
+            setToolTip(content);
+#endif
+        }
     } else if (auto markedString = Utils::get_if<MarkedString>(&hoverContent)) {
         setToolTip(toolTipForMarkedStrings({*markedString}));
     } else if (auto markedStrings = Utils::get_if<QList<MarkedString>>(&hoverContent)) {

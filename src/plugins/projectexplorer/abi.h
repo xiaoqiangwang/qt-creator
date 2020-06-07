@@ -58,6 +58,10 @@ public:
         AvrArchitecture,
         XtensaArchitecture,
         Mcs51Architecture,
+        AsmJsArchitecture,
+        Stm8Architecture,
+        Msp430Architecture,
+        Rl78Architecture,
         UnknownArchitecture
     };
 
@@ -94,6 +98,7 @@ public:
         WindowsMsvc2015Flavor,
         WindowsMsvc2017Flavor,
         WindowsMsvc2019Flavor,
+        WindowsLastMsvcFlavor = WindowsMsvc2019Flavor,
         WindowsMSysFlavor,
         WindowsCEFlavor,
 
@@ -114,12 +119,13 @@ public:
         RuntimeQmlFormat,
         UbrofFormat,
         OmfFormat,
+        EmscriptenFormat,
         UnknownFormat
     };
 
     Abi(const Architecture &a = UnknownArchitecture, const OS &o = UnknownOS,
         const OSFlavor &so = UnknownFlavor, const BinaryFormat &f = UnknownFormat,
-        unsigned char w = 0);
+        unsigned char w = 0, const QString &p = {});
 
     static Abi abiFromTargetTriplet(const QString &machineTriple);
 
@@ -128,6 +134,7 @@ public:
     bool operator != (const Abi &other) const;
     bool operator == (const Abi &other) const;
     bool isCompatibleWith(const Abi &other) const;
+    bool isFullyCompatibleWith(const Abi &other) const;
 
     bool isValid() const;
     bool isNull() const;
@@ -139,6 +146,7 @@ public:
     unsigned char wordWidth() const { return m_wordWidth; }
 
     QString toString() const;
+    QString param() const;
 
     static QString toString(const Architecture &a);
     static QString toString(const OS &o);
@@ -169,6 +177,7 @@ private:
     OSFlavor m_osFlavor;
     BinaryFormat m_binaryFormat;
     unsigned char m_wordWidth;
+    QString m_param;
 };
 
 inline int qHash(const ProjectExplorer::Abi &abi)

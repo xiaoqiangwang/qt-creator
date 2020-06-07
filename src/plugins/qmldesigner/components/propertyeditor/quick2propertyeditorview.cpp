@@ -30,9 +30,16 @@
 #include "gradientmodel.h"
 #include "gradientpresetdefaultlistmodel.h"
 #include "gradientpresetcustomlistmodel.h"
+#include "itemfiltermodel.h"
 #include "simplecolorpalettemodel.h"
+#include "bindingeditor/bindingeditor.h"
+#include "bindingeditor/actioneditor.h"
+#include "annotationeditor/annotationeditor.h"
 #include "qmlanchorbindingproxy.h"
 #include "theme.h"
+#include "aligndistribute.h"
+#include "propertyeditorcontextobject.h"
+#include "tooltip.h"
 
 namespace QmlDesigner {
 
@@ -53,8 +60,15 @@ void Quick2PropertyEditorView::registerQmlTypes()
         GradientModel::registerDeclarativeType();
         GradientPresetDefaultListModel::registerDeclarativeType();
         GradientPresetCustomListModel::registerDeclarativeType();
+        ItemFilterModel::registerDeclarativeType();
         SimpleColorPaletteModel::registerDeclarativeType();
         Internal::QmlAnchorBindingProxy::registerDeclarativeType();
+        BindingEditor::registerDeclarativeType();
+        ActionEditor::registerDeclarativeType();
+        AnnotationEditor::registerDeclarativeType();
+        AlignDistribute::registerDeclarativeType();
+        Tooltip::registerDeclarativeType();
+        EasingCurveEditor::registerDeclarativeType();
     }
 }
 

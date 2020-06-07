@@ -62,11 +62,6 @@ public:
         CloseTabWithPrompt
     };
 
-    enum BehaviorOnOutput {
-        Flash,
-        Popup
-    };
-
     AppOutputPane();
     ~AppOutputPane() override;
 
@@ -88,7 +83,7 @@ public:
 
     void createNewOutputWindow(RunControl *rc);
     void showTabFor(RunControl *rc);
-    void setBehaviorOnOutput(RunControl *rc, BehaviorOnOutput mode);
+    void setBehaviorOnOutput(RunControl *rc, AppOutputPaneMode mode);
 
     bool aboutToClose() const;
     void closeTabs(CloseTabMode mode);
@@ -130,7 +125,7 @@ private:
                                Core::OutputWindow *window = nullptr);
         QPointer<RunControl> runControl;
         QPointer<Core::OutputWindow> window;
-        BehaviorOnOutput behaviorOnOutput = Flash;
+        AppOutputPaneMode behaviorOnOutput = AppOutputPaneMode::FlashOnOutput;
     };
 
     void closeTab(int index, CloseTabMode cm = CloseTabWithPrompt);
@@ -164,20 +159,10 @@ private:
     AppOutputSettings m_settings;
 };
 
-class AppOutputSettingsPage : public Core::IOptionsPage
+class AppOutputSettingsPage final : public Core::IOptionsPage
 {
-    Q_OBJECT
-
 public:
     AppOutputSettingsPage();
-
-private:
-    QWidget *widget() override;
-    void apply() override;
-    void finish() override;
-
-    class SettingsWidget;
-    QPointer<SettingsWidget> m_widget;
 };
 
 } // namespace Internal

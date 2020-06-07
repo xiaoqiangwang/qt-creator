@@ -31,7 +31,9 @@
 #include "timelinetooldelegate.h"
 
 #include <QGraphicsRectItem>
+#include <QGraphicsView>
 #include <QGraphicsSceneMouseEvent>
+#include <QScrollBar>
 #include <QPen>
 
 namespace QmlDesigner {
@@ -68,8 +70,8 @@ SelectionMode TimelineSelectionTool::selectionMode(QGraphicsSceneMouseEvent *eve
 void TimelineSelectionTool::mousePressEvent(TimelineMovableAbstractItem *item,
                                             QGraphicsSceneMouseEvent *event)
 {
-    Q_UNUSED(item);
-    Q_UNUSED(event);
+    Q_UNUSED(item)
+    Q_UNUSED(event)
 
     if (event->buttons() == Qt::LeftButton && selectionMode(event) == SelectionMode::New)
         deselect();
@@ -78,27 +80,33 @@ void TimelineSelectionTool::mousePressEvent(TimelineMovableAbstractItem *item,
 void TimelineSelectionTool::mouseMoveEvent(TimelineMovableAbstractItem *item,
                                            QGraphicsSceneMouseEvent *event)
 {
-    Q_UNUSED(item);
+    Q_UNUSED(item)
 
     if (event->buttons() == Qt::LeftButton) {
         auto endPoint = event->scenePos();
-        if (endPoint.x() < 0)
-            endPoint.rx() = 0;
-        if (endPoint.y() < 0)
-            endPoint.ry() = 0;
+
+        const qreal xMin = TimelineConstants::sectionWidth;
+        const qreal xMax = scene()->graphicsView()->width()
+                           - TimelineConstants::timelineLeftOffset - 1;
+        const qreal yMin = qMax(TimelineConstants::rulerHeight,
+                                scene()->graphicsView()->verticalScrollBar()->value());
+        const qreal yMax = yMin + scene()->graphicsView()->height() - 1;
+
+        endPoint.rx() = qBound(xMin, endPoint.x(), xMax);
+        endPoint.ry() = qBound(yMin, endPoint.y(), yMax);
+
         m_selectionRect->setRect(QRectF(startPosition(), endPoint).normalized());
         m_selectionRect->show();
 
         aboutToSelect(selectionMode(event),
-                      scene()->items(m_selectionRect->rect(), Qt::ContainsItemShape));
+                      scene()->items(m_selectionRect->rect(), Qt::IntersectsItemBoundingRect));
     }
 }
 
 void TimelineSelectionTool::mouseReleaseEvent(TimelineMovableAbstractItem *item,
                                               QGraphicsSceneMouseEvent *event)
 {
-    Q_UNUSED(item);
-    Q_UNUSED(event);
+    Q_UNUSED(item)
 
     commitSelection(selectionMode(event));
 
@@ -108,20 +116,22 @@ void TimelineSelectionTool::mouseReleaseEvent(TimelineMovableAbstractItem *item,
 void TimelineSelectionTool::mouseDoubleClickEvent(TimelineMovableAbstractItem *item,
                                                   QGraphicsSceneMouseEvent *event)
 {
-    Q_UNUSED(item);
-    Q_UNUSED(event);
+    Q_UNUSED(event)
+
+    if (item)
+        item->itemDoubleClicked();
 
     reset();
 }
 
 void TimelineSelectionTool::keyPressEvent(QKeyEvent *keyEvent)
 {
-    Q_UNUSED(keyEvent);
+    Q_UNUSED(keyEvent)
 }
 
 void TimelineSelectionTool::keyReleaseEvent(QKeyEvent *keyEvent)
 {
-    Q_UNUSED(keyEvent);
+    Q_UNUSED(keyEvent)
 }
 
 void TimelineSelectionTool::deselect()
@@ -155,6 +165,10 @@ void TimelineSelectionTool::aboutToSelect(SelectionMode mode, QList<QGraphicsIte
 
     for (auto *item : items) {
         if (auto *keyframe = TimelineMovableAbstractItem::asTimelineKeyframeItem(item)) {
+            // if keyframe's center isn't inside m_selectionRect, discard it
+            if (!m_selectionRect->rect().contains(keyframe->rect().center() + item->scenePos()))
+                continue;
+
             if (mode == SelectionMode::Remove)
                 keyframe->setHighlighted(false);
             else if (mode == SelectionMode::Toggle)

@@ -36,11 +36,6 @@
 
 #include <functional>
 
-namespace Core {
-class Context;
-class Id;
-} // Core
-
 namespace Utils {
 
 // To be used for actions that need hideable toolbuttons.
@@ -57,6 +52,20 @@ public:
 
 public:
     QPointer<QToolButton> m_toolButton;
+};
+
+class PerspectiveState
+{
+public:
+    static const char *savesHeaderKey();
+
+    QByteArray mainWindowState;
+    QVariantHash headerViewStates;
+
+    friend QDataStream &operator>>(QDataStream &ds, PerspectiveState &state)
+        { return ds >> state.mainWindowState >> state.headerViewStates; }
+    friend QDataStream &operator<<(QDataStream &ds, const PerspectiveState &state)
+        { return ds << state.mainWindowState << state.headerViewStates; }
 };
 
 class DEBUGGER_EXPORT Perspective : public QObject
@@ -150,3 +159,5 @@ private:
 };
 
 } // Utils
+
+Q_DECLARE_METATYPE(Utils::PerspectiveState)

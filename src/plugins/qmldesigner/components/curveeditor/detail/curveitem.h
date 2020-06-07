@@ -27,6 +27,7 @@
 
 #include "curveeditorstyle.h"
 #include "curvesegment.h"
+#include "handleitem.h"
 #include "keyframe.h"
 #include "selectableitem.h"
 #include "treeitem.h"
@@ -40,12 +41,16 @@ class AnimationCurve;
 class KeyframeItem;
 class GraphicsScene;
 
-class CurveItem : public QGraphicsObject
+class CurveItem : public CurveEditorItem
 {
     Q_OBJECT
 
 signals:
     void curveChanged(unsigned int id, const AnimationCurve &curve);
+
+    void keyframeMoved(KeyframeItem *item, const QPointF &direction);
+
+    void handleMoved(KeyframeItem *frame, HandleItem::Slot slot, double angle, double deltaLength);
 
 public:
     CurveItem(QGraphicsItem *parent = nullptr);
@@ -64,11 +69,15 @@ public:
 
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
 
+    void lockedCallback() override;
+
     bool isDirty() const;
 
-    bool isUnderMouse() const;
+    bool hasActiveKeyframe() const;
 
-    bool hasSelection() const;
+    bool hasActiveHandle() const;
+
+    bool hasSelectedKeyframe() const;
 
     unsigned int id() const;
 
@@ -81,6 +90,12 @@ public:
     AnimationCurve resolvedCurve() const;
 
     std::vector<AnimationCurve> curves() const;
+
+    QVector<KeyframeItem *> keyframes() const;
+
+    QVector<KeyframeItem *> selectedKeyframes() const;
+
+    QVector<HandleItem *> handles() const;
 
     void restore();
 
@@ -100,9 +115,9 @@ public:
 
     void setInterpolation(Keyframe::Interpolation interpolation);
 
-    void connect(GraphicsScene *scene);
+    void toggleUnified();
 
-    void setIsUnderMouse(bool under);
+    void connect(GraphicsScene *scene);
 
     void insertKeyframeByTime(double time);
 
@@ -121,9 +136,7 @@ private:
 
     QTransform m_transform;
 
-    std::vector<KeyframeItem *> m_keyframes;
-
-    bool m_underMouse;
+    QVector<KeyframeItem *> m_keyframes;
 
     bool m_itemDirty;
 };

@@ -96,9 +96,10 @@ QStringList QmakeProjectImporter::importCandidates()
     candidates << pfi.absolutePath();
 
     foreach (Kit *k, KitManager::kits()) {
-        QFileInfo fi(QmakeBuildConfiguration::shadowBuildDirectory(projectFilePath().toString(), k,
-                                                                   QString(), BuildConfiguration::Unknown));
-        const QString baseDir = fi.absolutePath();
+        const FilePath sbdir = QmakeBuildConfiguration::shadowBuildDirectory
+                    (projectFilePath(), k, QString(), BuildConfiguration::Unknown);
+
+        const QString baseDir = sbdir.toFileInfo().absolutePath();
 
         foreach (const QString &dir, QDir(baseDir).entryList()) {
             const QString path = baseDir + QLatin1Char('/') + dir;
@@ -231,16 +232,12 @@ Kit *QmakeProjectImporter::createKit(void *directoryData) const
     return createTemporaryKit(data->qtVersionData, data->parsedSpec, data->archConfig, data->osType);
 }
 
-const QList<BuildInfo> QmakeProjectImporter::buildInfoListForKit(const Kit *k, void *directoryData) const
+const QList<BuildInfo> QmakeProjectImporter::buildInfoList(void *directoryData) const
 {
     auto *data = static_cast<DirectoryData *>(directoryData);
-    auto factory = qobject_cast<QmakeBuildConfigurationFactory *>(
-                BuildConfigurationFactory::find(k, projectFilePath().toString()));
-    if (!factory)
-        return {};
 
     // create info:
-    BuildInfo info(factory);
+    BuildInfo info;
     if (data->buildConfig & BaseQtVersion::DebugBuild) {
         info.buildType = BuildConfiguration::Debug;
         info.displayName = QCoreApplication::translate("QmakeProjectManager::Internal::QmakeProjectImporter", "Debug");
@@ -248,7 +245,6 @@ const QList<BuildInfo> QmakeProjectImporter::buildInfoListForKit(const Kit *k, v
         info.buildType = BuildConfiguration::Release;
         info.displayName = QCoreApplication::translate("QmakeProjectManager::Internal::QmakeProjectImporter", "Release");
     }
-    info.kitId = k->id();
     info.buildDirectory = data->buildDirectory;
 
     QmakeExtraBuildInfo extra;
@@ -296,7 +292,7 @@ Kit *QmakeProjectImporter::createTemporaryKit(const QtProjectImporter::QtVersion
                                               const QMakeStepConfig::TargetArchConfig &archConfig,
                                               const QMakeStepConfig::OsType &osType) const
 {
-    Q_UNUSED(osType); // TODO use this to select the right toolchain?
+    Q_UNUSED(osType) // TODO use this to select the right toolchain?
     return QtProjectImporter::createTemporaryKit(data,
                                                  [&data, parsedSpec, archConfig](Kit *k) -> void {
         for (ToolChain * const tc : preferredToolChains(data.qt, parsedSpec, archConfig))

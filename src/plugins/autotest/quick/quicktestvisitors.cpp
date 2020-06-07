@@ -33,6 +33,8 @@
 #include <utils/algorithm.h>
 #include <utils/qtcassert.h>
 
+#include <QDebug>
+
 namespace Autotest {
 namespace Internal {
 
@@ -177,6 +179,11 @@ bool TestQmlVisitor::visit(QmlJS::AST::StringLiteral *ast)
     return false;
 }
 
+void TestQmlVisitor::throwRecursionDepthError()
+{
+    qWarning("Warning: Hit maximum recursion depth while visiting AST in TestQmlVisitor");
+}
+
 /************************************** QuickTestAstVisitor *************************************/
 
 QuickTestAstVisitor::QuickTestAstVisitor(CPlusPlus::Document::Ptr doc,
@@ -205,6 +212,8 @@ bool QuickTestAstVisitor::visit(CPlusPlus::CallAST *ast)
 
                         if (expressionListAST && expressionListAST->value) {
                             const auto *stringLitAST = expressionListAST->value->asStringLiteral();
+                            if (!stringLitAST)
+                                return false;
                             const auto *string
                                     = translationUnit()->stringLiteral(stringLitAST->literal_token);
                             if (string) {

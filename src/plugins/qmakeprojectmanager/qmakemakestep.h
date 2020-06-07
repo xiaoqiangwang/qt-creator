@@ -47,12 +47,13 @@ class QMAKEPROJECTMANAGER_EXPORT QmakeMakeStep : public ProjectExplorer::MakeSte
     Q_OBJECT
 
 public:
-    explicit QmakeMakeStep(ProjectExplorer::BuildStepList *bsl);
+    QmakeMakeStep(ProjectExplorer::BuildStepList *bsl, Core::Id id);
 
 private:
     void finish(bool success) override;
     bool init() override;
     void doRun() override;
+    QStringList displayArguments() const override;
 
     bool m_scriptTarget = false;
     QString m_makeFileToCheck;

@@ -136,8 +136,9 @@ void TextMark::paintAnnotation(QPainter &painter, QRectF *annotationRect,
 
     const AnnotationRects &rects = annotationRects(*annotationRect, painter.fontMetrics(),
                                                    fadeInOffset, fadeOutOffset);
-    const QColor &markColor = m_hasColor ? Utils::creatorTheme()->color(m_color).toHsl()
-                                         : painter.pen().color();
+    const QColor &markColor = m_color.has_value()
+                                  ? Utils::creatorTheme()->color(m_color.value()).toHsl()
+                                  : painter.pen().color();
     const AnnotationColors &colors = AnnotationColors::getAnnotationColors(
                 markColor, painter.background().color());
 
@@ -267,7 +268,7 @@ bool TextMark::isDraggable() const
 
 void TextMark::dragToLine(int lineNumber)
 {
-    Q_UNUSED(lineNumber);
+    Q_UNUSED(lineNumber)
 }
 
 void TextMark::addToToolTipLayout(QGridLayout *target) const
@@ -327,15 +328,13 @@ bool TextMark::addToolTipContent(QLayout *target) const
     return true;
 }
 
-Theme::Color TextMark::color() const
+Utils::optional<Theme::Color> TextMark::color() const
 {
-    QTC_CHECK(m_hasColor);
     return m_color;
 }
 
 void TextMark::setColor(const Theme::Color &color)
 {
-    m_hasColor = true;
     m_color = color;
 }
 
@@ -364,7 +363,7 @@ TextMarkRegistry::TextMarkRegistry(QObject *parent)
 void TextMarkRegistry::add(TextMark *mark)
 {
     instance()->m_marks[mark->fileName()].insert(mark);
-    if (TextDocument *document = TextDocument::textDocumentForFileName(mark->fileName()))
+    if (TextDocument *document = TextDocument::textDocumentForFilePath(mark->fileName()))
         document->addMark(mark);
 }
 

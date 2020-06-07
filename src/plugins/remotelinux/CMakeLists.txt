@@ -1,13 +1,12 @@
 add_qtc_plugin(RemoteLinux
   DEPENDS QmlDebug QtcSsh
-  PLUGIN_DEPENDS Core Debugger ProjectExplorer QtSupport
+  PLUGIN_DEPENDS Core Debugger ProjectExplorer
   SOURCES
     abstractpackagingstep.cpp abstractpackagingstep.h
     abstractremotelinuxdeployservice.cpp abstractremotelinuxdeployservice.h
     abstractremotelinuxdeploystep.cpp abstractremotelinuxdeploystep.h
     abstractuploadandinstallpackageservice.cpp abstractuploadandinstallpackageservice.h
     deploymenttimeinfo.cpp deploymenttimeinfo.h
-    embeddedlinuxqtversion.cpp embeddedlinuxqtversion.h
     genericdirectuploadservice.cpp genericdirectuploadservice.h
     genericdirectuploadstep.cpp genericdirectuploadstep.h
     genericlinuxdeviceconfigurationwidget.cpp genericlinuxdeviceconfigurationwidget.h genericlinuxdeviceconfigurationwidget.ui

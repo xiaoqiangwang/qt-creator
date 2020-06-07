@@ -136,8 +136,20 @@ void HelpManager::registerDocumentation(const QStringList &files)
             emit Core::HelpManager::Signals::instance()->documentationChanged();
         }
     });
-    ProgressManager::addTask(future, tr("Update Documentation"),
-                             kUpdateDocumentationTask);
+    ProgressManager::addTask(future, tr("Update Documentation"), kUpdateDocumentationTask);
+}
+
+void HelpManager::unregisterDocumentation(const QStringList &fileNames)
+{
+    if (fileNames.isEmpty())
+        return;
+    const auto getNamespaces = [](const QStringList &fileNames) {
+        QMutexLocker locker(&d->m_helpengineMutex);
+        return Utils::transform(fileNames, [](const QString &filePath) {
+            return d->m_helpEngine->namespaceName(filePath);
+        });
+    };
+    unregisterNamespaces(getNamespaces(fileNames));
 }
 
 void HelpManager::registerDocumentationNow(QFutureInterface<bool> &futureInterface,
@@ -172,7 +184,7 @@ void HelpManager::registerDocumentationNow(QFutureInterface<bool> &futureInterfa
     futureInterface.reportResult(docsChanged);
 }
 
-void HelpManager::unregisterDocumentation(const QStringList &nameSpaces)
+void HelpManager::unregisterNamespaces(const QStringList &nameSpaces)
 {
     if (d->m_needsSetup) {
         for (const QString &name : nameSpaces)
@@ -184,6 +196,8 @@ void HelpManager::unregisterDocumentation(const QStringList &nameSpaces)
     bool docsChanged = false;
     for (const QString &nameSpace : nameSpaces) {
         const QString filePath = d->m_helpEngine->documentationFileName(nameSpace);
+        if (filePath.isEmpty()) // wasn't registered anyhow, ignore
+            continue;
         if (d->m_helpEngine->unregisterDocumentation(nameSpace)) {
             docsChanged = true;
             d->m_userRegisteredFiles.remove(filePath);
@@ -372,7 +386,7 @@ void HelpManager::setupHelpManager()
     d->cleanUpDocumentation();
 
     if (!d->m_nameSpacesToUnregister.isEmpty()) {
-        m_instance->unregisterDocumentation(Utils::toList(d->m_nameSpacesToUnregister));
+        m_instance->unregisterNamespaces(Utils::toList(d->m_nameSpacesToUnregister));
         d->m_nameSpacesToUnregister.clear();
     }
 

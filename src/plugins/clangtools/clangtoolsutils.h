@@ -26,14 +26,15 @@
 #pragma once
 
 #include <coreplugin/id.h>
+#include <cpptools/clangdiagnosticconfig.h>
 
-#include <QVersionNumber>
 #include <QtGlobal>
 
 QT_BEGIN_NAMESPACE
 class QString;
 QT_END_NAMESPACE
 
+namespace CppTools { class ClangDiagnosticConfigsModel; }
 namespace Debugger { class DiagnosticLocation; }
 
 namespace ClangTools {
@@ -43,6 +44,24 @@ QString createFullLocationString(const Debugger::DiagnosticLocation &location);
 
 QString hintAboutBuildBeforeAnalysis();
 void showHintAboutBuildBeforeAnalysis();
+
+bool isFileExecutable(const QString &filePath);
+
+QString shippedClazyStandaloneExecutable();
+QString clazyStandaloneExecutable();
+QString clazyStandaloneFallbackExecutable();
+
+QString shippedClangTidyExecutable();
+QString clangTidyExecutable();
+QString clangTidyFallbackExecutable();
+
+QString fullPath(const QString &executable);
+
+QString documentationUrl(const QString &checkName);
+
+CppTools::ClangDiagnosticConfigsModel diagnosticConfigsModel();
+CppTools::ClangDiagnosticConfigsModel diagnosticConfigsModel(
+    const CppTools::ClangDiagnosticConfigs &customConfigs);
 
 } // namespace Internal
 } // namespace ClangTools

@@ -39,13 +39,13 @@ def main():
             languageName = languageName.replace("%1", country)
         selectFromCombo(":User Interface.languageBox_QComboBox", languageName)
         clickButton(waitForObject(":Options.OK_QPushButton"))
-        clickButton(waitForObject(":Restart required.OK_QPushButton"))
+        clickButton(waitForObject(":Restart required.Later_QPushButton"))
         test.verify(waitFor("not object.exists(':Options_Core::Internal::SettingsDialog')", 5000),
                     "Options dialog disappeared")
         invokeMenuItem("File", "Exit")
         waitForCleanShutdown()
         snooze(4) # wait for complete unloading of Creator
-        startQC(cancelTour=False)
+        startQC(closeLinkToQt=False, cancelTour=False)
         try:
             # Use Locator for menu items which wouldn't work on macOS
             exitCommand = testData.field(lang, "Exit")

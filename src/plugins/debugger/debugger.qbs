@@ -69,6 +69,7 @@ Project {
                 "memoryagent.cpp", "memoryagent.h",
                 "moduleshandler.cpp", "moduleshandler.h",
                 "outputcollector.cpp", "outputcollector.h",
+                "peripheralregisterhandler.cpp", "peripheralregisterhandler.h",
                 "procinterrupt.cpp", "procinterrupt.h",
                 "registerhandler.cpp", "registerhandler.h",
                 "sourceagent.cpp", "sourceagent.h",
@@ -123,6 +124,18 @@ Project {
             name: "pdb"
             prefix: "pdb/"
             files: ["pdbengine.cpp", "pdbengine.h"]
+        }
+
+        Group {
+            name: "uvsc"
+            prefix: "uvsc/"
+            files: [
+                "uvscclient.cpp", "uvscclient.h",
+                "uvscdatatypes.h",
+                "uvscengine.cpp", "uvscengine.h",
+                "uvscfunctions.h",
+                "uvscutils.cpp", "uvscutils.h",
+            ]
         }
 
         Group {

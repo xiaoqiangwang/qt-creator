@@ -26,7 +26,6 @@
 import QtQuick 2.2
 import StudioControls 1.0 as StudioControls
 import StudioTheme 1.0 as StudioTheme
-import QtQuick.Controls.Styles 1.0
 import QtQuickDesignerTheme 1.0
 
 StudioControls.TextField {
@@ -71,6 +70,7 @@ StudioControls.TextField {
     actionIndicator.icon.color: extFuncLogic.color
     actionIndicator.icon.text: extFuncLogic.glyph
     actionIndicator.onClicked: extFuncLogic.show()
+    actionIndicator.forceVisible: extFuncLogic.menuVisible
 
     ColorLogic {
         id: colorLogic

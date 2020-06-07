@@ -30,7 +30,7 @@
 #include "qbsinstallstep.h"
 #include "qbsproject.h"
 #include "qbsprojectmanagerconstants.h"
-#include "qbsprojectmanagersettings.h"
+#include "qbssettings.h"
 
 #include <coreplugin/documentmanager.h>
 
@@ -52,6 +52,7 @@
 #include <utils/qtcprocess.h>
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
 
 using namespace ProjectExplorer;
 using namespace Utils;
@@ -59,15 +60,15 @@ using namespace Utils;
 namespace QbsProjectManager {
 namespace Internal {
 
-static FilePath defaultBuildDirectory(const QString &projectFilePath, const Kit *k,
+static FilePath defaultBuildDirectory(const FilePath &projectFilePath, const Kit *k,
                                       const QString &bcName,
                                       BuildConfiguration::BuildType buildType)
 {
-    const QString projectName = QFileInfo(projectFilePath).completeBaseName();
+    const QString projectName = projectFilePath.toFileInfo().completeBaseName();
     ProjectMacroExpander expander(projectFilePath, projectName, k, bcName, buildType);
-    QString projectDir = Project::projectDirectory(FilePath::fromString(projectFilePath)).toString();
+    FilePath projectDir = Project::projectDirectory(projectFilePath);
     QString buildPath = expander.expand(ProjectExplorerPlugin::buildDirectoryTemplate());
-    return FilePath::fromString(FileUtils::resolvePath(projectDir, buildPath));
+    return projectDir.resolvePath(buildPath);
 }
 
 // ---------------------------------------------------------------------------
@@ -79,6 +80,49 @@ QbsBuildConfiguration::QbsBuildConfiguration(Target *target, Core::Id id)
 {
     setConfigWidgetHasFrame(true);
 
+    appendInitialBuildStep(Constants::QBS_BUILDSTEP_ID);
+    appendInitialCleanStep(Constants::QBS_CLEANSTEP_ID);
+
+    setInitializer([this, target](const BuildInfo &info) {
+        const Kit *kit = target->kit();
+        QVariantMap configData = info.extraInfo.value<QVariantMap>();
+        configData.insert(QLatin1String(Constants::QBS_CONFIG_VARIANT_KEY),
+                          (info.buildType == BuildConfiguration::Debug)
+                          ? QLatin1String(Constants::QBS_VARIANT_DEBUG)
+                          : QLatin1String(Constants::QBS_VARIANT_RELEASE));
+
+        FilePath buildDir = info.buildDirectory;
+        if (buildDir.isEmpty())
+            buildDir = defaultBuildDirectory(target->project()->projectFilePath(),
+                                             kit, info.displayName,
+                                             buildType());
+        setBuildDirectory(buildDir);
+
+        // Add the build configuration.
+        QVariantMap bd = configData;
+        QString configName = bd.take("configName").toString();
+        if (configName.isEmpty()) {
+            configName = "qtc_" + kit->fileSystemFriendlyName() + '_'
+                            + FileUtils::fileSystemFriendlyName(info.displayName);
+        }
+
+        const QString kitName = kit->displayName();
+        const QByteArray hash = QCryptographicHash::hash((kitName + info.displayName).toUtf8(),
+                                                         QCryptographicHash::Sha1);
+
+        const QString uniqueConfigName = configName
+                        + '_' + kit->fileSystemFriendlyName().left(8)
+                        + '_' + hash.toHex().left(16);
+
+        m_configurationName->setValue(uniqueConfigName);
+
+        auto bs = buildSteps()->firstOfType<QbsBuildStep>();
+        QTC_ASSERT(bs, return);
+        bs->setQbsConfiguration(bd);
+
+        emit qbsConfigurationChanged();
+    });
+
     m_configurationName = addAspect<BaseStringAspect>();
     m_configurationName->setLabelText(tr("Configuration name:"));
     m_configurationName->setSettingsKey("Qbs.configName");
@@ -86,47 +130,55 @@ QbsBuildConfiguration::QbsBuildConfiguration(Target *target, Core::Id id)
     connect(m_configurationName, &BaseStringAspect::changed,
             this, &BuildConfiguration::buildDirectoryChanged);
 
-    connect(project(), &Project::parsingStarted, this, &BuildConfiguration::enabledChanged);
-    connect(project(), &Project::parsingFinished, this, &BuildConfiguration::enabledChanged);
+    const auto separateDebugInfoAspect = addAspect<SeparateDebugInfoAspect>();
+    connect(separateDebugInfoAspect, &SeparateDebugInfoAspect::changed,
+            this, &QbsBuildConfiguration::qbsConfigurationChanged);
+
+    const auto qmlDebuggingAspect = addAspect<QtSupport::QmlDebuggingAspect>();
+    qmlDebuggingAspect->setKit(target->kit());
+    connect(qmlDebuggingAspect, &QtSupport::QmlDebuggingAspect::changed,
+            this, &QbsBuildConfiguration::qbsConfigurationChanged);
+
+    const auto qtQuickCompilerAspect = addAspect<QtSupport::QtQuickCompilerAspect>();
+    qtQuickCompilerAspect->setKit(target->kit());
+    connect(qtQuickCompilerAspect, &QtSupport::QtQuickCompilerAspect::changed,
+            this, &QbsBuildConfiguration::qbsConfigurationChanged);
+
+    connect(this, &BuildConfiguration::environmentChanged,
+            this, &QbsBuildConfiguration::triggerReparseIfActive);
+    connect(this, &BuildConfiguration::buildDirectoryChanged,
+            this, &QbsBuildConfiguration::triggerReparseIfActive);
+    connect(this, &QbsBuildConfiguration::qbsConfigurationChanged,
+            this, &QbsBuildConfiguration::triggerReparseIfActive);
+
+    macroExpander()->registerVariable("CurrentBuild:QbsBuildRoot", tr("The qbs project build root"),
+        [this] { return buildDirectory().pathAppended(configurationName()).toUserOutput(); });
+
+    m_buildSystem = new QbsBuildSystem(this);
 }
 
-void QbsBuildConfiguration::initialize(const BuildInfo &info)
+QbsBuildConfiguration::~QbsBuildConfiguration()
 {
-    BuildConfiguration::initialize(info);
-
-    QVariantMap configData = info.extraInfo.value<QVariantMap>();
-    configData.insert(QLatin1String(Constants::QBS_CONFIG_VARIANT_KEY),
-                      (info.buildType == BuildConfiguration::Debug)
-                      ? QLatin1String(Constants::QBS_VARIANT_DEBUG)
-                      : QLatin1String(Constants::QBS_VARIANT_RELEASE));
-
-    Utils::FilePath buildDir = info.buildDirectory;
-    if (buildDir.isEmpty())
-        buildDir = defaultBuildDirectory(target()->project()->projectFilePath().toString(),
-                                         target()->kit(), info.displayName, info.buildType);
-    setBuildDirectory(buildDir);
-
-    // Add the build configuration.
-    QVariantMap bd = configData;
-    QString configName = bd.take("configName").toString();
-    if (configName.isEmpty()) {
-        configName = "qtc_" + target()->kit()->fileSystemFriendlyName() + '_'
-                + Utils::FileUtils::fileSystemFriendlyName(info.displayName);
+    for (BuildStep * const bs : buildSteps()->steps()) {
+        if (const auto qbs = qobject_cast<QbsBuildStep *>(bs))
+            qbs->dropSession();
     }
+    for (BuildStep * const cs : cleanSteps()->steps()) {
+        if (const auto qcs = qobject_cast<QbsCleanStep *>(cs))
+            qcs->dropSession();
+    }
+    delete m_buildSystem;
+}
 
-    m_configurationName->setValue(configName);
+BuildSystem *QbsBuildConfiguration::buildSystem() const
+{
+    return m_buildSystem;
+}
 
-    BuildStepList *buildSteps = stepList(ProjectExplorer::Constants::BUILDSTEPS_BUILD);
-    auto bs = new QbsBuildStep(buildSteps);
-    if (info.buildType == Release)
-        bs->setQmlDebuggingEnabled(false);
-    bs->setQbsConfiguration(bd);
-    buildSteps->appendStep(bs);
-
-    BuildStepList *cleanSteps = stepList(ProjectExplorer::Constants::BUILDSTEPS_CLEAN);
-    cleanSteps->appendStep(new QbsCleanStep(cleanSteps));
-
-    emit qbsConfigurationChanged();
+void QbsBuildConfiguration::triggerReparseIfActive()
+{
+    if (isActive())
+        m_buildSystem->delayParsing();
 }
 
 bool QbsBuildConfiguration::fromMap(const QVariantMap &map)
@@ -135,7 +187,7 @@ bool QbsBuildConfiguration::fromMap(const QVariantMap &map)
         return false;
 
     if (m_configurationName->value().isEmpty()) { // pre-4.4 backwards compatibility
-        const QString profileName = QbsManager::profileForKit(target()->kit());
+        const QString profileName = QbsProfileManager::profileNameForKit(target()->kit());
         const QString buildVariant = qbsConfiguration()
                 .value(QLatin1String(Constants::QBS_CONFIG_VARIANT_KEY)).toString();
         m_configurationName->setValue(profileName + '-' + buildVariant);
@@ -144,9 +196,20 @@ bool QbsBuildConfiguration::fromMap(const QVariantMap &map)
     return true;
 }
 
+void QbsBuildConfiguration::restrictNextBuild(const RunConfiguration *rc)
+{
+    if (!rc) {
+        setProducts({});
+        return;
+    }
+    const auto productNode = dynamic_cast<QbsProductNode *>(rc->productNode());
+    QTC_ASSERT(productNode, return);
+    setProducts({productNode->fullDisplayName()});
+}
+
 QbsBuildStep *QbsBuildConfiguration::qbsStep() const
 {
-    return stepList(ProjectExplorer::Constants::BUILDSTEPS_BUILD)->firstOfType<QbsBuildStep>();
+    return buildSteps()->firstOfType<QbsBuildStep>();
 }
 
 QVariantMap QbsBuildConfiguration::qbsConfiguration() const
@@ -156,25 +219,6 @@ QVariantMap QbsBuildConfiguration::qbsConfiguration() const
     if (qbsBs)
         config = qbsBs->qbsConfiguration(QbsBuildStep::ExpandVariables);
     return config;
-}
-
-Internal::QbsProject *QbsBuildConfiguration::project() const
-{
-    return qobject_cast<Internal::QbsProject *>(BuildConfiguration::project());
-}
-
-bool QbsBuildConfiguration::isEnabled() const
-{
-    return !project()->isParsing() && project()->hasParseResult();
-}
-
-QString QbsBuildConfiguration::disabledReason() const
-{
-    if (project()->isParsing())
-        return tr("Parsing the Qbs project.");
-    if (!project()->hasParseResult())
-        return tr("Parsing of Qbs project has failed.");
-    return QString();
 }
 
 BuildConfiguration::BuildType QbsBuildConfiguration::buildType() const
@@ -225,84 +269,7 @@ QString QbsBuildConfiguration::configurationName() const
     return m_configurationName->value();
 }
 
-class StepProxy
-{
-public:
-    StepProxy(const BuildStep *buildStep)
-        : m_qbsBuildStep(qobject_cast<const QbsBuildStep *>(buildStep))
-        , m_qbsCleanStep(qobject_cast<const QbsCleanStep *>(buildStep))
-        , m_qbsInstallStep(qobject_cast<const QbsInstallStep *>(buildStep))
-    {
-    }
-
-    QString command() const {
-        if (m_qbsBuildStep)
-            return QLatin1String("build");
-        if (m_qbsInstallStep)
-            return QLatin1String("install");
-        return QLatin1String("clean");
-    }
-
-    bool dryRun() const {
-        if (m_qbsBuildStep)
-            return false;
-        if (m_qbsInstallStep)
-            return m_qbsInstallStep->dryRun();
-        return m_qbsCleanStep->dryRun();
-    }
-
-    bool keepGoing() const {
-        if (m_qbsBuildStep)
-            return m_qbsBuildStep->keepGoing();
-        if (m_qbsInstallStep)
-            return m_qbsInstallStep->keepGoing();
-        return m_qbsCleanStep->keepGoing();
-    }
-
-    bool forceProbeExecution() const { return m_qbsBuildStep && m_qbsBuildStep->forceProbes(); }
-
-    bool showCommandLines() const {
-        return m_qbsBuildStep ? m_qbsBuildStep->showCommandLines() : false;
-    }
-
-    bool noInstall() const {
-        return m_qbsBuildStep ? !m_qbsBuildStep->install() : false;
-    }
-
-    bool noBuild() const { return m_qbsInstallStep; }
-
-    bool cleanInstallRoot() const {
-        if (m_qbsBuildStep)
-            return m_qbsBuildStep->cleanInstallRoot();
-        if (m_qbsInstallStep)
-            return m_qbsInstallStep->removeFirst();
-        return false;
-    }
-
-    int jobCount() const {
-        return m_qbsBuildStep ? m_qbsBuildStep->maxJobs() : 0;
-    }
-
-    Utils::FilePath installRoot() const {
-        const QbsBuildStep *bs = nullptr;
-        if (m_qbsBuildStep) {
-            bs = m_qbsBuildStep;
-        } else if (m_qbsInstallStep) {
-            bs = static_cast<QbsBuildConfiguration *>(m_qbsInstallStep->deployConfiguration()
-                    ->target()->activeBuildConfiguration())->qbsStep();
-        }
-        if (bs && bs->hasCustomInstallRoot())
-            return bs->installRoot();
-        return Utils::FilePath();
-    }
-
-private:
-    const QbsBuildStep * const m_qbsBuildStep;
-    const QbsCleanStep * const m_qbsCleanStep;
-    const QbsInstallStep * const m_qbsInstallStep;
-};
-
-QString QbsBuildConfiguration::equivalentCommandLine(const BuildStep *buildStep) const
+QString QbsBuildConfiguration::equivalentCommandLine(const QbsBuildStepData &stepData) const
 {
     CommandLine commandLine;
     const QString qbsInstallDir = QString::fromLocal8Bit(qgetenv("QBS_INSTALL_DIR"));
@@ -310,47 +277,66 @@ QString QbsBuildConfiguration::equivalentCommandLine(const BuildStep *buildStep)
             ? qbsInstallDir + QLatin1String("/bin/qbs")
             : QCoreApplication::applicationDirPath() + QLatin1String("/qbs"));
     commandLine.addArg(QDir::toNativeSeparators(qbsFilePath));
-    const StepProxy stepProxy(buildStep);
-    commandLine.addArg(stepProxy.command());
+    commandLine.addArg(stepData.command);
     const QString buildDir = buildDirectory().toUserOutput();
     commandLine.addArgs({"-d", buildDir});
-    commandLine.addArgs({"-f", buildStep->project()->projectFilePath().toUserOutput()});
-    if (QbsProjectManagerSettings::useCreatorSettingsDirForQbs()) {
+    commandLine.addArgs({"-f", project()->projectFilePath().toUserOutput()});
+    if (QbsSettings::useCreatorSettingsDirForQbs()) {
         commandLine.addArgs({"--settings-dir",
-                QDir::toNativeSeparators(QbsProjectManagerSettings::qbsSettingsBaseDir())});
+                             QDir::toNativeSeparators(QbsSettings::qbsSettingsBaseDir())});
     }
-    if (stepProxy.dryRun())
+    if (stepData.dryRun)
         commandLine.addArg("--dry-run");
-    if (stepProxy.keepGoing())
+    if (stepData.keepGoing)
         commandLine.addArg("--keep-going");
-    if (stepProxy.forceProbeExecution())
+    if (stepData.forceProbeExecution)
         commandLine.addArg("--force-probe-execution");
-    if (stepProxy.showCommandLines())
+    if (stepData.showCommandLines)
         commandLine.addArgs({"--command-echo-mode", "command-line"});
-    if (stepProxy.noInstall())
+    if (stepData.noInstall)
         commandLine.addArg("--no-install");
-    if (stepProxy.noBuild())
+    if (stepData.noBuild)
         commandLine.addArg("--no-build");
-    if (stepProxy.cleanInstallRoot())
+    if (stepData.cleanInstallRoot)
         commandLine.addArg("--clean-install-root");
-    const int jobCount = stepProxy.jobCount();
+    const int jobCount = stepData.jobCount;
     if (jobCount > 0)
         commandLine.addArgs({"--jobs", QString::number(jobCount)});
 
-    const QString profileName = QbsManager::profileForKit(buildStep->target()->kit());
+    const QString profileName = QbsProfileManager::profileNameForKit(target()->kit());
     const QString buildVariant = qbsConfiguration()
             .value(QLatin1String(Constants::QBS_CONFIG_VARIANT_KEY)).toString();
     commandLine.addArg("config:" + configurationName());
     commandLine.addArg(QString(Constants::QBS_CONFIG_VARIANT_KEY) + ':' + buildVariant);
-    const FilePath installRoot = stepProxy.installRoot();
+    const FilePath installRoot = stepData.installRoot;
     if (!installRoot.isEmpty()) {
         commandLine.addArg(QString(Constants::QBS_INSTALL_ROOT_KEY) + ':' + installRoot.toUserOutput());
-        if (qobject_cast<const QbsInstallStep *>(buildStep))
+        if (stepData.isInstallStep)
             commandLine.addArgs({"--installRoot", installRoot.toUserOutput()});
     }
     commandLine.addArg("profile:" + profileName);
 
     return commandLine.arguments();
+}
+
+bool QbsBuildConfiguration::isQmlDebuggingEnabled() const
+{
+    return qmlDebuggingSetting() == TriState::Enabled;
+}
+
+TriState QbsBuildConfiguration::qmlDebuggingSetting() const
+{
+    return aspect<QtSupport::QmlDebuggingAspect>()->setting();
+}
+
+TriState QbsBuildConfiguration::qtQuickCompilerSetting() const
+{
+    return aspect<QtSupport::QtQuickCompilerAspect>()->setting();
+}
+
+TriState QbsBuildConfiguration::separateDebugInfoSetting() const
+{
+    return aspect<SeparateDebugInfoAspect>()->setting();
 }
 
 // ---------------------------------------------------------------------------
@@ -367,49 +353,45 @@ QbsBuildConfigurationFactory::QbsBuildConfigurationFactory()
         return version ? version->reportIssues(projectPath, buildDir)
                        : Tasks();
     });
+
+    setBuildGenerator([this](const Kit *k, const FilePath &projectPath, bool forSetup) {
+        QList<BuildInfo> result;
+
+        if (forSetup) {
+            BuildInfo info = createBuildInfo(BuildConfiguration::Debug);
+            //: The name of the debug build configuration created by default for a qbs project.
+            info.displayName = BuildConfiguration::tr("Debug");
+            //: Non-ASCII characters in directory suffix may cause build issues.
+            const QString dbg = QbsBuildConfiguration::tr("Debug", "Shadow build directory suffix");
+            info.buildDirectory = defaultBuildDirectory(projectPath, k, dbg, info.buildType);
+            result << info;
+
+            info = createBuildInfo(BuildConfiguration::Release);
+            //: The name of the release build configuration created by default for a qbs project.
+            info.displayName = BuildConfiguration::tr("Release");
+            //: Non-ASCII characters in directory suffix may cause build issues.
+            const QString rel = QbsBuildConfiguration::tr("Release", "Shadow build directory suffix");
+            info.buildDirectory = defaultBuildDirectory(projectPath, k, rel, info.buildType);
+            result << info;
+        } else {
+            result << createBuildInfo(BuildConfiguration::Debug);
+            result << createBuildInfo(BuildConfiguration::Release);
+        }
+
+        return result;
+    });
 }
 
-BuildInfo QbsBuildConfigurationFactory::createBuildInfo(const Kit *k,
-                                                        BuildConfiguration::BuildType type) const
+BuildInfo QbsBuildConfigurationFactory::createBuildInfo(BuildConfiguration::BuildType type) const
 {
-    BuildInfo info(this);
-    info.kitId = k->id();
+    BuildInfo info;
     info.buildType = type;
-    info.typeName = tr("Build");
+    info.typeName = type == BuildConfiguration::Debug
+            ? BuildConfiguration::tr("Debug") : BuildConfiguration::tr("Release");
     QVariantMap config;
     config.insert("configName", type == BuildConfiguration::Debug ? "Debug" : "Release");
     info.extraInfo = config;
     return info;
-}
-
-QList<BuildInfo> QbsBuildConfigurationFactory::availableBuilds(const Target *parent) const
-{
-    return {createBuildInfo(parent->kit(), BuildConfiguration::Debug)};
-}
-
-QList<BuildInfo> QbsBuildConfigurationFactory::availableSetups(const Kit *k, const QString &projectPath) const
-{
-    QList<BuildInfo> result;
-
-    BuildInfo info = createBuildInfo(k, BuildConfiguration::Debug);
-    //: The name of the debug build configuration created by default for a qbs project.
-    info.displayName = tr("Debug");
-    //: Non-ASCII characters in directory suffix may cause build issues.
-    info.buildDirectory
-            = defaultBuildDirectory(projectPath, k, tr("Debug", "Shadow build directory suffix"),
-                                    info.buildType);
-    result << info;
-
-    info = createBuildInfo(k, BuildConfiguration::Release);
-    //: The name of the release build configuration created by default for a qbs project.
-    info.displayName = tr("Release");
-    //: Non-ASCII characters in directory suffix may cause build issues.
-    info.buildDirectory
-            = defaultBuildDirectory(projectPath, k, tr("Release", "Shadow build directory suffix"),
-                                    info.buildType);
-    result << info;
-
-    return result;
 }
 
 } // namespace Internal

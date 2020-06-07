@@ -29,7 +29,7 @@
 
 #include <modelnode.h>
 #include <variantproperty.h>
-#include <qmlitemnode.h>
+#include <qmlvisualnode.h>
 
 #include <utils/qtcassert.h>
 
@@ -149,10 +149,10 @@ void TimelineSettingsModel::resetModel()
     setHorizontalHeaderLabels(
         QStringList({tr("State"), tr("Timeline"), tr("Animation"), tr("Fixed Frame")}));
 
-    if (timelineView()->isAttached() && timelineView()->rootModelNode().hasId()) {
+    if (timelineView()->isAttached()) {
         addState(ModelNode());
         for (const QmlModelState &state :
-             QmlItemNode(timelineView()->rootModelNode()).states().allStates())
+             QmlVisualNode(timelineView()->rootModelNode()).states().allStates())
             addState(state);
     }
 

@@ -65,14 +65,15 @@ class FunctionHintProcessor : public IAssistProcessor
 public:
     explicit FunctionHintProcessor(Client *client) : m_client(client) {}
     IAssistProposal *perform(const AssistInterface *interface) override;
-    bool running() override { return m_running; }
+    bool running() override { return m_currentRequest.isValid(); }
     bool needsRestart() const override { return true; }
+    void cancel() override;
 
 private:
     void handleSignatureResponse(const SignatureHelpRequest::Response &response);
 
     QPointer<Client> m_client;
-    bool m_running = false;
+    MessageId m_currentRequest;
     int m_pos = -1;
 };
 
@@ -82,18 +83,26 @@ IAssistProposal *FunctionHintProcessor::perform(const AssistInterface *interface
     m_pos = interface->position();
     QTextCursor cursor(interface->textDocument());
     cursor.setPosition(m_pos);
-    auto uri = DocumentUri::fromFileName(Utils::FilePath::fromString(interface->fileName()));
+    auto uri = DocumentUri::fromFilePath(Utils::FilePath::fromString(interface->fileName()));
     SignatureHelpRequest request;
     request.setParams(TextDocumentPositionParams(TextDocumentIdentifier(uri), Position(cursor)));
     request.setResponseCallback([this](auto response) { this->handleSignatureResponse(response); });
     m_client->sendContent(request);
-    m_running = true;
+    m_currentRequest = request.id();
     return nullptr;
+}
+
+void FunctionHintProcessor::cancel()
+{
+    if (running()) {
+        m_client->cancelRequest(m_currentRequest);
+        m_currentRequest = MessageId();
+    }
 }
 
 void FunctionHintProcessor::handleSignatureResponse(const SignatureHelpRequest::Response &response)
 {
-    m_running = false;
+    m_currentRequest = MessageId();
     if (auto error = response.error())
         m_client->log(error.value());
     FunctionHintProposalModelPtr model(
@@ -102,7 +111,8 @@ void FunctionHintProcessor::handleSignatureResponse(const SignatureHelpRequest::
 }
 
 FunctionHintAssistProvider::FunctionHintAssistProvider(Client *client)
-    : m_client(client)
+    : CompletionAssistProvider(client)
+    , m_client(client)
 {}
 
 TextEditor::IAssistProcessor *FunctionHintAssistProvider::createProcessor() const

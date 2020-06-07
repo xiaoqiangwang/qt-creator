@@ -53,6 +53,11 @@ QString Utils::toString(bool value)
     return value ? QLatin1String("Yes") : QLatin1String("No");
 }
 
+QString Utils::toString(int value)
+{
+    return QString::number(value);
+}
+
 QString Utils::toString(unsigned value)
 {
     return QString::number(value);
@@ -143,23 +148,27 @@ QString Utils::toString(::Utils::LanguageExtensions languageExtension)
     return result;
 }
 
-QString Utils::toString(ProjectPart::QtVersion qtVersion)
+QString Utils::toString(::Utils::QtVersion qtVersion)
 {
-#define CASE_QTVERSION(x) case ProjectPart::x: return QLatin1String(#x)
+#define CASE_QTVERSION(x) \
+    case ::Utils::QtVersion::x: \
+        return QLatin1String(#x)
     switch (qtVersion) {
-    CASE_QTVERSION(UnknownQt);
-    CASE_QTVERSION(NoQt);
-    CASE_QTVERSION(Qt4);
-    CASE_QTVERSION(Qt5);
-    // no default to get a compiler warning if anything is added
+        CASE_QTVERSION(Unknown);
+        CASE_QTVERSION(None);
+        CASE_QTVERSION(Qt4);
+        CASE_QTVERSION(Qt5);
+        // no default to get a compiler warning if anything is added
     }
 #undef CASE_QTVERSION
     return QString();
 }
 
-QString Utils::toString(ProjectPart::BuildTargetType buildTargetType)
+QString Utils::toString(ProjectExplorer::BuildTargetType buildTargetType)
 {
-#define CASE_BUILDTARGETTYPE(x) case ProjectPart::x: return QLatin1String(#x)
+#define CASE_BUILDTARGETTYPE(x) \
+    case ProjectExplorer::BuildTargetType::x: \
+        return QLatin1String(#x)
     switch (buildTargetType) {
     CASE_BUILDTARGETTYPE(Unknown);
     CASE_BUILDTARGETTYPE(Executable);
@@ -520,6 +529,7 @@ void Dumper::dumpProjectInfos( const QList<ProjectInfo> &projectInfos)
             m_out << i3 << "ToolChain Type         : " << part->toolchainType.toString() << "\n";
             m_out << i3 << "ToolChain Target Triple: " << part->toolChainTargetTriple << "\n";
             m_out << i3 << "ToolChain Word Width   : " << part->toolChainWordWidth << "\n";
+            m_out << i3 << "ToolChain Install Dir  : " << part->toolChainInstallDir << "\n";
             m_out << i3 << "Compiler Flags         : " << part->compilerFlags.join(", ") << "\n";
             m_out << i3 << "Selected For Building  : " << part->selectedForBuilding << "\n";
             m_out << i3 << "Build System Target    : " << part->buildSystemTarget << "\n";
@@ -613,9 +623,8 @@ void Dumper::dumpWorkingCopy(const WorkingCopy &workingCopy)
     m_out << "Working Copy contains " << workingCopy.size() << " entries{{{1\n";
 
     const QByteArray i1 = indent(1);
-    QHashIterator< ::Utils::FilePath, QPair<QByteArray, unsigned> > it = workingCopy.iterator();
-    while (it.hasNext()) {
-        it.next();
+    const WorkingCopy::Table &elements = workingCopy.elements();
+    for (auto it = elements.cbegin(), end = elements.cend(); it != end; ++it) {
         const ::Utils::FilePath &filePath = it.key();
         unsigned sourcRevision = it.value().second;
         m_out << i1 << "rev=" << sourcRevision << ", " << filePath << "\n";

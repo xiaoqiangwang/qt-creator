@@ -25,9 +25,6 @@
 
 #include "openpageswidget.h"
 
-#include "centralwidget.h"
-#include "openpagesmodel.h"
-
 #include <coreplugin/coreconstants.h>
 #include <utils/stringutils.h>
 
@@ -39,7 +36,7 @@ using namespace Help::Internal;
 
 // -- OpenPagesWidget
 
-OpenPagesWidget::OpenPagesWidget(OpenPagesModel *sourceModel, QWidget *parent)
+OpenPagesWidget::OpenPagesWidget(QAbstractItemModel *sourceModel, QWidget *parent)
     : OpenDocumentsTreeView(parent)
     , m_allowContextMenu(true)
 {
@@ -62,12 +59,12 @@ OpenPagesWidget::OpenPagesWidget(OpenPagesModel *sourceModel, QWidget *parent)
 
 OpenPagesWidget::~OpenPagesWidget() = default;
 
-void OpenPagesWidget::selectCurrentPage()
+void OpenPagesWidget::selectCurrentPage(int index)
 {
     QItemSelectionModel * const selModel = selectionModel();
     selModel->clearSelection();
-    selModel->select(model()->index(CentralWidget::instance()->currentIndex(), 0),
-        QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    selModel->select(model()->index(index, 0),
+                     QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
     scrollTo(currentIndex());
 }
 
@@ -114,7 +111,7 @@ void OpenPagesWidget::handleActivated(const QModelIndex &index)
         // work around a bug in itemviews where the delegate wouldn't get the QStyle::State_MouseOver
         QWidget *vp = viewport();
         const QPoint &cursorPos = QCursor::pos();
-        QMouseEvent e(QEvent::MouseMove, vp->mapFromGlobal(cursorPos), cursorPos, Qt::NoButton, nullptr, nullptr);
+        QMouseEvent e(QEvent::MouseMove, vp->mapFromGlobal(cursorPos), cursorPos, Qt::NoButton, {}, {});
         QCoreApplication::sendEvent(vp, &e);
     }
 }

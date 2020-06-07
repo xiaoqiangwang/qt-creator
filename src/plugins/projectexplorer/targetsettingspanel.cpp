@@ -117,18 +117,11 @@ private:
         Core::ModeManager::activateMode(Core::Constants::MODE_EDIT);
     }
 
-    void kitUpdated(ProjectExplorer::Kit *k)
-    {
-        if (k == KitManager::defaultKit())
-            updateNoteText();
-    }
-
     void completeChanged()
     {
         m_configureButton->setEnabled(m_targetSetupPage && m_targetSetupPage->isComplete());
     }
 
-    void updateNoteText();
     void addTargetSetupPage();
 
     Project * const m_project;
@@ -151,7 +144,7 @@ TargetSetupPageWrapper::TargetSetupPageWrapper(Project *project)
     hbox->addWidget(box);
 
     auto layout = new QVBoxLayout(this);
-    layout->setMargin(0);
+    layout->setContentsMargins(0, 0, 0, 0);
     m_setupPageContainer = new QVBoxLayout;
     layout->addLayout(m_setupPageContainer);
     layout->addLayout(hbox);
@@ -161,62 +154,22 @@ TargetSetupPageWrapper::TargetSetupPageWrapper(Project *project)
             this, &TargetSetupPageWrapper::done);
 }
 
-void TargetSetupPageWrapper::updateNoteText()
-{
-    if (!m_targetSetupPage)
-        return;
-
-    Kit *k = KitManager::defaultKit();
-
-    QString text;
-    bool showHint = false;
-    if (!k) {
-        text = tr("The project <b>%1</b> is not yet configured.<br/>"
-                  "%2 cannot parse the project, because no kit "
-                  "has been set up.")
-                .arg(m_project->displayName(), Core::Constants::IDE_DISPLAY_NAME);
-        showHint = true;
-    } else if (k->isValid()) {
-        text = tr("The project <b>%1</b> is not yet configured.<br/>"
-                  "%2 uses the kit <b>%3</b> to parse the project.")
-                .arg(m_project->displayName())
-                .arg(Core::Constants::IDE_DISPLAY_NAME)
-                .arg(k->displayName());
-        showHint = false;
-    } else {
-        text = tr("The project <b>%1</b> is not yet configured.<br/>"
-                  "%2 uses the <b>invalid</b> kit <b>%3</b> to parse the project.")
-                .arg(m_project->displayName())
-                .arg(Core::Constants::IDE_DISPLAY_NAME)
-                .arg(k->displayName());
-        showHint = true;
-    }
-
-    m_targetSetupPage->setNoteText(text);
-    m_targetSetupPage->showOptionsHint(showHint);
-}
-
 void TargetSetupPageWrapper::addTargetSetupPage()
 {
     m_targetSetupPage = new TargetSetupPage(this);
     m_targetSetupPage->setUseScrollArea(false);
-    m_targetSetupPage->setProjectPath(m_project->projectFilePath().toString());
-    m_targetSetupPage->setRequiredKitPredicate(m_project->requiredKitPredicate());
-    m_targetSetupPage->setPreferredKitPredicate(m_project->preferredKitPredicate());
+    m_targetSetupPage->setProjectPath(m_project->projectFilePath());
+    m_targetSetupPage->setTasksGenerator(
+        [this](const Kit *k) { return m_project->projectIssues(k); });
     m_targetSetupPage->setProjectImporter(m_project->projectImporter());
     m_targetSetupPage->initializePage();
     m_targetSetupPage->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     m_setupPageContainer->addWidget(m_targetSetupPage);
-    updateNoteText();
 
     completeChanged();
 
     connect(m_targetSetupPage, &QWizardPage::completeChanged,
             this, &TargetSetupPageWrapper::completeChanged);
-    connect(KitManager::instance(), &KitManager::defaultkitChanged,
-            this, &TargetSetupPageWrapper::updateNoteText);
-    connect(KitManager::instance(), &KitManager::kitUpdated,
-            this, &TargetSetupPageWrapper::kitUpdated);
 }
 
 //
@@ -264,11 +217,11 @@ void TargetGroupItemPrivate::ensureWidget()
         f.setPointSizeF(f.pointSizeF() * 1.4);
         f.setBold(true);
         label->setFont(f);
-        label->setMargin(10);
+        label->setContentsMargins(10, 10, 10, 10);
         label->setAlignment(Qt::AlignTop);
 
         auto layout = new QVBoxLayout(m_noKitLabel);
-        layout->setMargin(0);
+        layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(0);
         layout->addWidget(label);
         layout->addStretch(10);
@@ -287,7 +240,7 @@ void TargetGroupItemPrivate::ensureWidget()
         auto widget = new QWidget;
         auto label = new QLabel("This project is already configured.");
         auto layout = new QVBoxLayout(widget);
-        layout->setMargin(0);
+        layout->setContentsMargins(0, 0, 0, 0);
         layout->addWidget(label);
         layout->addStretch(10);
         m_configuredPage = new PanelsWidget(tr("Configure Project"),
@@ -350,7 +303,7 @@ public:
             return k->icon();
         }
 
-        case Qt::TextColorRole: {
+        case Qt::ForegroundRole: {
             if (!isEnabled())
                 return Utils::creatorTheme()->color(Theme::TextColorDisabled);
             break;
@@ -369,14 +322,14 @@ public:
         case Qt::ToolTipRole: {
             Kit *k = KitManager::kit(m_kitId);
             QTC_ASSERT(k, return QVariant());
-            QString toolTip;
-            if (m_kitErrorsForProject)
-                toolTip = "<h3>" + tr("Kit is unsuited for project") + "</h3>";
-            else if (!isEnabled())
-                toolTip = "<h3>" + tr("Click to activate:") + "</h3>" + k->toHtml();
-            if (!m_kitIssues.isEmpty())
-                toolTip += toHtml(m_kitIssues);
-            return toolTip;
+            const QString extraText = [this]() {
+                if (m_kitErrorsForProject)
+                    return QString("<h3>" + tr("Kit is unsuited for project") + "</h3>");
+                if (!isEnabled())
+                    return QString("<h3>" + tr("Click to activate") + "</h3>");
+                return QString();
+            }();
+            return k->toHtml(m_kitIssues, extraText);
         }
 
         case PanelWidgetRole:
@@ -407,8 +360,7 @@ public:
             QTC_ASSERT(!data.isValid(), return false);
             if (!isEnabled()) {
                 m_currentChild = DefaultPage;
-                Kit *k = KitManager::kit(m_kitId);
-                m_project->addTarget(m_project->createTarget(k));
+                m_project->addTargetForKit(KitManager::kit(m_kitId));
             } else {
                 // Go to Run page, when on Run previously etc.
                 TargetItem *previousItem = parent()->currentTargetItem();
@@ -450,7 +402,17 @@ public:
         QAction *enableAction = menu->addAction(tr("Enable Kit \"%1\" for Project \"%2\"").arg(kitName, projectName));
         enableAction->setEnabled(isSelectable && m_kitId.isValid() && !isEnabled());
         QObject::connect(enableAction, &QAction::triggered, [this, kit] {
-            m_project->addTarget(m_project->createTarget(kit));
+            m_project->addTargetForKit(kit);
+        });
+
+        QAction * const enableForAllAction
+                = menu->addAction(tr("Enable Kit \"%1\" for All Projects").arg(kitName));
+        enableForAllAction->setEnabled(isSelectable);
+        QObject::connect(enableForAllAction, &QAction::triggered, [kit] {
+            for (Project * const p : SessionManager::projects()) {
+                if (!p->target(kit))
+                    p->addTargetForKit(kit);
+            }
         });
 
         QAction *disableAction = menu->addAction(tr("Disable Kit \"%1\" for Project \"%2\"").arg(kitName, projectName));
@@ -476,6 +438,20 @@ public:
             QCoreApplication::processEvents();
 
             m_project->removeTarget(t);
+        });
+
+        QAction *disableForAllAction
+                = menu->addAction(tr("Disable Kit \"%1\" for All Projects").arg(kitName));
+        disableForAllAction->setEnabled(isSelectable);
+        QObject::connect(disableForAllAction, &QAction::triggered, [kit] {
+            for (Project * const p : SessionManager::projects()) {
+                Target * const t = p->target(kit);
+                if (!t)
+                    continue;
+                if (BuildManager::isBuilding(t))
+                    BuildManager::cancel();
+                p->removeTarget(t);
+            }
         });
 
         QMenu *copyMenu = menu->addMenu(tr("Copy Steps From Another Kit..."));
@@ -717,12 +693,11 @@ TargetGroupItem::TargetGroupItem(const QString &displayName, Project *project)
 {
     d->m_displayName = displayName;
     QObject::connect(project, &Project::addedTarget,
-            d.get(), &TargetGroupItemPrivate::handleTargetAdded,
-            Qt::QueuedConnection);
+            d.get(), &TargetGroupItemPrivate::handleTargetAdded);
     QObject::connect(project, &Project::removedTarget,
             d.get(), &TargetGroupItemPrivate::handleTargetRemoved);
     QObject::connect(project, &Project::activeTargetChanged,
-            d.get(), &TargetGroupItemPrivate::handleTargetChanged, Qt::QueuedConnection);
+            d.get(), &TargetGroupItemPrivate::handleTargetChanged);
 }
 
 TargetGroupItem::~TargetGroupItem() = default;
@@ -805,13 +780,13 @@ TargetItem *TargetGroupItem::targetItem(Target *target) const
 
 void TargetGroupItemPrivate::handleRemovedKit(Kit *kit)
 {
-    Q_UNUSED(kit);
+    Q_UNUSED(kit)
     rebuildContents();
 }
 
 void TargetGroupItemPrivate::handleUpdatedKit(Kit *kit)
 {
-    Q_UNUSED(kit);
+    Q_UNUSED(kit)
     rebuildContents();
 }
 

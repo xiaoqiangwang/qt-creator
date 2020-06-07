@@ -118,6 +118,7 @@ HEADERS += \
     $$PWD/projectpartid.h \
     $$PWD/projectpartsstorage.h \
     $$PWD/projectpartsstorageinterface.h \
+    $$PWD/projectpartstoragestructs.h \
     $$PWD/requestcompletionsmessage.h \
     $$PWD/echomessage.h \
     $$PWD/endmessage.h \
@@ -156,6 +157,7 @@ HEADERS += \
     $$PWD/refactoringserverproxy.h \
     $$PWD/referencesmessage.h \
     $$PWD/set_algorithm.h \
+    $$PWD/stringcacheentry.h \
     $$PWD/unsavedfilesupdatedmessage.h \
     $$PWD/removeprojectpartsmessage.h \
     $$PWD/requestannotationsmessage.h \

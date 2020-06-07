@@ -28,8 +28,11 @@
 #include "compilationdatabaseutils.h"
 
 #include <projectexplorer/buildconfiguration.h>
+#include <projectexplorer/buildsystem.h>
 #include <projectexplorer/project.h>
+
 #include <texteditor/texteditor.h>
+
 #include <utils/filesystemwatcher.h>
 
 #include <QFutureWatcher>
@@ -38,13 +41,9 @@ QT_BEGIN_NAMESPACE
 class QTimer;
 QT_END_NAMESPACE
 
-namespace CppTools {
-class CppProjectUpdater;
-}
-
-namespace ProjectExplorer {
-class Kit;
-}
+namespace CppTools { class CppProjectUpdater; }
+namespace ProjectExplorer { class Kit; }
+namespace Utils { class FileSystemWatcher; }
 
 namespace CompilationDatabaseProjectManager {
 namespace Internal {
@@ -56,58 +55,43 @@ class CompilationDatabaseProject : public ProjectExplorer::Project
 
 public:
     explicit CompilationDatabaseProject(const Utils::FilePath &filename);
-    ~CompilationDatabaseProject() override;
-    bool needsConfiguration() const override { return false; }
-    bool needsBuildConfigurations() const override { return true; }
+    Utils::FilePath rootPathFromSettings() const;
 
 private:
-    RestoreResult fromMap(const QVariantMap &map, QString *errorMessage) override;
+    void configureAsExampleProject() override;
+};
+
+class CompilationDatabaseBuildSystem : public ProjectExplorer::BuildSystem
+{
+public:
+    explicit CompilationDatabaseBuildSystem(ProjectExplorer::Target *target);
+    ~CompilationDatabaseBuildSystem();
+
+    void triggerParsing() final;
 
     void reparseProject();
+    void updateDeploymentData();
     void buildTreeAndProjectParts();
-    Utils::FilePath rootPathFromSettings() const;
 
     QFutureWatcher<void> m_parserWatcher;
     std::unique_ptr<CppTools::CppProjectUpdater> m_cppCodeModelUpdater;
-    std::unique_ptr<ProjectExplorer::Kit> m_kit;
-    Utils::FileSystemWatcher m_fileSystemWatcher;
     MimeBinaryCache m_mimeBinaryCache;
+    QByteArray m_projectFileHash;
     QTimer * const m_parseDelay;
     CompilationDbParser *m_parser = nullptr;
-    bool m_hasTarget = false;
+    Utils::FileSystemWatcher * const m_deployFileWatcher;
 };
 
 class CompilationDatabaseEditorFactory : public TextEditor::TextEditorFactory
 {
-    Q_OBJECT
-
 public:
     CompilationDatabaseEditorFactory();
 };
 
-class CompilationDatabaseBuildConfiguration : public ProjectExplorer::BuildConfiguration
+class CompilationDatabaseBuildConfigurationFactory : public ProjectExplorer::BuildConfigurationFactory
 {
-    Q_OBJECT
-public:
-    CompilationDatabaseBuildConfiguration(ProjectExplorer::Target *target, Core::Id id);
-    ProjectExplorer::NamedWidget *createConfigWidget() override;
-    BuildType buildType() const override;
-
-protected:
-    void initialize(const ProjectExplorer::BuildInfo &info) override;
-};
-
-class CompilationDatabaseBuildConfigurationFactory
-    : public ProjectExplorer::BuildConfigurationFactory
-{
-    Q_OBJECT
 public:
     CompilationDatabaseBuildConfigurationFactory();
-
-    QList<ProjectExplorer::BuildInfo> availableBuilds(
-        const ProjectExplorer::Target *parent) const override;
-    QList<ProjectExplorer::BuildInfo> availableSetups(const ProjectExplorer::Kit *k,
-                                                      const QString &projectPath) const override;
 };
 
 } // namespace Internal

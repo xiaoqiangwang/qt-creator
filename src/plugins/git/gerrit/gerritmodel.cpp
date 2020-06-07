@@ -24,7 +24,6 @@
 ****************************************************************************/
 
 #include "gerritmodel.h"
-#include "../gitplugin.h"
 #include "../gitclient.h"
 
 #include <coreplugin/progressmanager/progressmanager.h>
@@ -122,7 +121,10 @@ QString GerritPatchSet::approvalsToHtml() const
         str << a.reviewer.fullName;
         if (!a.reviewer.email.isEmpty())
             str << " <a href=\"mailto:" << a.reviewer.email << "\">" << a.reviewer.email << "</a>";
-        str << ": " << forcesign << a.approval << noforcesign;
+        str << ": ";
+        if (a.approval >= 0)
+            str << '+';
+        str << a.approval;
     }
     str << "</tr>\n";
     return result;
@@ -164,7 +166,10 @@ QString GerritPatchSet::approvalsColumn() const
     for (TypeReviewMapConstIterator it = reviews.constBegin(); it != cend; ++it) {
         if (!result.isEmpty())
             str << ' ';
-        str << it.key() << ": " << forcesign << it.value() << noforcesign;
+        str << it.key() << ": ";
+        if (it.value() >= 0)
+            str << '+';
+        str << it.value();
     }
     return result;
 }
@@ -289,7 +294,7 @@ QueryContext::QueryContext(const QString &query,
     connect(&m_process, &QProcess::errorOccurred, this, &QueryContext::processError);
     connect(&m_watcher, &QFutureWatcherBase::canceled, this, &QueryContext::terminate);
     m_watcher.setFuture(m_progress.future());
-    m_process.setProcessEnvironment(Git::Internal::GitPlugin::client()->processEnvironment());
+    m_process.setProcessEnvironment(Git::Internal::GitClient::instance()->processEnvironment());
     m_progress.setProgressRange(0, 1);
 
     m_timer.setInterval(timeOutMS);
@@ -314,8 +319,7 @@ void QueryContext::start()
     fp->setKeepOnFinish(Core::FutureProgress::HideOnFinish);
     m_progress.reportStarted();
     // Order: synchronous call to error handling if something goes wrong.
-    VcsOutputWindow::appendCommand(
-                m_process.workingDirectory(), Utils::FilePath::fromString(m_binary), m_arguments);
+    VcsOutputWindow::appendCommand(m_process.workingDirectory(), {m_binary, m_arguments});
     m_timer.start();
     m_process.start(m_binary, m_arguments);
     m_process.closeWriteChannel();

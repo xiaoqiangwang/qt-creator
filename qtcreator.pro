@@ -34,10 +34,10 @@ BASENAME = $$(INSTALL_BASENAME)
 isEmpty(BASENAME): BASENAME = qt-creator-$${PLATFORM}$(INSTALL_EDITION)-$${QTCREATOR_VERSION}$(INSTALL_POSTFIX)
 
 linux {
-    appstream.files = dist/org.qt-project.qtcreator.appdata.xml
+    appstream.files = share/metainfo/org.qt-project.qtcreator.appdata.xml
     appstream.path = $$QTC_PREFIX/share/metainfo/
 
-    desktop.files = dist/org.qt-project.qtcreator.desktop
+    desktop.files = share/applications/org.qt-project.qtcreator.desktop
     desktop.path = $$QTC_PREFIX/share/applications/
 
     INSTALLS += appstream desktop
@@ -49,7 +49,7 @@ macx {
     BINDIST_SOURCE.debug = "$$OUT_PWD/bin"
     BINDIST_EXCLUDE_ARG.debug = "--exclude-toplevel"
     deployqt.commands = $$PWD/scripts/deployqtHelper_mac.sh \"$${APPBUNDLE}\" \"$$[QT_INSTALL_BINS]\" \"$$[QT_INSTALL_TRANSLATIONS]\" \"$$[QT_INSTALL_PLUGINS]\" \"$$[QT_INSTALL_IMPORTS]\" \"$$[QT_INSTALL_QML]\"
-    codesign.commands = codesign --deep -s \"$(SIGNING_IDENTITY)\" $(SIGNING_FLAGS) \"$${APPBUNDLE}\"
+    codesign.commands = codesign --deep -o runtime -s \"$(SIGNING_IDENTITY)\" $(SIGNING_FLAGS) \"$${APPBUNDLE}\"
     dmg.commands = python -u \"$$PWD/scripts/makedmg.py\" \"$${BASENAME}.dmg\" \"Qt Creator\" \"$$IDE_SOURCE_TREE\" \"$$OUT_PWD/bin\"
     #dmg.depends = deployqt
     QMAKE_EXTRA_TARGETS += codesign dmg

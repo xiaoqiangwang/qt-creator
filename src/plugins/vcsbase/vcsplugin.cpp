@@ -73,6 +73,7 @@ VcsPlugin::~VcsPlugin()
 {
     VcsOutputWindow::destroy();
     m_instance = nullptr;
+    delete d;
 }
 
 bool VcsPlugin::initialize(const QStringList &arguments, QString *errorMessage)
@@ -132,10 +133,6 @@ bool VcsPlugin::initialize(const QStringList &arguments, QString *errorMessage)
     VcsOutputWindow::instance();
 
     return true;
-}
-
-void VcsPlugin::extensionsInitialized()
-{
 }
 
 VcsPlugin *VcsPlugin::instance()

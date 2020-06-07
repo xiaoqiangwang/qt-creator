@@ -111,7 +111,6 @@ protected:
         ON_CALL(mockCollector, sourceLocations()).WillByDefault(ReturnRef(sourceLocations));
         ON_CALL(mockCollector, sourceFiles()).WillByDefault(ReturnRef(sourceFileIds));
         ON_CALL(mockCollector, usedMacros()).WillByDefault(ReturnRef(usedMacros));
-        ON_CALL(mockCollector, fileStatuses()).WillByDefault(ReturnRef(fileStatus));
         ON_CALL(mockCollector, sourceDependencies()).WillByDefault(ReturnRef(sourceDependencies));
         ON_CALL(mockProjectPartsStorage, fetchProjectPartArtefact(A<FilePathId>()))
             .WillByDefault(Return(artefact));
@@ -204,6 +203,7 @@ protected:
                                       Utils::LanguageVersion::CXX14,
                                       Utils::LanguageExtension::None};
     FileContainers unsaved{{{TESTDATA_DIR, "query_simplefunction.h"},
+                            filePathId(TESTDATA_DIR "/query_simplefunction.h"),
                             "void f();",
                             {}}};
     SymbolEntries symbolEntries{{1, {"function", "function", SymbolKind::Function}}};
@@ -871,8 +871,8 @@ TEST_F(SymbolIndexer, UpdateProjectPartsFetchIncludedIndexingTimeStamps)
     InSequence s;
 
     EXPECT_CALL(mockSqliteTransactionBackend, immediateBegin());
-    EXPECT_CALL(mockCollector, fileStatuses()).WillRepeatedly(ReturnRef(fileStatuses1));
-    EXPECT_CALL(mockBuildDependenciesStorage, insertOrUpdateIndexingTimeStamps(_));
+    EXPECT_CALL(mockBuildDependenciesStorage,
+                insertOrUpdateIndexingTimeStampsWithoutTransaction(_, _));
     EXPECT_CALL(mockSymbolStorage, addSymbolsAndSourceLocations(_, _));
     EXPECT_CALL(mockSqliteTransactionBackend, commit());
 
@@ -886,8 +886,8 @@ TEST_F(SymbolIndexer, UpdateProjectPartsIsBusyInStoringData)
     EXPECT_CALL(mockSqliteTransactionBackend, immediateBegin())
         .WillOnce(Throw(Sqlite::StatementIsBusy{""}));
     EXPECT_CALL(mockSqliteTransactionBackend, immediateBegin());
-    EXPECT_CALL(mockCollector, fileStatuses()).WillRepeatedly(ReturnRef(fileStatuses1));
-    EXPECT_CALL(mockBuildDependenciesStorage, insertOrUpdateIndexingTimeStamps(_));
+    EXPECT_CALL(mockBuildDependenciesStorage,
+                insertOrUpdateIndexingTimeStampsWithoutTransaction(_, _));
     EXPECT_CALL(mockSymbolStorage, addSymbolsAndSourceLocations(_, _));
     EXPECT_CALL(mockSqliteTransactionBackend, commit());
 

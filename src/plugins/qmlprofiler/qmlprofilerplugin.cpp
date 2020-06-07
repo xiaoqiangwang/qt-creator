@@ -80,34 +80,28 @@ namespace Internal {
 
 Q_GLOBAL_STATIC(QmlProfilerSettings, qmlProfilerGlobalSettings)
 
-bool constraint(RunConfiguration *runConfiguration)
-{
-    Target *target = runConfiguration ? runConfiguration->target() : nullptr;
-    Kit *kit = target ? target->kit() : nullptr;
-    return DeviceTypeKitAspect::deviceTypeId(kit)
-            == ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE;
-}
-
-class QmlProfilerRunWorkerFactory : public RunWorkerFactory
-{
-public:
-    QmlProfilerRunWorkerFactory(QmlProfilerTool *tool)
-    {
-        addSupportedRunMode(ProjectExplorer::Constants::QML_PROFILER_RUN_MODE);
-        setProducer([tool](RunControl *runControl) {
-            return new LocalQmlProfilerSupport(tool, runControl);
-        });
-        addConstraint(constraint);
-    }
-};
-
 class QmlProfilerPluginPrivate
 {
 public:
     QmlProfilerTool m_profilerTool;
     QmlProfilerOptionsPage m_profilerOptionsPage;
     QmlProfilerActions m_actions;
-    QmlProfilerRunWorkerFactory m_profilerWorkerFactory{&m_profilerTool};
+
+    // The full local profiler.
+    RunWorkerFactory localQmlProfilerFactory {
+        RunWorkerFactory::make<LocalQmlProfilerSupport>(),
+        {ProjectExplorer::Constants::QML_PROFILER_RUN_MODE},
+        {},
+        {ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE}
+    };
+
+    // The bits plugged in in remote setups.
+    RunWorkerFactory qmlProfilerWorkerFactory {
+        RunWorkerFactory::make<QmlProfilerRunner>(),
+        {ProjectExplorer::Constants::QML_PROFILER_RUNNER},
+        {},
+        {}
+    };
 };
 
 bool QmlProfilerPlugin::initialize(const QStringList &arguments, QString *errorString)
@@ -123,14 +117,6 @@ void QmlProfilerPlugin::extensionsInitialized()
     d->m_actions.registerActions();
 
     RunConfiguration::registerAspect<QmlProfilerRunConfigurationAspect>();
-
-    RunControl::registerWorkerCreator(ProjectExplorer::Constants::QML_PROFILER_RUN_MODE,
-                                      [this](RunControl *runControl) {
-        auto runner = new QmlProfilerRunner(runControl);
-        connect(runner, &QmlProfilerRunner::starting,
-                &d->m_profilerTool, &QmlProfilerTool::finalizeRunControl);
-        return runner;
-    });
 }
 
 ExtensionSystem::IPlugin::ShutdownFlag QmlProfilerPlugin::aboutToShutdown()

@@ -49,11 +49,17 @@ enum RootNodes {
     Tags = 2
 };
 
+enum Columns {
+    ColumnBranch = 0,
+    ColumnDateTime = 1,
+    ColumnCount
+};
+
 // --------------------------------------------------------------------------
 // BranchNode:
 // --------------------------------------------------------------------------
 
-class BranchNode
+class BranchNode : public QObject
 {
 public:
     BranchNode() :
@@ -144,6 +150,11 @@ public:
         return fn;
     }
 
+    QString fullRef(bool includePrefix = false) const
+    {
+        return fullName(includePrefix).join('/');
+    }
+
     void insert(const QStringList &path, BranchNode *n)
     {
         BranchNode *current = this;
@@ -173,19 +184,24 @@ public:
 
     QStringList childrenNames() const
     {
-        if (children.count() > 0) {
+        if (!children.isEmpty()) {
             QStringList names;
             for (BranchNode *n : children) {
                 names.append(n->childrenNames());
             }
             return names;
         }
-        return {fullName().join('/')};
+        return {fullRef()};
     }
 
     int rowOf(BranchNode *node)
     {
         return children.indexOf(node);
+    }
+
+    void setUpstreamStatus(UpstreamStatus newStatus)
+    {
+        status = newStatus;
     }
 
     BranchNode *parent = nullptr;
@@ -195,13 +211,15 @@ public:
     QString sha;
     QString tracking;
     QDateTime dateTime;
+    UpstreamStatus status;
     mutable QString toolTip;
 };
 
 class BranchModel::Private
 {
 public:
-    explicit Private(GitClient *client) :
+    explicit Private(BranchModel *q, GitClient *client) :
+        q(q),
         client(client),
         rootNode(new BranchNode)
     {
@@ -219,6 +237,7 @@ public:
     void parseOutputLine(const QString &line, bool force = false);
     void flushOldEntries();
 
+    BranchModel *q;
     GitClient *client;
     QString workingDirectory;
     BranchNode *rootNode;
@@ -248,7 +267,7 @@ public:
 
 BranchModel::BranchModel(GitClient *client, QObject *parent) :
     QAbstractItemModel(parent),
-    d(new Private(client))
+    d(new Private(this, client))
 {
     QTC_CHECK(d->client);
 
@@ -285,7 +304,7 @@ QModelIndex BranchModel::parent(const QModelIndex &index) const
     BranchNode *node = indexToNode(index);
     if (node->parent == d->rootNode)
         return QModelIndex();
-    return nodeToIndex(node->parent, 0);
+    return nodeToIndex(node->parent, ColumnBranch);
 }
 
 int BranchModel::rowCount(const QModelIndex &parentIdx) const
@@ -298,12 +317,15 @@ int BranchModel::rowCount(const QModelIndex &parentIdx) const
 
 int BranchModel::columnCount(const QModelIndex &parent) const
 {
-    Q_UNUSED(parent);
-    return 2;
+    Q_UNUSED(parent)
+    return ColumnCount;
 }
 
 QVariant BranchModel::data(const QModelIndex &index, int role) const
 {
+    const QChar arrowUp(0x2191);
+    const QChar arrowDown(0x2193);
+
     BranchNode *node = indexToNode(index);
     if (!node)
         return QVariant();
@@ -312,13 +334,16 @@ QVariant BranchModel::data(const QModelIndex &index, int role) const
     case Qt::DisplayRole: {
         QString res;
         switch (index.column()) {
-        case 0: {
+        case ColumnBranch: {
             res = node->name;
-            if (!node->tracking.isEmpty())
+            if (!node->tracking.isEmpty()) {
+                res += ' ' + arrowUp + QString::number(node->status.ahead);
+                res += ' ' + arrowDown + QString::number(node->status.behind);
                 res += " [" + node->tracking + ']';
+            }
             break;
         }
-        case 1:
+        case ColumnDateTime:
             if (node->isLeaf() && node->dateTime.isValid())
                 res = node->dateTime.toString("yyyy-MM-dd HH:mm");
             break;
@@ -326,7 +351,7 @@ QVariant BranchModel::data(const QModelIndex &index, int role) const
         return res;
     }
     case Qt::EditRole:
-        return index.column() == 0 ? node->fullName().join('/') : QVariant();
+        return index.column() == 0 ? node->fullRef() : QVariant();
     case Qt::ToolTipRole:
         if (!node->isLeaf())
             return QVariant();
@@ -351,7 +376,7 @@ QVariant BranchModel::data(const QModelIndex &index, int role) const
 
 bool BranchModel::setData(const QModelIndex &index, const QVariant &value, int role)
 {
-    if (index.column() != 0 || role != Qt::EditRole)
+    if (index.column() != ColumnBranch || role != Qt::EditRole)
         return false;
     BranchNode *node = indexToNode(index);
     if (!node)
@@ -361,7 +386,7 @@ bool BranchModel::setData(const QModelIndex &index, const QVariant &value, int r
     if (newName.isEmpty())
         return false;
 
-    const QString oldName = node->fullName().join('/');
+    const QString oldName = node->fullRef();
     if (oldName == newName)
         return false;
 
@@ -375,7 +400,7 @@ Qt::ItemFlags BranchModel::flags(const QModelIndex &index) const
     if (!node)
         return Qt::NoItemFlags;
     Qt::ItemFlags res = Qt::ItemIsSelectable | Qt::ItemIsEnabled;
-    if (node != d->headNode && node->isLeaf() && node->isLocal() && index.column() == 0)
+    if (node != d->headNode && node->isLeaf() && node->isLocal() && index.column() == ColumnBranch)
         res |= Qt::ItemIsEditable;
     return res;
 }
@@ -489,16 +514,11 @@ QString BranchModel::workingDirectory() const
     return d->workingDirectory;
 }
 
-GitClient *BranchModel::client() const
-{
-    return d->client;
-}
-
 QModelIndex BranchModel::currentBranch() const
 {
     if (!d->currentBranch)
         return QModelIndex();
-    return nodeToIndex(d->currentBranch, 0);
+    return nodeToIndex(d->currentBranch, ColumnBranch);
 }
 
 QString BranchModel::fullName(const QModelIndex &idx, bool includePrefix) const
@@ -510,7 +530,7 @@ QString BranchModel::fullName(const QModelIndex &idx, bool includePrefix) const
         return QString();
     if (node == d->headNode)
         return QString("HEAD");
-    return node->fullName(includePrefix).join('/');
+    return node->fullRef(includePrefix);
 }
 
 QStringList BranchModel::localBranchNames() const
@@ -690,7 +710,7 @@ QModelIndex BranchModel::addBranch(const QString &name, bool track, const QModel
         BranchNode *child = (pos == local->count()) ? nullptr : local->children.at(pos);
         if (!child || child->name != nodeName) {
             child = new BranchNode(nodeName);
-            beginInsertRows(nodeToIndex(local, 0), pos, pos);
+            beginInsertRows(nodeToIndex(local, ColumnBranch), pos, pos);
             added = true;
             child->parent = local;
             local->children.insert(pos, child);
@@ -701,11 +721,11 @@ QModelIndex BranchModel::addBranch(const QString &name, bool track, const QModel
     auto newNode = new BranchNode(leafName, startSha, track ? trackedBranch : QString(),
                                   branchDateTime);
     if (!added)
-        beginInsertRows(nodeToIndex(local, 0), pos, pos);
+        beginInsertRows(nodeToIndex(local, ColumnBranch), pos, pos);
     newNode->parent = local;
     local->children.insert(pos, newNode);
     endInsertRows();
-    return nodeToIndex(newNode, 0);
+    return nodeToIndex(newNode, ColumnBranch);
 }
 
 void BranchModel::setRemoteTracking(const QModelIndex &trackingIndex)
@@ -717,6 +737,7 @@ void BranchModel::setRemoteTracking(const QModelIndex &trackingIndex)
     const QString tracking = fullName(trackingIndex, true);
     d->client->synchronousSetTrackingBranch(d->workingDirectory, currentName, tracking);
     d->currentBranch->tracking = shortTracking;
+    updateUpstreamStatus(d->currentBranch);
     emit dataChanged(current, current);
 }
 
@@ -736,6 +757,13 @@ Utils::optional<QString> BranchModel::remoteName(const QModelIndex &idx) const
     if (node->parent == remotesNode)
         return node->name;
     return Utils::nullopt;
+}
+
+void BranchModel::refreshCurrentBranch()
+{
+    const QModelIndex currentIndex = currentBranch();
+    BranchNode *node = indexToNode(currentIndex);
+    updateUpstreamStatus(node);
 }
 
 void BranchModel::Private::parseOutputLine(const QString &line, bool force)
@@ -826,6 +854,7 @@ void BranchModel::Private::parseOutputLine(const QString &line, bool force)
     root->insert(nameParts, newNode);
     if (current)
         currentBranch = newNode;
+    q->updateUpstreamStatus(newNode);
 }
 
 void BranchModel::Private::flushOldEntries()
@@ -862,7 +891,7 @@ void BranchModel::removeNode(const QModelIndex &idx)
     BranchNode *node = indexToNode(nodeIndex);
     while (node->count() == 0 && node->parent != d->rootNode) {
         BranchNode *parentNode = node->parent;
-        const QModelIndex parentIndex = nodeToIndex(parentNode, 0);
+        const QModelIndex parentIndex = nodeToIndex(parentNode, ColumnBranch);
         const int nodeRow = nodeIndex.row();
         beginRemoveRows(parentIndex, nodeRow, nodeRow);
         parentNode->children.removeAt(nodeRow);
@@ -871,6 +900,22 @@ void BranchModel::removeNode(const QModelIndex &idx)
         node = parentNode;
         nodeIndex = parentIndex;
     }
+}
+
+void BranchModel::updateUpstreamStatus(BranchNode *node)
+{
+    if (node->tracking.isEmpty())
+        return;
+    VcsCommand *command = d->client->asyncUpstreamStatus(
+                d->workingDirectory, node->fullRef(), node->tracking);
+    QObject::connect(command, &VcsCommand::stdOutText, node, [this, node](const QString &text) {
+        const QStringList split = text.trimmed().split('\t');
+        QTC_ASSERT(split.size() == 2, return);
+
+        node->setUpstreamStatus(UpstreamStatus(split.at(0).toInt(), split.at(1).toInt()));
+        const QModelIndex idx = nodeToIndex(node, ColumnBranch);
+        emit dataChanged(idx, idx);
+    });
 }
 
 QString BranchModel::toolTip(const QString &sha) const

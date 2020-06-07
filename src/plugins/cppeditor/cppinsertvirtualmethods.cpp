@@ -844,7 +844,7 @@ public:
 
             // make target lookup context
             Document::Ptr implementationDoc = implementationFile->cppDocument();
-            unsigned line, column;
+            int line, column;
             implementationDoc->translationUnit()->getPosition(insertPos, &line, &column);
             Scope *targetScope = implementationDoc->scopeAt(line, column);
             const LookupContext targetContext(implementationDoc, snapshot());
@@ -853,7 +853,7 @@ public:
                 targetCoN = targetContext.globalNamespace();
 
             // Loop through inserted declarations
-            for (unsigned i = targetClass->memberCount(); i < clazz->memberCount(); ++i) {
+            for (int i = targetClass->memberCount(); i < clazz->memberCount(); ++i) {
                 Declaration *decl = clazz->memberAt(i)->asDeclaration();
                 if (!decl)
                     continue;
@@ -1011,7 +1011,7 @@ void InsertVirtualMethodsDialog::initGui()
 
     auto overrideWidgetsLayout = new QHBoxLayout(this);
     overrideWidgetsLayout->setSpacing(0);
-    overrideWidgetsLayout->setMargin(0);
+    overrideWidgetsLayout->setContentsMargins(0, 0, 0, 0);
     overrideWidgetsLayout->addWidget(m_overrideReplacementCheckBox);
     overrideWidgetsLayout->addWidget(m_overrideReplacementComboBox);
     overrideWidgetsLayout->addWidget(m_clearUserAddedReplacementsButton);

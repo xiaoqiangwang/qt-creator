@@ -28,26 +28,32 @@
 #include "qmakeprojectmanager_global.h"
 
 #include <projectexplorer/abstractprocessstep.h>
+#include <projectexplorer/projectconfigurationaspects.h>
 
 #include <utils/fileutils.h>
 
 #include <memory>
 
+QT_BEGIN_NAMESPACE
+class QCheckBox;
+class QComboBox;
+class QLabel;
+class QLineEdit;
+class QPlainTextEdit;
+class QListWidget;
+QT_END_NAMESPACE
+
 namespace ProjectExplorer {
 class Abi;
-class BuildStep;
-class BuildStepFactory;
-class Project;
 } // namespace ProjectExplorer
 
 namespace QtSupport { class BaseQtVersion; }
 
 namespace QmakeProjectManager {
 class QmakeBuildConfiguration;
+class QmakeBuildSystem;
 
 namespace Internal {
-
-namespace Ui { class QMakeStep; }
 
 class QMakeStepFactory : public ProjectExplorer::BuildStepFactory
 {
@@ -78,9 +84,9 @@ public:
     QString targetTriple;
     TargetArchConfig archConfig = NoArch;
     OsType osType = NoOsType;
-    bool linkQmlDebuggingQQ2 = false;
-    bool useQtQuickCompiler = false;
-    bool separateDebugInfo = false;
+    ProjectExplorer::TriState separateDebugInfo;
+    ProjectExplorer::TriState linkQmlDebuggingQQ2;
+    ProjectExplorer::TriState useQtQuickCompiler;
 };
 
 
@@ -97,7 +103,10 @@ inline bool operator !=(const QMakeStepConfig &a, const QMakeStepConfig &b) {
 
 inline QDebug operator<<(QDebug dbg, const QMakeStepConfig &c)
 {
-   dbg << c.archConfig << c.osType << c.linkQmlDebuggingQQ2 << c.useQtQuickCompiler << c.separateDebugInfo;
+   dbg << c.archConfig << c.osType
+       << (c.linkQmlDebuggingQQ2 == ProjectExplorer::TriState::Enabled)
+       << (c.useQtQuickCompiler == ProjectExplorer::TriState::Enabled)
+       << (c.separateDebugInfo == ProjectExplorer::TriState::Enabled);
    return dbg;
 }
 
@@ -106,13 +115,11 @@ class QMAKEPROJECTMANAGER_EXPORT QMakeStep : public ProjectExplorer::AbstractPro
     Q_OBJECT
     friend class Internal::QMakeStepFactory;
 
-    // used in DebuggerRunConfigurationAspect
-    Q_PROPERTY(bool linkQmlDebuggingLibrary READ linkQmlDebuggingLibrary WRITE setLinkQmlDebuggingLibrary NOTIFY linkQmlDebuggingLibraryChanged)
-
 public:
-    explicit QMakeStep(ProjectExplorer::BuildStepList *parent);
+    QMakeStep(ProjectExplorer::BuildStepList *parent, Core::Id id);
 
     QmakeBuildConfiguration *qmakeBuildConfiguration() const;
+    QmakeBuildSystem *qmakeBuildSystem() const;
     bool init() override;
     void doRun() override;
     ProjectExplorer::BuildStepConfigWidget *createConfigWidget() override;
@@ -133,16 +140,14 @@ public:
     // arguments set by the user
     QString userArguments();
     void setUserArguments(const QString &arguments);
-    // QMake extra arguments. Not user editable.
+    // Extra arguments for qmake and pro file parser. Not user editable via UI.
     QStringList extraArguments() const;
     void setExtraArguments(const QStringList &args);
+    /* Extra arguments for pro file parser only. Not user editable via UI.
+     * This function is used in 3rd party plugin SailfishOS. */
+    QStringList extraParserArguments() const;
+    void setExtraParserArguments(const QStringList &args);
     QString mkspec() const;
-    bool linkQmlDebuggingLibrary() const;
-    void setLinkQmlDebuggingLibrary(bool enable);
-    bool useQtQuickCompiler() const;
-    void setUseQtQuickCompiler(bool enable);
-    bool separateDebugInfo() const;
-    void setSeparateDebugInfo(bool enable);
 
     Utils::FilePath makeCommand() const;
     QString makeArguments(const QString &makefile) const;
@@ -150,12 +155,12 @@ public:
 
     QVariantMap toMap() const override;
 
+    QStringList selectedAbis() const;
+    void setSelectedAbis(const QStringList &selectedAbis);
+
 signals:
     void userArgumentsChanged();
     void extraArgumentsChanged();
-    void linkQmlDebuggingLibraryChanged();
-    void useQtQuickCompilerChanged();
-    void separateDebugInfoChanged();
 
 protected:
     bool fromMap(const QVariantMap &map) override;
@@ -166,16 +171,16 @@ private:
     void doCancel() override;
     void finish(bool success) override;
 
-    void startOneCommand(const Utils::FilePath &command, const QString &args);
+    void startOneCommand(const Utils::CommandLine &command);
     void runNextCommand();
 
-    Utils::FilePath m_qmakeExecutable;
-    QString m_qmakeArguments;
-    Utils::FilePath m_makeExecutable;
-    QString m_makeArguments;
+    Utils::CommandLine m_qmakeCommand;
+    Utils::CommandLine m_makeCommand;
     QString m_userArgs;
-    // Extra arguments for qmake.
+    // Extra arguments for qmake and pro file parser
     QStringList m_extraArgs;
+    // Extra arguments for pro file parser only
+    QStringList m_extraParserArgs;
 
     // last values
     enum class State { IDLE = 0, RUN_QMAKE, RUN_MAKE_QMAKE_ALL, POST_PROCESS };
@@ -185,10 +190,8 @@ private:
     bool m_needToRunQMake = false; // set in init(), read in run()
 
     bool m_runMakeQmake = false;
-    bool m_linkQmlDebuggingLibrary = false;
-    bool m_useQtQuickCompiler = false;
     bool m_scriptTemplate = false;
-    bool m_separateDebugInfo = false;
+    QStringList m_selectedAbis;
 };
 
 
@@ -207,25 +210,27 @@ private:
     void linkQmlDebuggingLibraryChanged();
     void useQtQuickCompilerChanged();
     void separateDebugInfoChanged();
+    void abisChanged();
 
     // slots for dealing with user changes in our UI
     void qmakeArgumentsLineEdited();
     void buildConfigurationSelected();
-    void linkQmlDebuggingLibraryChecked(bool checked);
-    void useQtQuickCompilerChecked(bool checked);
-    void separateDebugInfoChecked(bool checked);
     void askForRebuild(const QString &title);
 
     void recompileMessageBoxFinished(int button);
 
     void updateSummaryLabel();
-    void updateQmlDebuggingOption();
-    void updateQtQuickCompilerOption();
     void updateEffectiveQMakeCall();
+    bool isAndroidKit() const;
 
-    Internal::Ui::QMakeStep *m_ui = nullptr;
     QMakeStep *m_step = nullptr;
     bool m_ignoreChange = false;
+
+    QLabel *abisLabel = nullptr;
+    QComboBox *buildConfigurationComboBox = nullptr;
+    QLineEdit *qmakeAdditonalArgumentsLineEdit = nullptr;
+    QPlainTextEdit *qmakeArgumentsEdit = nullptr;
+    QListWidget *abisListWidget = nullptr;
 };
 
 } // namespace QmakeProjectManager

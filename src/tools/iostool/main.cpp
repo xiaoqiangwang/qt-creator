@@ -31,7 +31,6 @@
 #include <QDebug>
 #include <QXmlStreamWriter>
 #include <QFile>
-#include <QMapIterator>
 #include <QScopedArrayPointer>
 #include <QTcpServer>
 #include <QSocketNotifier>
@@ -657,8 +656,8 @@ void IosTool::doExit(int errorCode)
 void IosTool::isTransferringApp(const QString &bundlePath, const QString &deviceId, int progress,
                                 const QString &info)
 {
-    Q_UNUSED(bundlePath);
-    Q_UNUSED(deviceId);
+    Q_UNUSED(bundlePath)
+    Q_UNUSED(deviceId)
     QMutexLocker l(&m_xmlMutex);
     out.writeStartElement(QLatin1String("status"));
     out.writeAttribute(QLatin1String("progress"), QString::number(progress));
@@ -671,8 +670,8 @@ void IosTool::isTransferringApp(const QString &bundlePath, const QString &device
 void IosTool::didTransferApp(const QString &bundlePath, const QString &deviceId,
                              Ios::IosDeviceManager::OpStatus status)
 {
-    Q_UNUSED(bundlePath);
-    Q_UNUSED(deviceId);
+    Q_UNUSED(bundlePath)
+    Q_UNUSED(deviceId)
     {
         QMutexLocker l(&m_xmlMutex);
         if (status == Ios::IosDeviceManager::Success) {
@@ -698,8 +697,8 @@ void IosTool::didStartApp(const QString &bundlePath, const QString &deviceId,
                           Ios::IosDeviceManager::OpStatus status, int gdbFd,
                           Ios::DeviceSession *deviceSession)
 {
-    Q_UNUSED(bundlePath);
-    Q_UNUSED(deviceId);
+    Q_UNUSED(bundlePath)
+    Q_UNUSED(deviceId)
     {
         QMutexLocker l(&m_xmlMutex);
         out.writeEmptyElement(QLatin1String("app_started"));
@@ -811,14 +810,12 @@ void IosTool::writeMaybeBin(const QString &extraMsg, const char *msg, quintptr l
 
 void IosTool::deviceInfo(const QString &deviceId, const Ios::IosDeviceManager::Dict &devInfo)
 {
-    Q_UNUSED(deviceId);
+    Q_UNUSED(deviceId)
     {
         QMutexLocker l(&m_xmlMutex);
         out.writeTextElement(QLatin1String("device_id"), deviceId);
         out.writeStartElement(QLatin1String("device_info"));
-        QMapIterator<QString,QString> i(devInfo);
-        while (i.hasNext()) {
-            i.next();
+        for (auto i = devInfo.cbegin(); i != devInfo.cend(); ++i) {
             out.writeStartElement(QLatin1String("item"));
             out.writeTextElement(QLatin1String("key"), i.key());
             out.writeTextElement(QLatin1String("value"), i.value());

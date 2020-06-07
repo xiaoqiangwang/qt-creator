@@ -37,6 +37,12 @@
 
 namespace Core {
 
+/*!
+    \class Core::DirectoryFilter
+    \inmodule QtCreator
+    \internal
+*/
+
 DirectoryFilter::DirectoryFilter(Id id)
     : m_filters({"*.h", "*.cpp", "*.ui", "*.qrc"}),
       m_exclusionFilters({"*/.git/*", "*/.cvs/*", "*/.svn/*"})
@@ -56,7 +62,7 @@ QByteArray DirectoryFilter::saveState() const
     out << m_filters;
     out << shortcutString();
     out << isIncludedByDefault();
-    out << m_files;
+    out << Utils::transform(m_files, &Utils::FilePath::toString);
     out << m_exclusionFilters;
     return value;
 }
@@ -69,6 +75,7 @@ void DirectoryFilter::restoreState(const QByteArray &state)
     QStringList directories;
     QString shortcut;
     bool defaultFilter;
+    QStringList files;
 
     QDataStream in(state);
     in >> name;
@@ -76,7 +83,8 @@ void DirectoryFilter::restoreState(const QByteArray &state)
     in >> m_filters;
     in >> shortcut;
     in >> defaultFilter;
-    in >> m_files;
+    in >> files;
+    m_files = Utils::transform(files, &Utils::FilePath::fromString);
     if (!in.atEnd()) // Qt Creator 4.3 and later
         in >> m_exclusionFilters;
     else
@@ -205,7 +213,7 @@ void DirectoryFilter::handleRemoveDirectory()
 
 void DirectoryFilter::updateOptionButtons()
 {
-    bool haveSelectedItem = (m_ui->directoryList->selectedItems().count() > 0);
+    bool haveSelectedItem = !m_ui->directoryList->selectedItems().isEmpty();
     m_ui->editButton->setEnabled(haveSelectedItem);
     m_ui->removeButton->setEnabled(haveSelectedItem);
 }
@@ -220,7 +228,7 @@ void DirectoryFilter::refresh(QFutureInterface<void> &future)
     QStringList directories;
     {
         QMutexLocker locker(&m_lock);
-        if (m_directories.count() < 1) {
+        if (m_directories.isEmpty()) {
             m_files.clear();
             QTimer::singleShot(0, this, &DirectoryFilter::updateFileIterator);
             future.setProgressRange(0, 1);
@@ -231,12 +239,12 @@ void DirectoryFilter::refresh(QFutureInterface<void> &future)
     }
     Utils::SubDirFileIterator subDirIterator(directories, m_filters, m_exclusionFilters);
     future.setProgressRange(0, subDirIterator.maxProgress());
-    QStringList filesFound;
+    Utils::FilePaths filesFound;
     auto end = subDirIterator.end();
     for (auto it = subDirIterator.begin(); it != end; ++it) {
         if (future.isCanceled())
             break;
-        filesFound << (*it).filePath;
+        filesFound << Utils::FilePath::fromString((*it).filePath);
         if (future.isProgressUpdateNeeded()
                 || future.progressValue() == 0 /*workaround for regression in Qt*/) {
             future.setProgressValueAndText(subDirIterator.currentProgress(),

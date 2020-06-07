@@ -132,13 +132,16 @@ const QList<BuildInfo> ProjectImporter::import(const Utils::FilePath &importPath
 
         foreach (Kit *k, kitList) {
             qCDebug(log) << "Creating buildinfos for kit" << k->displayName();
-            const QList<BuildInfo> infoList = buildInfoListForKit(k, data);
+            const QList<BuildInfo> infoList = buildInfoList(data);
             if (infoList.isEmpty()) {
                 qCDebug(log) << "No build infos for kit" << k->displayName();
                 continue;
             }
 
-            for (const BuildInfo &i : infoList) {
+            auto factory = BuildConfigurationFactory::find(k, projectFilePath());
+            for (BuildInfo i : infoList) {
+                i.kitId = k->id();
+                i.factory = factory;
                 if (!result.contains(i))
                     result += i;
             }
@@ -366,13 +369,12 @@ bool ProjectImporter::hasKitWithTemporaryData(Core::Id id, const QVariant &data)
     });
 }
 
-static ProjectImporter::ToolChainData
-createToolChains(const Utils::FilePath &toolChainPath, const Core::Id &language)
+static ProjectImporter::ToolChainData createToolChains(const ToolChainDescription &tcd)
 {
     ProjectImporter::ToolChainData data;
 
     for (ToolChainFactory *factory : ToolChainFactory::allToolChainFactories()) {
-        data.tcs = factory->autoDetect(toolChainPath, language);
+        data.tcs = factory->detectForImport(tcd);
         if (data.tcs.isEmpty())
             continue;
 
@@ -387,12 +389,11 @@ createToolChains(const Utils::FilePath &toolChainPath, const Core::Id &language)
 }
 
 ProjectImporter::ToolChainData
-ProjectImporter::findOrCreateToolChains(const Utils::FilePath &toolChainPath,
-                                        const Core::Id &language) const
+ProjectImporter::findOrCreateToolChains(const ToolChainDescription &tcd) const
 {
     ToolChainData result;
-    result.tcs = ToolChainManager::toolChains([toolChainPath, language](const ToolChain *tc) {
-        return tc->language() == language && tc->compilerCommand() == toolChainPath;
+    result.tcs = ToolChainManager::toolChains([&tcd](const ToolChain *tc) {
+        return tc->language() == tcd.language && tc->compilerCommand() == tcd.compilerPath;
     });
     for (const ToolChain *tc : result.tcs) {
         const QByteArray tcId = tc->id();
@@ -403,7 +404,7 @@ ProjectImporter::findOrCreateToolChains(const Utils::FilePath &toolChainPath,
 
     // Create a new toolchain:
     UpdateGuard guard(*this);
-    return createToolChains(toolChainPath, language);
+    return createToolChains(tcd);
 }
 
 } // namespace ProjectExplorer

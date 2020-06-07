@@ -26,22 +26,19 @@
 #include "runsettingspropertiespage.h"
 
 #include "addrunconfigdialog.h"
+#include "buildmanager.h"
 #include "buildstepspage.h"
 #include "deployconfiguration.h"
-#include "runconfiguration.h"
-#include "target.h"
 #include "projectconfigurationmodel.h"
+#include "runconfiguration.h"
 #include "session.h"
+#include "target.h"
 
-#include <extensionsystem/pluginmanager.h>
-#include <projectexplorer/projectexplorer.h>
-#include <projectexplorer/buildmanager.h>
 #include <utils/algorithm.h>
 #include <utils/qtcassert.h>
 #include <utils/stringutils.h>
-#include <utils/utilsicons.h>
+#include <utils/infolabel.h>
 
-#include <QVariant>
 #include <QAction>
 #include <QComboBox>
 #include <QGridLayout>
@@ -56,29 +53,10 @@
 namespace ProjectExplorer {
 namespace Internal {
 
-struct FactoryAndId
-{
-    RunConfigurationFactory *factory;
-    Core::Id id;
-};
-
-} // namespace Internal
-} // namespace ProjectExplorer
-
-Q_DECLARE_METATYPE(ProjectExplorer::Internal::FactoryAndId)
-
-using namespace ProjectExplorer;
-using namespace ProjectExplorer::Internal;
-using ExtensionSystem::PluginManager;
-
-///
-/// RunSettingsWidget
-///
+// RunSettingsWidget
 
 RunSettingsWidget::RunSettingsWidget(Target *target) :
-    m_target(target),
-    m_runConfigurationsModel(new RunConfigurationModel(target, this)),
-    m_deployConfigurationModel(new DeployConfigurationModel(target, this))
+    m_target(target)
 {
     Q_ASSERT(m_target);
 
@@ -121,15 +99,15 @@ RunSettingsWidget::RunSettingsWidget(Target *target) :
     m_gridLayout->setContentsMargins(0, 20, 0, 0);
     m_gridLayout->setHorizontalSpacing(6);
     m_gridLayout->setVerticalSpacing(8);
-    m_gridLayout->addWidget(deployTitle, 0, 0, 1, 6);
+    m_gridLayout->addWidget(deployTitle, 0, 0, 1, -1);
     m_gridLayout->addWidget(deployLabel, 1, 0, 1, 1);
     m_gridLayout->addWidget(m_deployConfigurationCombo, 1, 1, 1, 1);
     m_gridLayout->addWidget(m_addDeployToolButton, 1, 2, 1, 1);
     m_gridLayout->addWidget(m_removeDeployToolButton, 1, 3, 1, 1);
     m_gridLayout->addWidget(m_renameDeployButton, 1, 4, 1, 1);
-    m_gridLayout->addWidget(deployWidget, 2, 0, 1, 6);
+    m_gridLayout->addWidget(deployWidget, 2, 0, 1, -1);
 
-    m_gridLayout->addWidget(runTitle, 3, 0, 1, 6);
+    m_gridLayout->addWidget(runTitle, 3, 0, 1, -1);
     m_gridLayout->addWidget(runLabel, 4, 0, 1, 1);
     m_gridLayout->addWidget(m_runConfigurationCombo, 4, 1, 1, 1);
     m_gridLayout->addWidget(m_addRunToolButton, 4, 2, 1, 1);
@@ -137,16 +115,16 @@ RunSettingsWidget::RunSettingsWidget(Target *target) :
     m_gridLayout->addWidget(m_renameRunButton, 4, 4, 1, 1);
     m_gridLayout->addWidget(m_cloneRunButton, 4, 5, 1, 1);
     m_gridLayout->addItem(spacer1, 4, 6, 1, 1);
-    m_gridLayout->addWidget(runWidget, 5, 0, 1, 6);
+    m_gridLayout->addWidget(runWidget, 5, 0, 1, -1);
     m_gridLayout->addItem(spacer2, 6, 0, 1, 1);
 
     // deploy part
     deployWidget->setContentsMargins(0, 10, 0, 25);
     m_deployLayout = new QVBoxLayout(deployWidget);
-    m_deployLayout->setMargin(0);
+    m_deployLayout->setContentsMargins(0, 0, 0, 0);
     m_deployLayout->setSpacing(5);
 
-    m_deployConfigurationCombo->setModel(m_deployConfigurationModel);
+    m_deployConfigurationCombo->setModel(m_target->deployConfigurationModel());
 
     m_addDeployMenu = new QMenu(m_addDeployToolButton);
     m_addDeployToolButton->setMenu(m_addDeployMenu);
@@ -173,25 +151,18 @@ RunSettingsWidget::RunSettingsWidget(Target *target) :
             this, &RunSettingsWidget::activeDeployConfigurationChanged);
 
     // run part
-    runWidget->setContentsMargins(0, 10, 0, 25);
+    runWidget->setContentsMargins(0, 10, 0, 0);
     m_runLayout = new QVBoxLayout(runWidget);
-    m_runLayout->setMargin(0);
+    m_runLayout->setContentsMargins(0, 0, 0, 0);
     m_runLayout->setSpacing(5);
 
-    m_disabledIcon = new QLabel;
-    m_disabledIcon->setPixmap(Utils::Icons::WARNING.pixmap());
-    m_disabledText = new QLabel;
-    auto disabledHBox = new QHBoxLayout;
-    disabledHBox->addWidget(m_disabledIcon);
-    disabledHBox->addWidget(m_disabledText);
-    disabledHBox->addStretch(255);
+    m_disabledText = new Utils::InfoLabel({}, Utils::InfoLabel::Warning);
+    m_runLayout->addWidget(m_disabledText);
 
-    m_runLayout->addLayout(disabledHBox);
-
+    ProjectConfigurationModel *model = m_target->runConfigurationModel();
     RunConfiguration *rc = m_target->activeRunConfiguration();
-    m_runConfigurationCombo->setModel(m_runConfigurationsModel);
-    m_runConfigurationCombo->setCurrentIndex(
-            m_runConfigurationsModel->indexFor(rc).row());
+    m_runConfigurationCombo->setModel(model);
+    m_runConfigurationCombo->setCurrentIndex(model->indexFor(rc));
 
     m_removeRunToolButton->setEnabled(m_target->runConfigurations().size() > 1);
     m_renameRunButton->setEnabled(rc);
@@ -284,10 +255,12 @@ void RunSettingsWidget::activeRunConfigurationChanged()
 {
     if (m_ignoreChange)
         return;
-    QModelIndex actRc = m_runConfigurationsModel->indexFor(m_target->activeRunConfiguration());
+
+    ProjectConfigurationModel *model = m_target->runConfigurationModel();
+    int index = model->indexFor(m_target->activeRunConfiguration());
     m_ignoreChange = true;
-    m_runConfigurationCombo->setCurrentIndex(actRc.row());
-    setConfigurationWidget(qobject_cast<RunConfiguration *>(m_runConfigurationsModel->projectConfigurationAt(actRc.row())));
+    m_runConfigurationCombo->setCurrentIndex(index);
+    setConfigurationWidget(qobject_cast<RunConfiguration *>(model->projectConfigurationAt(index)));
     m_ignoreChange = false;
     m_renameRunButton->setEnabled(m_target->activeRunConfiguration());
     m_cloneRunButton->setEnabled(m_target->activeRunConfiguration());
@@ -318,7 +291,8 @@ void RunSettingsWidget::currentRunConfigurationChanged(int index)
 
     RunConfiguration *selectedRunConfiguration = nullptr;
     if (index >= 0)
-        selectedRunConfiguration = qobject_cast<RunConfiguration *>(m_runConfigurationsModel->projectConfigurationAt(index));
+        selectedRunConfiguration = qobject_cast<RunConfiguration *>
+                (m_target->runConfigurationModel()->projectConfigurationAt(index));
 
     if (selectedRunConfiguration == m_runConfiguration)
         return;
@@ -339,7 +313,7 @@ void RunSettingsWidget::currentDeployConfigurationChanged(int index)
         SessionManager::setActiveDeployConfiguration(m_target, nullptr, SetActive::Cascade);
     else
         SessionManager::setActiveDeployConfiguration(m_target,
-                                                     qobject_cast<DeployConfiguration *>(m_deployConfigurationModel->projectConfigurationAt(index)),
+                                                     qobject_cast<DeployConfiguration *>(m_target->deployConfigurationModel()->projectConfigurationAt(index)),
                                                      SetActive::Cascade);
 }
 
@@ -434,17 +408,16 @@ void RunSettingsWidget::updateDeployConfiguration(DeployConfiguration *dc)
     if (!dc)
         return;
 
-    QModelIndex actDc = m_deployConfigurationModel->indexFor(dc);
+    int index = m_target->deployConfigurationModel()->indexFor(dc);
     m_ignoreChange = true;
-    m_deployConfigurationCombo->setCurrentIndex(actDc.row());
+    m_deployConfigurationCombo->setCurrentIndex(index);
     m_ignoreChange = false;
 
     m_deployConfigurationWidget = dc->createConfigWidget();
     if (m_deployConfigurationWidget)
         m_deployLayout->addWidget(m_deployConfigurationWidget);
 
-    m_deploySteps = new BuildStepListWidget;
-    m_deploySteps->init(dc->stepList());
+    m_deploySteps = new BuildStepListWidget(dc->stepList());
     m_deployLayout->addWidget(m_deploySteps);
 }
 
@@ -547,7 +520,9 @@ void RunSettingsWidget::updateEnabledState()
 
     m_runConfigurationWidget->setEnabled(enable);
 
-    m_disabledIcon->setVisible(!enable && !reason.isEmpty());
     m_disabledText->setVisible(!enable && !reason.isEmpty());
     m_disabledText->setText(reason);
 }
+
+} // Internal
+} // ProjectExplorer

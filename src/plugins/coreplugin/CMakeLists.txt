@@ -25,6 +25,7 @@ add_qtc_plugin(Core
     dialogs/openwithdialog.cpp dialogs/openwithdialog.h dialogs/openwithdialog.ui
     dialogs/promptoverwritedialog.cpp dialogs/promptoverwritedialog.h
     dialogs/readonlyfilesdialog.cpp dialogs/readonlyfilesdialog.h dialogs/readonlyfilesdialog.ui
+    dialogs/restartdialog.cpp dialogs/restartdialog.h
     dialogs/saveitemsdialog.cpp dialogs/saveitemsdialog.h dialogs/saveitemsdialog.ui
     dialogs/settingsdialog.cpp dialogs/settingsdialog.h
     dialogs/shortcutsettings.cpp dialogs/shortcutsettings.h
@@ -108,6 +109,7 @@ add_qtc_plugin(Core
     locator/locatorsettingspage.cpp locator/locatorsettingspage.h locator/locatorsettingspage.ui
     locator/locatorwidget.cpp locator/locatorwidget.h
     locator/opendocumentsfilter.cpp locator/opendocumentsfilter.h
+    locator/urllocatorfilter.cpp locator/urllocatorfilter.h locator/urllocatorfilter.ui
     mainwindow.cpp mainwindow.h
     manhattanstyle.cpp manhattanstyle.h
     menubarfilter.cpp menubarfilter.h
@@ -142,10 +144,10 @@ add_qtc_plugin(Core
     systemsettings.cpp systemsettings.h systemsettings.ui
     textdocument.cpp textdocument.h
     themechooser.cpp themechooser.h
-    toolsettings.cpp toolsettings.h
     variablechooser.cpp variablechooser.h
     vcsmanager.cpp vcsmanager.h
     versiondialog.cpp versiondialog.h
+    welcomepagehelper.cpp welcomepagehelper.h
     windowsupport.cpp windowsupport.h
   EXPLICIT_MOC dialogs/filepropertiesdialog.h
 )
@@ -178,6 +180,7 @@ extend_qtc_plugin(Core
 
 extend_qtc_plugin(Core
   CONDITION TARGET Qt5::Script
+  FEATURE_INFO "Script Locator filter"
   DEPENDS Qt5::Script
   DEFINES WITH_JAVASCRIPTFILTER
   SOURCES

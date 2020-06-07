@@ -14,7 +14,6 @@ Project {
         Depends { name: "Core" }
         Depends { name: "Debugger" }
         Depends { name: "ProjectExplorer" }
-        Depends { name: "QtSupport" }
 
         files: [
             "abstractpackagingstep.cpp",
@@ -27,8 +26,6 @@ Project {
             "abstractuploadandinstallpackageservice.h",
             "deploymenttimeinfo.cpp",
             "deploymenttimeinfo.h",
-            "embeddedlinuxqtversion.cpp",
-            "embeddedlinuxqtversion.h",
             "genericdirectuploadservice.cpp",
             "genericdirectuploadservice.h",
             "genericdirectuploadstep.cpp",

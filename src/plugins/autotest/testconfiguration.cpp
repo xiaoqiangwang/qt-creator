@@ -44,9 +44,9 @@
 static Q_LOGGING_CATEGORY(LOG, "qtc.autotest.testconfiguration", QtWarningMsg)
 
 using namespace ProjectExplorer;
+using namespace Utils;
 
 namespace Autotest {
-namespace Internal {
 
 TestConfiguration::~TestConfiguration()
 {
@@ -59,11 +59,11 @@ static bool isLocal(Target *target)
     return DeviceTypeKitAspect::deviceTypeId(kit) == ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE;
 }
 
-static QString ensureExeEnding(const QString& file)
+static FilePath ensureExeEnding(const FilePath &file)
 {
-    if (!Utils::HostOsInfo::isWindowsHost() || file.isEmpty() || file.toLower().endsWith(".exe"))
+    if (!HostOsInfo::isWindowsHost() || file.isEmpty() || file.toString().toLower().endsWith(".exe"))
         return file;
-    return Utils::HostOsInfo::withExecutableSuffix(file);
+    return FilePath::fromString(HostOsInfo::withExecutableSuffix(file.toString()));
 }
 
 void TestConfiguration::completeTestInformation(ProjectExplorer::RunConfiguration *rc,
@@ -84,17 +84,15 @@ void TestConfiguration::completeTestInformation(ProjectExplorer::RunConfiguratio
     if (!target)
         return;
 
-    if (!Utils::findOr(target->runConfigurations(), nullptr,
-                       [&rc] (RunConfiguration *config) { return rc == config; })) {
+    if (!target->runConfigurations().contains(rc))
         return;
-    }
 
     m_runnable = rc->runnable();
     m_displayName = rc->displayName();
 
     BuildTargetInfo targetInfo = rc->buildTargetInfo();
     if (!targetInfo.targetFilePath.isEmpty())
-        m_runnable.executable = ensureExeEnding(targetInfo.targetFilePath.toString());
+        m_runnable.executable = ensureExeEnding(targetInfo.targetFilePath);
 
     QString buildBase;
     if (auto buildConfig = target->activeBuildConfiguration()) {
@@ -104,7 +102,7 @@ void TestConfiguration::completeTestInformation(ProjectExplorer::RunConfiguratio
             m_buildDir = QFileInfo(buildBase + m_projectFile.mid(projBase.length())).absolutePath();
     }
     if (runMode == TestRunMode::Debug || runMode == TestRunMode::DebugWithoutDeploy)
-        m_runConfig = new TestRunConfiguration(rc->target(), this);
+        m_runConfig = new Internal::TestRunConfiguration(rc->target(), this);
 }
 
 void TestConfiguration::completeTestInformation(TestRunMode runMode)
@@ -157,7 +155,7 @@ void TestConfiguration::completeTestInformation(TestRunMode runMode)
         }
     }
 
-    const QString localExecutable = ensureExeEnding(targetInfo.targetFilePath.toString());
+    const FilePath localExecutable = ensureExeEnding(targetInfo.targetFilePath);
     if (localExecutable.isEmpty())
         return;
 
@@ -174,8 +172,8 @@ void TestConfiguration::completeTestInformation(TestRunMode runMode)
     const DeploymentData &deployData = target->deploymentData();
     const DeployableFile deploy = deployData.deployableForLocalFile(localExecutable);
     // we might have a deployable executable
-    const QString deployedExecutable = ensureExeEnding((deploy.isValid() && deploy.isExecutable())
-            ? QDir::cleanPath(deploy.remoteFilePath()) : localExecutable);
+    const FilePath deployedExecutable = ensureExeEnding((deploy.isValid() && deploy.isExecutable())
+            ? FilePath::fromString(QDir::cleanPath(deploy.remoteFilePath())) : localExecutable);
 
     qCDebug(LOG) << " LocalExecutable" << localExecutable;
     qCDebug(LOG) << " DeployedExecutable" << deployedExecutable;
@@ -190,7 +188,7 @@ void TestConfiguration::completeTestInformation(TestRunMode runMode)
         const Runnable runnable = runConfig->runnable();
         // not the best approach - but depending on the build system and whether the executables
         // are going to get installed or not we have to soften the condition...
-        const QString currentExecutable = ensureExeEnding(runnable.executable);
+        const FilePath currentExecutable = ensureExeEnding(runnable.executable);
         const QString currentBST = runConfig->buildKey();
         qCDebug(LOG) << " CurrentExecutable" << currentExecutable;
         qCDebug(LOG) << " BST of RunConfig" << currentBST;
@@ -203,7 +201,7 @@ void TestConfiguration::completeTestInformation(TestRunMode runMode)
             m_runnable.executable = currentExecutable;
             m_displayName = runConfig->displayName();
             if (runMode == TestRunMode::Debug || runMode == TestRunMode::DebugWithoutDeploy)
-                m_runConfig = new TestRunConfiguration(target, this);
+                m_runConfig = new Internal::TestRunConfiguration(target, this);
             break;
         }
     }
@@ -224,7 +222,7 @@ void TestConfiguration::completeTestInformation(TestRunMode runMode)
                 m_deducedConfiguration = true;
                 m_deducedFrom = rc->displayName();
                 if (runMode == TestRunMode::Debug)
-                    m_runConfig = new TestRunConfiguration(rc->target(), this);
+                    m_runConfig = new Internal::TestRunConfiguration(rc->target(), this);
             } else {
                 qCDebug(LOG) << "not using the fallback as the current active run configuration "
                                 "appears to be non-Desktop";
@@ -258,7 +256,7 @@ void TestConfiguration::setTestCaseCount(int count)
 
 void TestConfiguration::setExecutableFile(const QString &executableFile)
 {
-    m_runnable.executable = executableFile;
+    m_runnable.executable = Utils::FilePath::fromString(executableFile);
 }
 
 void TestConfiguration::setProjectFile(const QString &projectFile)
@@ -312,11 +310,11 @@ QString TestConfiguration::executableFilePath() const
     if (!hasExecutable())
         return QString();
 
-    QFileInfo commandFileInfo(m_runnable.executable);
+    QFileInfo commandFileInfo = m_runnable.executable.toFileInfo();
     if (commandFileInfo.isExecutable() && commandFileInfo.path() != ".") {
         return commandFileInfo.absoluteFilePath();
     } else if (commandFileInfo.path() == "."){
-        QString fullCommandFileName = m_runnable.executable;
+        QString fullCommandFileName = m_runnable.executable.toString();
         // TODO: check if we can use searchInPath() from Utils::Environment
         const QStringList &pathList = m_runnable.environment.toProcessEnvironment().value("PATH")
                 .split(Utils::HostOsInfo::pathListSeparator());
@@ -352,5 +350,4 @@ bool TestConfiguration::hasExecutable() const
     return !m_runnable.executable.isEmpty();
 }
 
-} // namespace Internal
 } // namespace Autotest

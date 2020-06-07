@@ -29,7 +29,7 @@
 #include <projectexplorer/deploymentdata.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/target.h>
-#include <qtsupport/qtkitinformation.h>
+
 #include <ssh/sshconnection.h>
 #include <ssh/sshconnectionmanager.h>
 
@@ -70,18 +70,28 @@ struct TarFileHeader {
 
 } // Anonymous namespace.
 
-TarPackageCreationStep::TarPackageCreationStep(BuildStepList *bsl)
-    : AbstractPackagingStep(bsl, stepId())
+TarPackageCreationStep::TarPackageCreationStep(BuildStepList *bsl, Core::Id id)
+    : AbstractPackagingStep(bsl, id)
 {
     setDefaultDisplayName(displayName());
 
     m_ignoreMissingFilesAspect = addAspect<BaseBoolAspect>();
-    m_ignoreMissingFilesAspect->setLabel(tr("Ignore missing files"));
+    m_ignoreMissingFilesAspect->setLabel(tr("Ignore missing files"),
+                                         BaseBoolAspect::LabelPlacement::AtCheckBox);
     m_ignoreMissingFilesAspect->setSettingsKey(IgnoreMissingFilesKey);
 
     m_incrementalDeploymentAspect = addAspect<BaseBoolAspect>();
-    m_incrementalDeploymentAspect->setLabel(tr("Package modified files only"));
+    m_incrementalDeploymentAspect->setLabel(tr("Package modified files only"),
+                                            BaseBoolAspect::LabelPlacement::AtCheckBox);
     m_incrementalDeploymentAspect->setSettingsKey(IncrementalDeploymentKey);
+
+    setSummaryUpdater([this] {
+        QString path = packageFilePath();
+        if (path.isEmpty())
+            return QString("<font color=\"red\">" + tr("Tarball creation not possible.")
+                           + "</font>");
+        return QString("<b>" + tr("Create tarball:") + "</b> " + path);
+    });
 }
 
 bool TarPackageCreationStep::init()
@@ -353,29 +363,6 @@ bool TarPackageCreationStep::runImpl()
             this, &TarPackageCreationStep::deployFinished);
 
     return success;
-}
-
-BuildStepConfigWidget *TarPackageCreationStep::createConfigWidget()
-{
-    auto widget = BuildStep::createConfigWidget();
-
-    auto updateSummary = [this, widget] {
-        QString path = packageFilePath();
-        if (path.isEmpty()) {
-            widget->setSummaryText("<font color=\"red\">"
-                              + tr("Tarball creation not possible.")
-                              + "</font>");
-        } else {
-            widget->setSummaryText("<b>" + tr("Create tarball:") + "</b> " + path);
-        }
-    };
-
-    connect(this, &AbstractPackagingStep::packageFilePathChanged,
-            this, updateSummary);
-
-    updateSummary();
-
-    return widget;
 }
 
 bool TarPackageCreationStep::fromMap(const QVariantMap &map)

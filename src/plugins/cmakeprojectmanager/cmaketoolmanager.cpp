@@ -27,6 +27,7 @@
 
 #include "cmaketoolsettingsaccessor.h"
 
+#include <coreplugin/helpmanager.h>
 #include <coreplugin/icore.h>
 
 #include <utils/pointeralgorithm.h>
@@ -86,20 +87,6 @@ QList<CMakeTool *> CMakeToolManager::cmakeTools()
     return Utils::toRawPointer<QList>(d->m_cmakeTools);
 }
 
-Id CMakeToolManager::registerOrFindCMakeTool(const FilePath &command)
-{
-    if (CMakeTool  *cmake = findByCommand(command))
-        return cmake->id();
-
-    auto cmake = std::make_unique<CMakeTool>(CMakeTool::ManualDetection, CMakeTool::createId());
-    cmake->setCMakeExecutable(command);
-    cmake->setDisplayName(tr("CMake at %1").arg(command.toUserOutput()));
-
-    Core::Id id = cmake->id();
-    QTC_ASSERT(registerCMakeTool(std::move(cmake)), return Core::Id());
-    return id;
-}
-
 bool CMakeToolManager::registerCMakeTool(std::unique_ptr<CMakeTool> &&tool)
 {
     if (!tool || Utils::contains(d->m_cmakeTools, tool.get()))
@@ -119,6 +106,8 @@ bool CMakeToolManager::registerCMakeTool(std::unique_ptr<CMakeTool> &&tool)
 
     ensureDefaultCMakeToolIsValid();
 
+    updateDocumentation();
+
     return true;
 }
 
@@ -126,8 +115,9 @@ void CMakeToolManager::deregisterCMakeTool(const Id &id)
 {
     auto toRemove = Utils::take(d->m_cmakeTools, Utils::equal(&CMakeTool::id, id));
     if (toRemove.has_value()) {
-
         ensureDefaultCMakeToolIsValid();
+
+        updateDocumentation();
 
         emit m_instance->cmakeRemoved(id);
     }
@@ -166,7 +156,20 @@ void CMakeToolManager::restoreCMakeTools()
     d->m_cmakeTools = std::move(tools.cmakeTools);
     setDefaultCMakeTool(tools.defaultToolId);
 
+    updateDocumentation();
+
     emit m_instance->cmakeToolsLoaded();
+}
+
+void CMakeToolManager::updateDocumentation()
+{
+    const QList<CMakeTool *> tools = cmakeTools();
+    QStringList docs;
+    for (const auto tool : tools) {
+        if (!tool->qchFilePath().isEmpty())
+            docs.append(tool->qchFilePath().toString());
+    }
+    Core::HelpManager::registerDocumentation(docs);
 }
 
 void CMakeToolManager::notifyAboutUpdate(CMakeTool *tool)

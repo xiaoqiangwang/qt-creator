@@ -7,7 +7,7 @@
     "trDisplayName": "Python Class",
     "trDisplayCategory": "Python",
     "icon": "../../files/python/icon.png",
-    "enabled": "%{JS: value('Plugins').indexOf('PythonEditor') >= 0}",
+    "enabled": "%{JS: value('Plugins').indexOf('Python') >= 0}",
 
     "options":
     [
@@ -46,7 +46,7 @@
                     "data":
                     {
                         "items": [ { "trKey": "<Custom>", "value": "" },
-                                   "QObject", "QWidget", "QMainWindow", "QDeclarativeItem" ]
+                                   "QObject", "QWidget", "QMainWindow", "QDeclarativeItem", "QQuickItem" ]
                     }
                 },
                 {

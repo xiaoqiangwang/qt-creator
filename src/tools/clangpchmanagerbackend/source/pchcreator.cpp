@@ -112,7 +112,7 @@ Utils::SmallStringVector PchCreator::generateClangCompilerArguments(const PchTas
     return builder.commandLine;
 }
 
-FilePathIds PchCreator::existingSources(FilePathIds sources) const
+FilePathIds PchCreator::existingSources(const FilePathIds &sources) const
 {
     FilePathIds existingSources;
     existingSources.reserve(sources.size());
@@ -196,19 +196,22 @@ void PchCreator::doInMainThreadAfterFinished()
     if (m_projectPartPch.projectPartId.isValid()) {
         m_buildDependenciesStorage.updatePchCreationTimeStamp(m_projectPartPch.lastModified,
                                                               m_projectPartPch.projectPartId);
-        m_clangPathwatcher.updateIdPaths({{{m_projectPartPch.projectPartId, SourceType::Source},
-                                           existingSources(m_watchedSources)}});
-        m_clangPathwatcher.updateIdPaths({{{m_projectPartPch.projectPartId, SourceType::UserInclude},
-                                           existingSources(m_watchedUserIncludes)}});
-        m_clangPathwatcher.updateIdPaths({{{m_projectPartPch.projectPartId, SourceType::ProjectInclude},
-                                           existingSources(m_watchedProjectIncludes)}});
-        m_clangPathwatcher.updateIdPaths({{{m_projectPartPch.projectPartId, SourceType::SystemInclude},
-                                           existingSources(m_watchedSystemIncludes)}});
+        m_clangPathwatcher.updateIdPaths(
+            {{m_projectPartPch.projectPartId, SourceType::Source, existingSources(m_watchedSources)},
+             {m_projectPartPch.projectPartId,
+              SourceType::UserInclude,
+              existingSources(m_watchedUserIncludes)},
+             {m_projectPartPch.projectPartId,
+              SourceType::ProjectInclude,
+              existingSources(m_watchedProjectIncludes)},
+             {m_projectPartPch.projectPartId,
+              SourceType::SystemInclude,
+              existingSources(m_watchedSystemIncludes)}});
         m_pchManagerClient.precompiledHeadersUpdated(m_projectPartPch.projectPartId);
     }
 }
 
-const FilePathCaching &PchCreator::filePathCache()
+const FilePathCachingInterface &PchCreator::filePathCache()
 {
     return m_filePathCache;
 }

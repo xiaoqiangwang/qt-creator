@@ -45,6 +45,8 @@ signals:
 public:
     GraphicsScene(QObject *parent = nullptr);
 
+    ~GraphicsScene() override;
+
     bool empty() const;
 
     bool hasActiveKeyframe() const;
@@ -52,6 +54,8 @@ public:
     bool hasActiveHandle() const;
 
     bool hasActiveItem() const;
+
+    bool hasSelectedKeyframe() const;
 
     double minimumTime() const;
 
@@ -61,13 +65,43 @@ public:
 
     double maximumValue() const;
 
+    QRectF rect() const;
+
+    QVector<CurveItem *> curves() const;
+
+    QVector<CurveItem *> selectedCurves() const;
+
+    QVector<KeyframeItem *> keyframes() const;
+
+    QVector<KeyframeItem *> selectedKeyframes() const;
+
+    QVector<HandleItem *> handles() const;
+
+    CurveItem *findCurve(unsigned int id) const;
+
+    SelectableItem *intersect(const QPointF &pos) const;
+
+    void reset();
+
+    void deleteSelectedKeyframes();
+
+    void insertKeyframe(double time, bool all = false);
+
+    void doNotMoveItems(bool tmp);
+
     void addCurveItem(CurveItem *item);
 
     void setComponentTransform(const QTransform &transform);
 
     void keyframeMoved(KeyframeItem *item, const QPointF &direction);
 
-    void handleMoved(KeyframeItem *frame, HandleSlot handle, double angle, double deltaLength);
+    void handleUnderMouse(HandleItem *handle);
+
+    void handleMoved(KeyframeItem *frame, HandleItem::Slot slot, double angle, double deltaLength);
+
+    void setPinned(uint id, bool pinned);
+
+    std::vector<CurveItem *> takePinnedItems();
 
 protected:
     void mouseMoveEvent(QGraphicsSceneMouseEvent *mouseEvent) override;
@@ -77,13 +111,21 @@ protected:
 private:
     using QGraphicsScene::addItem;
 
+    using QGraphicsScene::clear;
+
+    using QGraphicsScene::removeItem;
+
     GraphicsView *graphicsView() const;
 
     QRectF limits() const;
 
+    QVector<CurveItem *> m_curves;
+
     mutable bool m_dirty;
 
     mutable QRectF m_limits;
+
+    bool m_doNotMoveItems;
 };
 
 } // End namespace DesignTools.

@@ -29,7 +29,6 @@
 #include "androidconstants.h"
 #include "androidmanager.h"
 #include "androidrunconfiguration.h"
-#include "androidgdbserverkitinformation.h"
 
 #include <debugger/debuggerrunconfigurationaspect.h>
 
@@ -56,18 +55,19 @@
 #include <chrono>
 
 namespace {
-Q_LOGGING_CATEGORY(androidRunWorkerLog, "qtc.android.run.androidrunnerworker", QtWarningMsg)
+static Q_LOGGING_CATEGORY(androidRunWorkerLog, "qtc.android.run.androidrunnerworker", QtWarningMsg)
 static const int GdbTempFileMaxCounter = 20;
 }
 
 using namespace std;
 using namespace std::placeholders;
 using namespace ProjectExplorer;
+using namespace Utils;
 
 namespace Android {
 namespace Internal {
 
-static const QString pidScript = "pidof -s \"%1\"";
+static const QString pidScript = "pidof -s '%1'";
 static const QString pidScriptPreNougat = QStringLiteral("for p in /proc/[0-9]*; "
                                                 "do cat <$p/cmdline && echo :${p##*/}; done");
 static const QString pidPollingScript = QStringLiteral("while [ -d /proc/%1 ]; do sleep 1; done");
@@ -126,10 +126,10 @@ static void findProcessPID(QFutureInterface<qint64> &fi, QStringList selector,
     chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
     do {
         QThread::msleep(200);
-        QString adbPath = AndroidConfigurations::currentConfig().adbToolPath().toString();
+        FilePath adbPath = AndroidConfigurations::currentConfig().adbToolPath();
         selector.append("shell");
         selector.append(preNougat ? pidScriptPreNougat : pidScript.arg(packageName));
-        const auto out = Utils::SynchronousProcess().runBlocking(adbPath, selector).allRawOutput();
+        const auto out = SynchronousProcess().runBlocking({adbPath, selector}).allRawOutput();
         if (preNougat) {
             processPID = extractPID(out, packageName);
         } else {
@@ -225,8 +225,11 @@ AndroidRunnerWorker::AndroidRunnerWorker(RunWorker *runner, const QString &packa
                                  << "Extra Start Args:" << m_amStartExtraArgs
                                  << "Before Start ADB cmds:" << m_beforeStartAdbCommands
                                  << "After finish ADB cmds:" << m_afterFinishAdbCommands;
-    m_gdbserverPath = AndroidGdbServerKitAspect::gdbServer(target->kit()).toString();
     QtSupport::BaseQtVersion *version = QtSupport::QtKitAspect::qtVersion(target->kit());
+    QString preferredAbi = AndroidManager::apkDevicePreferredAbi(target);
+    if (!preferredAbi.isEmpty())
+        m_gdbserverPath = AndroidConfigurations::instance()
+                              ->currentConfig().gdbServer(preferredAbi, version).toString();
     m_useAppParamsForQmlDebugger = version->qtVersion() >= QtSupport::QtVersionNumber(5, 12);
 }
 
@@ -288,8 +291,8 @@ bool AndroidRunnerWorker::uploadGdbServer()
         qCDebug(androidRunWorkerLog) << "Gdbserver copy from temp directory failed";
         return false;
     }
-    QTC_ASSERT(runAdb({"shell", "run-as", m_packageName, "chmod", "+x", "./gdbserver"}),
-                   qCDebug(androidRunWorkerLog) << "Gdbserver chmod +x failed.");
+    QTC_ASSERT(runAdb({"shell", "run-as", m_packageName, "chmod", "777", "./gdbserver"}),
+                   qCDebug(androidRunWorkerLog) << "Gdbserver chmod 777 failed.");
     return true;
 }
 
@@ -589,15 +592,12 @@ void AndroidRunnerWorker::handleJdbWaiting()
     m_afterFinishAdbCommands.push_back(removeForward.join(' '));
 
     auto jdbPath = AndroidConfigurations::currentConfig().openJDKLocation().pathAppended("bin");
-    if (Utils::HostOsInfo::isWindowsHost())
-        jdbPath = jdbPath.pathAppended("jdb.exe");
-    else
-        jdbPath = jdbPath.pathAppended("jdb");
+    jdbPath = jdbPath.pathAppended(Utils::HostOsInfo::withExecutableSuffix("jdb"));
 
     QStringList jdbArgs("-connect");
     jdbArgs << QString("com.sun.jdi.SocketAttach:hostname=localhost,port=%1")
                .arg(m_localJdbServerPort.toString());
-    qCDebug(androidRunWorkerLog) << "Starting JDB:" << jdbPath << jdbArgs.join(' ');
+    qCDebug(androidRunWorkerLog) << "Starting JDB:" << CommandLine(jdbPath, jdbArgs).toUserOutput();
     std::unique_ptr<QProcess, Deleter> jdbProcess(new QProcess, &deleter);
     jdbProcess->setProcessChannelMode(QProcess::MergedChannels);
     jdbProcess->start(jdbPath.toString(), jdbArgs);

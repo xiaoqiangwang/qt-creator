@@ -30,13 +30,11 @@
 #include "kit.h"
 #include "target.h"
 
-#include <utils/qtcassert.h>
-
 using namespace Utils;
 
 namespace ProjectExplorer {
 
-LocalEnvironmentAspect::LocalEnvironmentAspect(Target *target)
+LocalEnvironmentAspect::LocalEnvironmentAspect(Target *target, bool includeBuildEnvironment)
 {
     setIsLocal(true);
     addSupportedBaseEnvironment(tr("Clean Environment"), {});
@@ -45,26 +43,27 @@ LocalEnvironmentAspect::LocalEnvironmentAspect(Target *target)
         return Environment::systemEnvironment();
     });
 
-    addPreferredBaseEnvironment(tr("Build Environment"), [target] {
-        Environment env;
-        if (BuildConfiguration *bc = target->activeBuildConfiguration()) {
-            env = bc->environment();
-        } else { // Fallback for targets without buildconfigurations:
-            env = Environment::systemEnvironment();
-            target->kit()->addToEnvironment(env);
-        }
-        return  env;
-    });
+    if (includeBuildEnvironment) {
+        addPreferredBaseEnvironment(tr("Build Environment"), [target] {
+            Environment env;
+            if (BuildConfiguration *bc = target->activeBuildConfiguration()) {
+                env = bc->environment();
+            } else { // Fallback for targets without buildconfigurations:
+                env = Environment::systemEnvironment();
+                target->kit()->addToEnvironment(env);
+            }
+            return env;
+        });
 
-    target->subscribeSignal(&BuildConfiguration::environmentChanged,
-                            this, &LocalEnvironmentAspect::buildEnvironmentHasChanged);
-    connect(target, &Target::activeBuildConfigurationChanged,
-            this, &LocalEnvironmentAspect::buildEnvironmentHasChanged);
-}
-
-void LocalEnvironmentAspect::buildEnvironmentHasChanged()
-{
-    emit environmentChanged();
+        connect(target,
+                &Target::activeBuildConfigurationChanged,
+                this,
+                &EnvironmentAspect::environmentChanged);
+        connect(target,
+                &Target::buildEnvironmentChanged,
+                this,
+                &EnvironmentAspect::environmentChanged);
+    }
 }
 
 } // namespace ProjectExplorer

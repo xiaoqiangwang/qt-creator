@@ -27,9 +27,10 @@
 
 #include <QEasingCurve>
 #include <QMetaType>
+#include <QPainterPath>
 #include <QPointF>
-
-QT_FORWARD_DECLARE_CLASS(QPainterPath);
+#include <QDataStream>
+#include <QDebug>
 
 namespace QmlDesigner {
 
@@ -134,6 +135,8 @@ public:
     NamedEasingCurve(const QString &name, const EasingCurve &curve);
 
     NamedEasingCurve(const NamedEasingCurve &other);
+
+    NamedEasingCurve &operator=(const NamedEasingCurve &other) = default;
 
     virtual ~NamedEasingCurve();
 

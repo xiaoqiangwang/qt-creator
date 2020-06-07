@@ -49,9 +49,8 @@
 #include <utils/port.h>
 #include <utils/qtcassert.h>
 
-#include <QTimer>
-
 using namespace ProjectExplorer;
+using namespace Utils;
 
 namespace RemoteLinux {
 
@@ -145,7 +144,7 @@ class LinuxPortsGatheringMethod : public PortsGatheringMethod
 
         // /proc/net/tcp* covers /proc/net/tcp and /proc/net/tcp6
         Runnable runnable;
-        runnable.executable = "sed";
+        runnable.executable = FilePath::fromString("sed");
         runnable.commandLineArguments
                 = "-e 's/.*: [[:xdigit:]]*:\\([[:xdigit:]]\\{4\\}\\).*/\\1/g' /proc/net/tcp*";
         return runnable;
@@ -172,23 +171,17 @@ class LinuxPortsGatheringMethod : public PortsGatheringMethod
     }
 };
 
-QString LinuxDevice::displayType() const
-{
-    return tr("Generic Linux");
-}
-
 IDeviceWidget *LinuxDevice::createWidget()
 {
     return new GenericLinuxDeviceConfigurationWidget(sharedFromThis());
 }
 
-Utils::OsType LinuxDevice::osType() const
-{
-    return Utils::OsTypeLinux;
-}
-
 LinuxDevice::LinuxDevice()
 {
+    setDisplayType(tr("Generic Linux"));
+    setDefaultDisplayName(tr("Generic Linux Device"));
+    setOsType(OsTypeLinux);
+
     addDeviceAction({tr("Deploy Public Key..."), [](const IDevice::Ptr &device, QWidget *parent) {
         if (auto d = PublicKeyDeploymentDialog::createDialog(device, parent)) {
             d->exec();
@@ -219,7 +212,7 @@ LinuxDevice::LinuxDevice()
         // It seems we cannot pass an environment to OpenSSH dynamically
         // without specifying an executable.
         if (env.size() > 0)
-            runnable.executable = "/bin/sh";
+            runnable.executable = FilePath::fromString("/bin/sh");
 
         proc->setRunInTerminal(true);
         proc->start(runnable);
@@ -304,7 +297,7 @@ namespace Internal {
 LinuxDeviceFactory::LinuxDeviceFactory()
     : IDeviceFactory(Constants::GenericLinuxOsType)
 {
-    setDisplayName(tr("Generic Linux Device"));
+    setDisplayName(LinuxDevice::tr("Generic Linux Device"));
     setIcon(QIcon());
     setCanCreate(true);
     setConstructionFunction(&LinuxDevice::create);

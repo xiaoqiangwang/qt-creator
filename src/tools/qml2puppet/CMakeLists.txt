@@ -44,6 +44,11 @@ extend_qtc_executable(qml2puppet
     statepreviewimagechangedcommand.cpp statepreviewimagechangedcommand.h
     synchronizecommand.cpp synchronizecommand.h
     tokencommand.cpp tokencommand.h
+    changeselectioncommand.cpp changeselectioncommand.h
+    update3dviewstatecommand.cpp update3dviewstatecommand.h
+    puppettocreatorcommand.cpp puppettocreatorcommand.h
+    inputeventcommand.cpp inputeventcommand.h
+    view3dactioncommand.cpp view3dactioncommand.h
     valueschangedcommand.cpp
 )
 
@@ -86,6 +91,14 @@ extend_qtc_executable(qml2puppet
     nodeinstanceclientproxy.cpp nodeinstanceclientproxy.h
 )
 
+find_package(Qt5 5.15.0 COMPONENTS Quick3D QUIET)
+extend_qtc_executable(qml2puppet
+  CONDITION TARGET Qt5::Quick3D
+  FEATURE_INFO "Qt Quick 3D"
+  DEPENDS Qt5::Quick3D Qt5::Quick3DPrivate
+  DEFINES QUICK3D_MODULE
+)
+
 extend_qtc_executable(qml2puppet
   SOURCES_PREFIX "${SRCDIR}/interfaces"
   SOURCES
@@ -93,6 +106,25 @@ extend_qtc_executable(qml2puppet
     nodeinstanceclientinterface.h
     nodeinstanceglobal.h
     nodeinstanceserverinterface.cpp nodeinstanceserverinterface.h
+)
+
+extend_qtc_executable(qml2puppet
+  SOURCES_PREFIX "${SRCDIR}/qml2puppet/editor3d"
+  SOURCES
+    generalhelper.cpp generalhelper.h
+    mousearea3d.cpp mousearea3d.h
+    camerageometry.cpp camerageometry.h
+    lightgeometry.cpp lightgeometry.h
+    gridgeometry.cpp gridgeometry.h
+    selectionboxgeometry.cpp selectionboxgeometry.h
+    linegeometry.cpp linegeometry.h
+    icongizmoimageprovider.cpp icongizmoimageprovider.h
+)
+
+extend_qtc_executable(qml2puppet
+  SOURCES_PREFIX "${SRCDIR}/qml2puppet/iconrenderer"
+  SOURCES
+    iconrenderer.cpp iconrenderer.h
 )
 
 extend_qtc_executable(qml2puppet
@@ -119,6 +151,7 @@ extend_qtc_executable(qml2puppet
     qt5previewnodeinstanceserver.cpp qt5previewnodeinstanceserver.h
     qt5rendernodeinstanceserver.cpp qt5rendernodeinstanceserver.h
     qt5testnodeinstanceserver.cpp qt5testnodeinstanceserver.h
+    quick3dnodeinstance.cpp quick3dnodeinstance.h
     quickitemnodeinstance.cpp quickitemnodeinstance.h
     servernodeinstance.cpp servernodeinstance.h
 )

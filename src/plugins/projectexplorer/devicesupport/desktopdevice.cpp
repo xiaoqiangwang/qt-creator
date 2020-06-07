@@ -27,7 +27,6 @@
 #include "desktopdeviceprocess.h"
 #include "deviceprocesslist.h"
 #include "localprocesslist.h"
-#include "desktopdeviceconfigurationwidget.h"
 #include "desktopprocesssignaloperation.h"
 
 #include <coreplugin/fileutils.h>
@@ -54,9 +53,13 @@ DesktopDevice::DesktopDevice()
 {
     setupId(IDevice::AutoDetected, DESKTOP_DEVICE_ID);
     setType(DESKTOP_DEVICE_TYPE);
-    setDisplayName(QCoreApplication::translate("ProjectExplorer::DesktopDevice", "Local PC"));
+    setDefaultDisplayName(tr("Local PC"));
+    setDisplayType(QCoreApplication::translate("ProjectExplorer::DesktopDevice", "Desktop"));
+
     setDeviceState(IDevice::DeviceStateUnknown);
     setMachineType(IDevice::Hardware);
+    setOsType(HostOsInfo::hostOs());
+
     const QString portRange =
             QString::fromLatin1("%1-%2").arg(DESKTOP_PORT_START).arg(DESKTOP_PORT_END);
     setFreePorts(Utils::PortList::fromString(portRange));
@@ -68,11 +71,6 @@ DesktopDevice::DesktopDevice()
 IDevice::DeviceInfo DesktopDevice::deviceInformation() const
 {
     return DeviceInfo();
-}
-
-QString DesktopDevice::displayType() const
-{
-    return QCoreApplication::translate("ProjectExplorer::DesktopDevice", "Desktop");
 }
 
 IDeviceWidget *DesktopDevice::createWidget()
@@ -140,10 +138,10 @@ class DesktopPortsGatheringMethod : public PortsGatheringMethod
 
         Runnable runnable;
         if (HostOsInfo::isWindowsHost() || HostOsInfo::isMacHost()) {
-            runnable.executable = "netstat";
+            runnable.executable = FilePath::fromString("netstat");
             runnable.commandLineArguments =  "-a -n";
         } else if (HostOsInfo::isLinuxHost()) {
-            runnable.executable = "/bin/sh";
+            runnable.executable = FilePath::fromString("/bin/sh");
             runnable.commandLineArguments = "-c 'cat /proc/net/tcp*'";
         }
         return runnable;
@@ -173,11 +171,6 @@ QUrl DesktopDevice::toolControlChannel(const ControlChannelHint &) const
     url.setScheme(Utils::urlTcpScheme());
     url.setHost("localhost");
     return url;
-}
-
-Utils::OsType DesktopDevice::osType() const
-{
-    return Utils::HostOsInfo::hostOs();
 }
 
 } // namespace ProjectExplorer

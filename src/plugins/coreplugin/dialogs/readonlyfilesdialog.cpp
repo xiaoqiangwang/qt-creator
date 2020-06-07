@@ -68,8 +68,8 @@ public:
         NumberOfColumns
     };
 
-    void initDialog(const FilePathList &filePaths);
-    void promptFailWarning(const FilePathList &files, ReadOnlyFilesDialog::ReadOnlyResult type) const;
+    void initDialog(const FilePaths &filePaths);
+    void promptFailWarning(const FilePaths &files, ReadOnlyFilesDialog::ReadOnlyResult type) const;
     QRadioButton *createRadioButtonForItem(QTreeWidgetItem *item, QButtonGroup *group, ReadOnlyFilesTreeColumn type);
 
     void setAll(int index);
@@ -133,21 +133,36 @@ ReadOnlyFilesDialogPrivate::~ReadOnlyFilesDialogPrivate()
 using namespace Internal;
 
 /*!
- * \class ReadOnlyFilesDialog
+ * \class Core::ReadOnlyFilesDialog
+ * \inmodule QtCreator
+ * \internal
  * \brief The ReadOnlyFilesDialog class implements a dialog to show a set of
  * files that are classified as not writable.
  *
  * Automatically checks which operations are allowed to make the file writable. These operations
- * are Make Writable which tries to set the file permissions in the file system,
- * Open With Version Control System if the open operation is allowed by the version control system
- * and Save As which is used to save the changes to a document in another file.
+ * are \c MakeWritable (RO_MakeWritable), which tries to set the file permissions in the file system,
+ * \c OpenWithVCS (RO_OpenVCS) if the open operation is allowed by the version control system,
+ * and \c SaveAs (RO_SaveAs), which is used to save the changes to a document under another file
+ * name.
  */
 
-ReadOnlyFilesDialog::ReadOnlyFilesDialog(const Utils::FilePathList &filePaths, QWidget *parent)
+/*! \enum ReadOnlyFilesDialog::ReadOnlyResult
+    This enum holds the operations that are allowed to make the file writable.
+
+     \value RO_Cancel
+            Cancels the operation.
+     \value RO_OpenVCS
+            Opens the file under control of the version control system.
+     \value RO_MakeWritable
+            Sets the file permissions in the file system.
+     \value RO_SaveAs
+            Saves changes to a document under another file name.
+*/
+
+ReadOnlyFilesDialog::ReadOnlyFilesDialog(const Utils::FilePaths &filePaths, QWidget *parent)
     : QDialog(parent)
     , d(new ReadOnlyFilesDialogPrivate(this))
 {
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     d->initDialog(filePaths);
 }
 
@@ -170,7 +185,7 @@ ReadOnlyFilesDialog::ReadOnlyFilesDialog(const QList<IDocument *> &documents, QW
     : QDialog(parent)
     , d(new ReadOnlyFilesDialogPrivate(this))
 {
-    FilePathList files;
+    FilePaths files;
     for (IDocument *document : documents)
         files << document->filePath();
     d->initDialog(files);
@@ -205,7 +220,7 @@ void ReadOnlyFilesDialog::setShowFailWarning(bool show, const QString &warning)
  * Opens a message box with an error description according to the type.
  * \internal
  */
-void ReadOnlyFilesDialogPrivate::promptFailWarning(const FilePathList &files, ReadOnlyFilesDialog::ReadOnlyResult type) const
+void ReadOnlyFilesDialogPrivate::promptFailWarning(const FilePaths &files, ReadOnlyFilesDialog::ReadOnlyResult type) const
 {
     if (files.isEmpty())
         return;
@@ -281,7 +296,7 @@ int ReadOnlyFilesDialog::exec()
         return RO_Cancel;
 
     ReadOnlyResult result = RO_Cancel;
-    FilePathList failedToMakeWritable;
+    FilePaths failedToMakeWritable;
     for (ReadOnlyFilesDialogPrivate::ButtonGroupForFile buttongroup : qAsConst(d->buttonGroups)) {
         result = static_cast<ReadOnlyResult>(buttongroup.group->checkedId());
         switch (result) {
@@ -388,7 +403,7 @@ void ReadOnlyFilesDialogPrivate::updateSelectAll()
  * dialog.
  * \internal
  */
-void ReadOnlyFilesDialogPrivate::initDialog(const FilePathList &filePaths)
+void ReadOnlyFilesDialogPrivate::initDialog(const FilePaths &filePaths)
 {
     ui.setupUi(q);
     ui.buttonBox->addButton(tr("Change &Permission"), QDialogButtonBox::AcceptRole);

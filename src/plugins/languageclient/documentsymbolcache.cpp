@@ -38,32 +38,47 @@ DocumentSymbolCache::DocumentSymbolCache(Client *client)
     : QObject(client)
     , m_client(client)
 {
+    auto connectDocument = [this](Core::IDocument *document) {
+        connect(document, &Core::IDocument::contentsChanged, this, [document, this]() {
+            m_cache.remove(DocumentUri::fromFilePath(document->filePath()));
+        });
+    };
+
+    for (Core::IDocument *document : Core::DocumentModel::openedDocuments())
+        connectDocument(document);
     connect(Core::EditorManager::instance(),
             &Core::EditorManager::documentOpened,
             this,
-            [this](Core::IDocument *document) {
-                connect(document, &Core::IDocument::contentsChanged, this, [this, document]() {
-                    m_cache.remove(DocumentUri::fromFileName(document->filePath()));
-                });
-            });
+            connectDocument);
+    m_compressionTimer.setSingleShot(true);
+    connect(&m_compressionTimer, &QTimer::timeout, this, &DocumentSymbolCache::requestSymbolsImpl);
 }
 
 void DocumentSymbolCache::requestSymbols(const DocumentUri &uri)
 {
-    auto entry = m_cache.find(uri);
-    if (entry != m_cache.end()) {
-        emit gotSymbols(uri, entry.value());
-        return;
-    }
+    m_compressedUris.insert(uri);
+    m_compressionTimer.start(200);
+}
 
-    const DocumentSymbolParams params((TextDocumentIdentifier(uri)));
-    DocumentSymbolsRequest request(params);
-    request.setResponseCallback([uri, self = QPointer<DocumentSymbolCache>(this)](
-                                    const DocumentSymbolsRequest::Response &response) {
-        if (self)
-            self->handleResponse(uri, response);
-    });
-    m_client->sendContent(request);
+void DocumentSymbolCache::requestSymbolsImpl()
+{
+    for (const DocumentUri &uri : qAsConst(m_compressedUris)) {
+        auto entry = m_cache.find(uri);
+        if (entry != m_cache.end()) {
+            emit gotSymbols(uri, entry.value());
+            continue;
+        }
+
+        const DocumentSymbolParams params((TextDocumentIdentifier(uri)));
+        DocumentSymbolsRequest request(params);
+        request.setResponseCallback([uri, self = QPointer<DocumentSymbolCache>(this)](
+                                        const DocumentSymbolsRequest::Response &response) {
+            if (self)
+                self->handleResponse(uri, response);
+        });
+        m_client->sendContent(request);
+    }
+    m_compressedUris.clear();
 }
 
 void DocumentSymbolCache::handleResponse(const DocumentUri &uri,

@@ -26,22 +26,19 @@
 #pragma once
 
 #include "applicationlauncher.h"
-#include "buildtargetinfo.h"
+#include "buildconfiguration.h"
 #include "devicesupport/idevice.h"
 #include "projectexplorerconstants.h"
 #include "runconfiguration.h"
 
 #include <utils/environment.h>
-#include <utils/port.h>
 #include <utils/processhandle.h>
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
 #include <utils/icon.h>
 
 #include <QHash>
-#include <QPointer>
 #include <QVariant>
-#include <QWidget>
 
 #include <functional>
 #include <memory>
@@ -52,14 +49,10 @@ class OutputFormatter;
 } // Utils
 
 namespace ProjectExplorer {
-class BuildConfiguration;
 class GlobalOrProjectAspect;
 class Node;
-class RunConfigurationFactory;
 class RunConfiguration;
-class RunConfigurationCreationInfo;
 class RunControl;
-class RunWorkerFactory;
 class Target;
 
 namespace Internal {
@@ -76,7 +69,7 @@ public:
     Utils::CommandLine commandLine() const;
     void setCommandLine(const Utils::CommandLine &cmdLine);
 
-    QString executable;
+    Utils::FilePath executable;
     QString commandLineArguments;
     QString workingDirectory;
     Utils::Environment environment;
@@ -84,7 +77,7 @@ public:
     QHash<Core::Id, QVariant> extraData;
 
     // FIXME: Not necessarily a display name
-    QString displayName() const { return executable; }
+    QString displayName() const { return executable.toString(); }
 };
 
 class PROJECTEXPLORER_EXPORT RunWorker : public QObject
@@ -126,7 +119,8 @@ public:
     void setSupportsReRunning(bool reRunningSupported);
     bool supportsReRunning() const;
 
-    static QString userMessageForProcessError(QProcess::ProcessError, const QString &programName);
+    static QString userMessageForProcessError(QProcess::ProcessError,
+                                              const Utils::FilePath &programName);
 
     bool isEssential() const;
     void setEssential(bool essential);
@@ -146,36 +140,35 @@ private:
     const std::unique_ptr<Internal::RunWorkerPrivate> d;
 };
 
-class PROJECTEXPLORER_EXPORT RunWorkerFactory
+class PROJECTEXPLORER_EXPORT RunWorkerFactory final
 {
 public:
     using WorkerCreator = std::function<RunWorker *(RunControl *)>;
-    using Constraint = std::function<bool(RunConfiguration *)>;
 
-    RunWorkerFactory();
-    virtual ~RunWorkerFactory();
+    RunWorkerFactory(const WorkerCreator &producer,
+                     const QList<Core::Id> &runModes,
+                     const QList<Core::Id> &runConfigs = {},
+                     const QList<Core::Id> &deviceTypes = {});
 
-    bool canRun(RunConfiguration *runConfiguration, Core::Id runMode) const;
+    ~RunWorkerFactory();
 
-    void setProducer(const WorkerCreator &producer);
-    void addConstraint(const Constraint &constraint);
-    void addSupportedRunMode(Core::Id runMode);
-
-    void setSupportedRunConfigurations(const QList<Core::Id> &ids);
-    void addSupportedRunConfiguration(Core::Id id);
-
+    bool canRun(Core::Id runMode, Core::Id deviceType, const QString &runConfigId) const;
     WorkerCreator producer() const { return m_producer; }
 
-private:
-    // FIXME: That's temporary until ownership has been transferred to
-    // the individual plugins.
-    friend class ProjectExplorerPlugin;
-    static void destroyRemainingRunWorkerFactories();
+    template <typename Worker>
+    static WorkerCreator make()
+    {
+        return [](RunControl *runControl) { return new Worker(runControl); };
+    }
 
+    // For debugging only.
+    static void dumpAll();
+
+private:
+    WorkerCreator m_producer;
     QList<Core::Id> m_supportedRunModes;
     QList<Core::Id> m_supportedRunConfigurations;
-    QList<Constraint> m_constraints;
-    WorkerCreator m_producer;
+    QList<Core::Id> m_supportedDeviceTypes;
 };
 
 /**
@@ -235,16 +228,15 @@ public:
         return runConfiguration() ? runConfiguration()->aspect<T>() : nullptr;
     }
 
-    template <typename T>
-    auto aspectData() -> decltype(T::runData(nullptr, this)) {
-        if (T *asp = aspect<T>())
-            return T::runData(asp, this);
-        return {};
-    }
-
-    ISettingsAspect *settings(Core::Id id) const;
     QString buildKey() const;
-    BuildTargetInfo buildTargetInfo() const;
+    BuildConfiguration::BuildType buildType() const;
+    Utils::FilePath buildDirectory() const;
+    Utils::Environment buildEnvironment() const;
+
+    QVariantMap settingsData(Core::Id id) const;
+
+    Utils::FilePath targetFilePath() const;
+    Utils::FilePath projectFilePath() const;
 
     Utils::OutputFormatter *outputFormatter() const;
     Core::Id runMode() const;
@@ -257,24 +249,10 @@ public:
                                        const QString &cancelButtonText = QString(),
                                        bool *prompt = nullptr);
 
-    RunWorker *createWorker(Core::Id id);
-
-    using WorkerCreator = RunWorkerFactory::WorkerCreator;
-    using Constraint = RunWorkerFactory::Constraint;
-
-    static void registerWorkerCreator(Core::Id id, const WorkerCreator &workerCreator);
-
-    template <class Worker>
-    static void registerWorker(Core::Id runMode, const Constraint &constraint)
-    {
-        auto factory = new RunWorkerFactory;
-        factory->setProducer([](RunControl *rc) { return new Worker(rc); });
-        factory->addSupportedRunMode(runMode);
-        factory->addConstraint(constraint);
-    }
+    RunWorker *createWorker(Core::Id workerId);
 
     bool createMainWorker();
-    static bool canRun(RunConfiguration *runConfig, Core::Id runMode);
+    static bool canRun(Core::Id runMode, Core::Id deviceType, Core::Id runConfigId);
 
 signals:
     void appendMessage(const QString &msg, Utils::OutputFormat format);
@@ -306,41 +284,38 @@ class PROJECTEXPLORER_EXPORT SimpleTargetRunner : public RunWorker
 public:
     explicit SimpleTargetRunner(RunControl *runControl);
 
-    void setRunnable(const Runnable &runnable);
-
-    void setDevice(const IDevice::ConstPtr &device);
-    IDevice::ConstPtr device() const;
-
 protected:
-    void start() override;
-    void stop() override;
+    void setStarter(const std::function<void()> &starter);
+    void doStart(const Runnable &runnable, const IDevice::ConstPtr &device);
 
 private:
-    void onProcessStarted();
-    void onProcessFinished(int exitCode, QProcess::ExitStatus status);
-    void onProcessError(QProcess::ProcessError error);
+    void start() final;
+    void stop() final;
+
+    const Runnable &runnable() const = delete;
 
     ApplicationLauncher m_launcher;
-    Runnable m_runnable;
-    IDevice::ConstPtr m_device;
+    std::function<void()> m_starter;
+
     bool m_stopReported = false;
     bool m_useTerminal = false;
 };
 
-template <class RunWorker, class RunConfig>
-class SimpleRunWorkerFactory : public RunWorkerFactory
+class PROJECTEXPLORER_EXPORT OutputFormatterFactory
 {
+protected:
+    OutputFormatterFactory();
+
 public:
-    SimpleRunWorkerFactory(Core::Id runMode = ProjectExplorer::Constants::NORMAL_RUN_MODE)
-    {
-        addSupportedRunMode(runMode);
-        addConstraint([](RunConfiguration *runConfig) {
-            return qobject_cast<RunConfig *>(runConfig) != nullptr;
-        });
-        setProducer([](RunControl *runControl) {
-            return new RunWorker(runControl);
-        });
-    }
+    virtual ~OutputFormatterFactory();
+
+    static Utils::OutputFormatter *createFormatter(Target *target);
+
+protected:
+    void setFormatterCreator(const std::function<Utils::OutputFormatter *(Target *)> &creator);
+
+private:
+    std::function<Utils::OutputFormatter *(Target *)> m_creator;
 };
 
 } // namespace ProjectExplorer

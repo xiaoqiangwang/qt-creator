@@ -170,7 +170,7 @@ QList<QToolButton *> NavigationWidget::createToolButtons()
     // full projects mode
     if (!fullProjectsModeButton) {
         // create a button
-        fullProjectsModeButton = new QToolButton();
+        fullProjectsModeButton = new QToolButton(this);
         fullProjectsModeButton->setIcon(
                     ::Utils::CodeModelIcon::iconForType(::Utils::CodeModelIcon::Class));
         fullProjectsModeButton->setCheckable(true);
@@ -315,8 +315,8 @@ void NavigationWidget::fetchExpandedItems(QStandardItem *item, const QStandardIt
         QStandardItem *itemChild = item->child(itemIndex);
         const QStandardItem *targetChild = target->child(targetIndex);
 
-        const SymbolInformation &itemInf = Utils::symbolInformationFromItem(itemChild);
-        const SymbolInformation &targetInf = Utils::symbolInformationFromItem(targetChild);
+        const SymbolInformation &itemInf = Internal::symbolInformationFromItem(itemChild);
+        const SymbolInformation &targetInf = Internal::symbolInformationFromItem(targetChild);
 
         if (itemInf < targetInf) {
             ++itemIndex;

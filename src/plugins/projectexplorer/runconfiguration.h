@@ -25,21 +25,16 @@
 
 #pragma once
 
-#include "projectconfiguration.h"
-#include "projectexplorerconstants.h"
 #include "applicationlauncher.h"
 #include "buildtargetinfo.h"
 #include "devicesupport/idevice.h"
+#include "projectconfiguration.h"
+#include "projectexplorerconstants.h"
+#include "task.h"
 
 #include <utils/environment.h>
 #include <utils/port.h>
-#include <utils/processhandle.h>
-#include <utils/qtcassert.h>
-#include <utils/icon.h>
 
-#include <QHash>
-#include <QPointer>
-#include <QVariant>
 #include <QWidget>
 
 #include <functional>
@@ -49,20 +44,14 @@ namespace Utils { class OutputFormatter; }
 
 namespace ProjectExplorer {
 class BuildConfiguration;
+class BuildSystem;
 class GlobalOrProjectAspect;
+class ProjectNode;
 class Runnable;
 class RunConfigurationFactory;
 class RunConfiguration;
 class RunConfigurationCreationInfo;
-class RunControl;
-class RunWorkerFactory;
 class Target;
-
-namespace Internal {
-class RunControlPrivate;
-class RunWorkerPrivate;
-class SimpleRunControlPrivate;
-} // Internal
 
 /**
  * An interface for a hunk of global or per-project
@@ -75,14 +64,15 @@ class PROJECTEXPLORER_EXPORT ISettingsAspect : public QObject
     Q_OBJECT
 
 public:
-    /// Create a configuration widget for this settings aspect.
-    using ConfigWidgetCreator = std::function<QWidget *()>;
+    ISettingsAspect();
 
-    explicit ISettingsAspect(const ConfigWidgetCreator &configWidgetCreator);
+    /// Create a configuration widget for this settings aspect.
     QWidget *createConfigWidget() const;
 
 protected:
-    ///
+    using ConfigWidgetCreator = std::function<QWidget *()>;
+    void setConfigWidgetCreator(const ConfigWidgetCreator &configWidgetCreator);
+
     friend class GlobalOrProjectAspect;
     /// Converts current object into map for storage.
     virtual void toMap(QVariantMap &map) const = 0;
@@ -137,32 +127,19 @@ class PROJECTEXPLORER_EXPORT RunConfiguration : public ProjectConfiguration
 public:
     ~RunConfiguration() override;
 
-    bool isActive() const override;
-
-    bool isEnabled() const { return m_isEnabled; }
-    void setEnabled(bool enabled);
-
     virtual QString disabledReason() const;
+    virtual bool isEnabled() const;
 
-    virtual QWidget *createConfigurationWidget();
+    QWidget *createConfigurationWidget();
 
-    virtual bool isConfigured() const;
-    // Pop up configuration dialog in case for example the executable is missing.
-    enum ConfigurationState { Configured, UnConfigured, Waiting };
-    // TODO rename function
-    virtual ConfigurationState ensureConfigured(QString *errorMessage = nullptr);
-
-    Target *target() const;
-    Project *project() const override;
+    bool isConfigured() const { return checkForIssues().isEmpty(); }
+    virtual Tasks checkForIssues() const { return {}; }
 
     Utils::OutputFormatter *createOutputFormatter() const;
 
-    bool fromMap(const QVariantMap &map) override;
-    QVariantMap toMap() const override;
-
-    using ExecutableGetter = std::function<Utils::FilePath()>;
-    void setExecutableGetter(const ExecutableGetter &exeGetter);
-    Utils::FilePath executable() const;
+    using CommandLineGetter = std::function<Utils::CommandLine()>;
+    void setCommandLineGetter(const CommandLineGetter &cmdGetter);
+    Utils::CommandLine commandLine() const;
 
     virtual Runnable runnable() const;
 
@@ -172,7 +149,7 @@ public:
     // The BuildTargetInfo corresponding to the buildKey.
     BuildTargetInfo buildTargetInfo() const;
 
-    static RunConfiguration *startupRunConfiguration();
+    ProjectExplorer::ProjectNode *productNode() const;
 
     template <class T = ISettingsAspect> T *currentSettings(Core::Id id) const
     {
@@ -187,34 +164,38 @@ public:
         addAspectFactory([](Target *target) { return new T(target); });
     }
 
+    QMap<Core::Id, QVariantMap> aspectData() const;
+
+    void update();
+
 signals:
-    void requestRunActionsUpdate();
-    void configurationFinished();
     void enabledChanged();
 
 protected:
     RunConfiguration(Target *target, Core::Id id);
 
-    /// convenience function to get current build configuration.
-    BuildConfiguration *activeBuildConfiguration() const;
+    /// convenience function to get current build system. Try to avoid.
+    BuildSystem *activeBuildSystem() const;
 
-    template<class T> void setOutputFormatter()
-    {
-        m_outputFormatterCreator = [](Project *project) { return new T(project); };
-    }
+    using Updater = std::function<void()>;
+    void setUpdater(const Updater &updater);
 
-    virtual void updateEnabledState();
-    virtual void doAdditionalSetup(const RunConfigurationCreationInfo &) {}
+    Task createConfigurationIssue(const QString &description) const;
 
 private:
+    // Any additional data should be handled by aspects.
+    bool fromMap(const QVariantMap &map) final;
+    QVariantMap toMap() const final;
+
     static void addAspectFactory(const AspectFactory &aspectFactory);
 
     friend class RunConfigurationCreationInfo;
+    friend class RunConfigurationFactory;
+    friend class Target;
 
     QString m_buildKey;
-    bool m_isEnabled = false;
-    std::function<Utils::OutputFormatter *(Project *)> m_outputFormatterCreator;
-    ExecutableGetter m_executableGetter;
+    CommandLineGetter m_commandLineGetter;
+    Updater m_updater;
 };
 
 class RunConfigurationCreationInfo
@@ -245,6 +226,7 @@ public:
     static RunConfiguration *clone(Target *parent, RunConfiguration *source);
     static const QList<RunConfigurationCreationInfo> creatorsForTarget(Target *parent);
 
+    Core::Id id() const { return m_runConfigBaseId; }
     Core::Id runConfigurationBaseId() const { return m_runConfigBaseId; }
 
     static QString decoratedTargetName(const QString &targetName, Target *kit);
@@ -269,6 +251,7 @@ protected:
 
 private:
     bool canHandle(Target *target) const;
+    RunConfiguration *create(Target *target) const;
 
     friend class RunConfigurationCreationInfo;
     RunConfigurationCreator m_creator;

@@ -46,14 +46,20 @@ using namespace Qnx::Internal;
 
 namespace {
 const char *EVAL_ENV_VARS[] = {
-    "QNX_TARGET", "QNX_HOST", "QNX_CONFIGURATION", "MAKEFLAGS", "LD_LIBRARY_PATH",
-    "PATH", "QDE", "CPUVARDIR", "PYTHONPATH"
+    "QNX_TARGET", "QNX_HOST", "QNX_CONFIGURATION", "QNX_CONFIGURATION_EXCLUSIVE",
+    "MAKEFLAGS", "LD_LIBRARY_PATH", "PATH", "QDE", "CPUVARDIR", "PYTHONPATH"
 };
 }
 
-QString QnxUtils::addQuotes(const QString &string)
+QString QnxUtils::cpuDirFromAbi(const Abi &abi)
 {
-    return QLatin1Char('"') + string + QLatin1Char('"');
+    if (abi.os() != Abi::OS::QnxOS)
+        return QString();
+    if (abi.architecture() == Abi::Architecture::ArmArchitecture)
+        return QString::fromLatin1(abi.wordWidth() == 32 ? "armle-v7" : "aarch64le");
+    if (abi.architecture() == Abi::Architecture::X86Architecture)
+        return QString::fromLatin1(abi.wordWidth() == 32 ? "x86" : "x86_64");
+    return QString();
 }
 
 QString QnxUtils::cpuDirShortDescription(const QString &cpuDir)
@@ -73,9 +79,9 @@ QString QnxUtils::cpuDirShortDescription(const QString &cpuDir)
     return cpuDir;
 }
 
-QList<Utils::EnvironmentItem> QnxUtils::qnxEnvironmentFromEnvFile(const QString &fileName)
+Utils::EnvironmentItems QnxUtils::qnxEnvironmentFromEnvFile(const QString &fileName)
 {
-    QList <Utils::EnvironmentItem> items;
+    Utils::EnvironmentItems items;
 
     if (!QFileInfo::exists(fileName))
         return items;
@@ -206,7 +212,7 @@ QList<ConfigInstallInformation> QnxUtils::installedConfigs(const QString &config
     return sdpList;
 }
 
-QList<Utils::EnvironmentItem> QnxUtils::qnxEnvironment(const QString &sdpPath)
+Utils::EnvironmentItems QnxUtils::qnxEnvironment(const QString &sdpPath)
 {
     return qnxEnvironmentFromEnvFile(envFilePath(sdpPath));
 }

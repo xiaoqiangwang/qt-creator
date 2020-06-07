@@ -24,6 +24,7 @@
 ****************************************************************************/
 
 #include "handleitem.h"
+#include "graphicsscene.h"
 #include "keyframeitem.h"
 #include "utils.h"
 
@@ -48,8 +49,9 @@ struct HandleGeometry
     double angle;
 };
 
-HandleItem::HandleItem(QGraphicsItem *parent)
+HandleItem::HandleItem(QGraphicsItem *parent, HandleItem::Slot slot)
     : SelectableItem(parent)
+    , m_slot(slot)
     , m_style()
 {
     setFlag(QGraphicsItem::ItemStacksBehindParent, true);
@@ -62,24 +64,63 @@ int HandleItem::type() const
     return Type;
 }
 
+bool HandleItem::keyframeSelected() const
+{
+    if (auto *frame = keyframe())
+        return frame->selected();
+
+    return false;
+}
+
+KeyframeItem *HandleItem::keyframe() const
+{
+    if (KeyframeItem *parent = qgraphicsitem_cast<KeyframeItem *>(parentItem()))
+        return parent;
+
+    return nullptr;
+}
+
+HandleItem::Slot HandleItem::slot() const
+{
+    return m_slot;
+}
+
 QRectF HandleItem::boundingRect() const
 {
     HandleGeometry geom(pos(), m_style);
+    return geom.handle;
+}
 
-    QTransform transform;
-    transform.rotate(geom.angle);
+bool HandleItem::contains(const QPointF &point) const
+{
+    if (KeyframeItem *parent = keyframe()) {
+        HandleGeometry geom(pos(), m_style);
+        geom.handle.moveCenter(parent->pos() + pos());
+        return geom.handle.contains(point);
+    }
+    return false;
+}
 
-    QRectF bounds = bbox(geom.handle, transform);
-    grow(bounds, -pos());
-    return bounds;
+void HandleItem::underMouseCallback()
+{
+    if (auto *gscene = qobject_cast<GraphicsScene *>(scene()))
+        gscene->handleUnderMouse(this);
 }
 
 void HandleItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
 {
-    Q_UNUSED(option);
-    Q_UNUSED(widget);
+    if (locked())
+        return;
 
-    QColor handleColor(isSelected() ? m_style.selectionColor : m_style.color);
+    Q_UNUSED(option)
+    Q_UNUSED(widget)
+
+    QColor handleColor(selected() ? m_style.selectionColor : m_style.color);
+
+    if (activated())
+        handleColor = m_style.activeColor;
+    if (isUnderMouse())
+        handleColor = m_style.hoverColor;
 
     HandleGeometry geom(pos(), m_style);
 
@@ -105,14 +146,13 @@ void HandleItem::setStyle(const CurveEditorStyle &style)
 QVariant HandleItem::itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant &value)
 {
     if (change == ItemPositionChange) {
-        if (KeyframeItem *parent = qgraphicsitem_cast<KeyframeItem *>(parentItem())) {
-            HandleSlot slot = parent->handleSlot(this);
+        if (keyframe()) {
             QPointF pos = value.toPointF();
-            if (slot == HandleSlot::Left) {
+            if (m_slot == HandleItem::Slot::Left) {
                 if (pos.x() > 0.0)
                     pos.rx() = 0.0;
 
-            } else if (slot == HandleSlot::Right) {
+            } else if (m_slot == HandleItem::Slot::Right) {
                 if (pos.x() < 0.0)
                     pos.rx() = 0.0;
             }

@@ -34,6 +34,7 @@
 #include <projectpartartefact.h>
 #include <projectpartcontainer.h>
 #include <projectpartpch.h>
+#include <projectpartstoragestructs.h>
 #include <sourceentry.h>
 #include <stringcachefwd.h>
 #include <symbol.h>
@@ -57,9 +58,12 @@ using ClangRefactoring::SourceLocation;
 using ClangRefactoring::SourceLocations;
 using std::int64_t;
 namespace Sources = ClangBackEnd::Sources;
+using ClangBackEnd::PrecompiledHeaderTimeStamps;
+using ClangBackEnd::UsedMacros;
+using ClangBackEnd::Internal::ProjectPartNameId;
+using ClangBackEnd::Internal::ProjectPartNameIds;
 using ClangRefactoring::Symbol;
 using ClangRefactoring::Symbols;
-using ClangBackEnd::UsedMacros;
 
 class MockSqliteDatabase;
 
@@ -74,8 +78,9 @@ public:
     MOCK_METHOD4(valuesReturnSourceLocations,
                  SourceLocations(std::size_t, int, int, int));
 
-    MOCK_METHOD4(valuesReturnSourceUsages,
-                 CppTools::Usages(std::size_t, int, int, int));
+    MOCK_METHOD4(valuesReturnSourceUsages, CppTools::Usages(std::size_t, int, int, int));
+
+    MOCK_METHOD5(valuesReturnSourceUsages, CppTools::Usages(std::size_t, int, int, int, int));
 
     MOCK_METHOD1(valuesReturnStdVectorDirectory,
                  std::vector<Sources::Directory>(std::size_t));
@@ -89,6 +94,8 @@ public:
     MOCK_METHOD2(valuesReturnUsedMacros, UsedMacros(std::size_t, int));
 
     MOCK_METHOD2(valuesReturnFilePathIds, FilePathIds(std::size_t, int));
+
+    MOCK_METHOD1(valuesReturnProjectPartNameIds, ProjectPartNameIds(std::size_t));
 
     MOCK_METHOD1(valueReturnInt32, Utils::optional<int>(Utils::SmallStringView));
 
@@ -142,10 +149,11 @@ public:
     MOCK_METHOD1(valuesReturnSourceTimeStamps, SourceTimeStamps(std::size_t));
     MOCK_METHOD2(valuesReturnSourceTimeStamps, SourceTimeStamps(std::size_t, int sourcePathId));
 
-    template <typename ResultType,
-              int ResultTypeCount = 1,
-              typename... QueryType>
-    std::vector<ResultType> values(std::size_t reserveSize, const QueryType&... queryValues);
+    MOCK_METHOD1(valuesReturnPrecompiledHeaderTimeStamps,
+                 PrecompiledHeaderTimeStamps(int projectPartId));
+
+    template<typename ResultType, int ResultTypeCount = 1, typename... QueryType>
+    std::vector<ResultType> values(std::size_t reserveSize, const QueryType &... queryValues);
 
     template <typename ResultType,
               int ResultTypeCount = 1,
@@ -184,6 +192,13 @@ MockSqliteReadStatement::values<CppTools::Usage, 3>(
         const int &line,
         const int &column);
 
+template<>
+CppTools::Usages MockSqliteReadStatement::values<CppTools::Usage, 3>(std::size_t reserveSize,
+                                                                     const int &sourceId,
+                                                                     const int &line,
+                                                                     const int &column,
+                                                                     const int &locationKind);
+
 template <>
 Symbols
 MockSqliteReadStatement::values<Symbol, 3>(
@@ -221,12 +236,14 @@ FilePathIds MockSqliteReadStatement::values<ClangBackEnd::FilePathId>(std::size_
 template <>
 std::vector<Sources::Directory> MockSqliteReadStatement::values<Sources::Directory, 2>(std::size_t reserveSize);
 
-template <>
-std::vector<Sources::Source> MockSqliteReadStatement::values<Sources::Source, 2>(std::size_t reserveSize);
+template<>
+std::vector<Sources::Source> MockSqliteReadStatement::values<Sources::Source, 3>(std::size_t reserveSize);
 
-template <>
-Utils::optional<int>
-MockSqliteReadStatement::value<int>(const Utils::SmallStringView&);
+template<>
+ProjectPartNameIds MockSqliteReadStatement::values<ProjectPartNameId, 2>(std::size_t reserveSize);
+
+template<>
+Utils::optional<int> MockSqliteReadStatement::value<int>(const Utils::SmallStringView &);
 
 template <>
 Utils::optional<int>
@@ -306,3 +323,7 @@ SourceTimeStamps MockSqliteReadStatement::values<SourceTimeStamp, 2>(std::size_t
 template <>
 Utils::optional<Sources::SourceNameAndDirectoryId>
 MockSqliteReadStatement::value<Sources::SourceNameAndDirectoryId, 2>(const int&);
+
+template<>
+Utils::optional<ClangBackEnd::PrecompiledHeaderTimeStamps>
+MockSqliteReadStatement::value<ClangBackEnd::PrecompiledHeaderTimeStamps, 2>(const int &);

@@ -32,7 +32,7 @@
 namespace Valgrind {
 namespace Internal {
 
-class ValgrindPlugin : public ExtensionSystem::IPlugin
+class ValgrindPlugin final : public ExtensionSystem::IPlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QtCreatorPlugin" FILE "Valgrind.json")
@@ -42,7 +42,6 @@ public:
     ~ValgrindPlugin() final;
 
     bool initialize(const QStringList &arguments, QString *errorString) final;
-    void extensionsInitialized() final {}
 
 private:
     QVector<QObject *> createTestObjects() const override;

@@ -61,18 +61,37 @@ QRectF KeyframeItem::boundingRect() const
 
 void KeyframeItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
 {
-    Q_UNUSED(option);
-    Q_UNUSED(widget);
+    Q_UNUSED(option)
+    Q_UNUSED(widget)
+
+    QColor mainColor = selected() ? m_style.selectionColor : m_style.color;
+    QColor borderColor = isUnified() ? m_style.unifiedColor : m_style.splitColor;
+
+    if (locked()) {
+        mainColor = m_style.lockedColor;
+        borderColor = m_style.lockedColor;
+    }
 
     QPen pen = painter->pen();
-    pen.setColor(Qt::black);
+    pen.setWidthF(1.);
+    pen.setColor(borderColor);
 
     painter->save();
     painter->setPen(pen);
-    painter->setBrush(selected() ? Qt::red : m_style.color);
+    painter->setBrush(mainColor);
     painter->drawEllipse(boundingRect());
-
     painter->restore();
+}
+
+void KeyframeItem::lockedCallback()
+{
+    SelectableItem::lockedCallback();
+
+    if (m_left)
+        m_left->setLocked(locked());
+
+    if (m_right)
+        m_right->setLocked(locked());
 }
 
 KeyframeItem::~KeyframeItem() {}
@@ -82,14 +101,45 @@ Keyframe KeyframeItem::keyframe() const
     return m_frame;
 }
 
-HandleSlot KeyframeItem::handleSlot(HandleItem *item) const
+bool KeyframeItem::isUnified() const
 {
-    if (item == m_left)
-        return HandleSlot::Left;
-    else if (item == m_right)
-        return HandleSlot::Right;
-    else
-        return HandleSlot::Undefined;
+    return m_frame.isUnified();
+}
+
+bool KeyframeItem::hasLeftHandle() const
+{
+    return m_frame.hasLeftHandle();
+}
+
+bool KeyframeItem::hasRightHandle() const
+{
+    return m_frame.hasRightHandle();
+}
+
+bool KeyframeItem::hasActiveHandle() const
+{
+    if (m_left && m_left->activated())
+        return true;
+
+    if (m_right && m_right->activated())
+        return true;
+
+    return false;
+}
+
+HandleItem *KeyframeItem::leftHandle() const
+{
+    return m_left;
+}
+
+HandleItem *KeyframeItem::rightHandle() const
+{
+    return m_right;
+}
+
+QTransform KeyframeItem::transform() const
+{
+    return m_transform;
 }
 
 void KeyframeItem::setHandleVisibility(bool visible)
@@ -147,7 +197,7 @@ void KeyframeItem::setKeyframe(const Keyframe &keyframe)
 
     if (m_frame.hasLeftHandle()) {
         if (!m_left) {
-            m_left = new HandleItem(this);
+            m_left = new HandleItem(this, HandleItem::Slot::Left);
             auto updateLeftHandle = [this]() { updateHandle(m_left); };
             connect(m_left, &QGraphicsObject::xChanged, updateLeftHandle);
             connect(m_left, &QGraphicsObject::yChanged, updateLeftHandle);
@@ -160,7 +210,7 @@ void KeyframeItem::setKeyframe(const Keyframe &keyframe)
 
     if (m_frame.hasRightHandle()) {
         if (!m_right) {
-            m_right = new HandleItem(this);
+            m_right = new HandleItem(this, HandleItem::Slot::Right);
             auto updateRightHandle = [this]() { updateHandle(m_right); };
             connect(m_right, &QGraphicsObject::xChanged, updateRightHandle);
             connect(m_right, &QGraphicsObject::yChanged, updateRightHandle);
@@ -172,6 +222,31 @@ void KeyframeItem::setKeyframe(const Keyframe &keyframe)
     }
 
     setPos(m_transform.map(m_frame.position()));
+}
+
+void KeyframeItem::toggleUnified()
+{
+    if (!m_left || !m_right)
+        return;
+
+    if (m_frame.isUnified())
+        m_frame.setUnified(false);
+    else
+        m_frame.setUnified(true);
+}
+
+void KeyframeItem::setActivated(bool active, HandleItem::Slot slot)
+{
+    if (isUnified() && m_left && m_right) {
+        m_left->setActivated(active);
+        m_right->setActivated(active);
+        return;
+    }
+
+    if (slot == HandleItem::Slot::Left && m_left)
+        m_left->setActivated(active);
+    else if (slot == HandleItem::Slot::Right && m_right)
+        m_right->setActivated(active);
 }
 
 void KeyframeItem::setInterpolation(Keyframe::Interpolation interpolation)
@@ -223,7 +298,7 @@ void KeyframeItem::moveKeyframe(const QPointF &direction)
     emit redrawCurve();
 }
 
-void KeyframeItem::moveHandle(HandleSlot handle, double deltaAngle, double deltaLength)
+void KeyframeItem::moveHandle(HandleItem::Slot slot, double deltaAngle, double deltaLength)
 {
     auto move = [this, deltaAngle, deltaLength](HandleItem *item) {
         if (!item)
@@ -238,9 +313,9 @@ void KeyframeItem::moveHandle(HandleSlot handle, double deltaAngle, double delta
 
     this->blockSignals(true);
 
-    if (handle == HandleSlot::Left)
+    if (slot == HandleItem::Slot::Left)
         move(m_left);
-    else if (handle == HandleSlot::Right)
+    else if (slot == HandleItem::Slot::Right)
         move(m_right);
 
     this->blockSignals(false);
@@ -259,14 +334,13 @@ void KeyframeItem::updateHandle(HandleItem *handle, bool emitChanged)
 
     QPointF oldPosition;
     QPointF newPosition;
-    HandleSlot slot = HandleSlot::Undefined;
-    if (handle == m_left) {
-        slot = HandleSlot::Left;
+    HandleItem::Slot slot = handle->slot();
+
+    if (slot == HandleItem::Slot::Left) {
         oldPosition = m_frame.leftHandle();
         m_frame.setLeftHandle(m_frame.position() + handlePosition);
         newPosition = m_frame.leftHandle();
-    } else {
-        slot = HandleSlot::Right;
+    } else if (slot == HandleItem::Slot::Right) {
         oldPosition = m_frame.rightHandle();
         m_frame.setRightHandle(m_frame.position() + handlePosition);
         newPosition = m_frame.rightHandle();
@@ -328,14 +402,18 @@ void KeyframeItem::selectionCallback()
     if (selected()) {
         if (m_visibleOverride) {
             setHandleVisibility(true);
-            setHandleVisibility(true);
         }
     } else {
         if (!m_visibleOverride) {
             setHandleVisibility(false);
-            setHandleVisibility(false);
         }
     }
+
+    if (m_left)
+        m_left->setSelected(selected());
+
+    if (m_right)
+        m_right->setSelected(selected());
 }
 
 } // End namespace DesignTools.

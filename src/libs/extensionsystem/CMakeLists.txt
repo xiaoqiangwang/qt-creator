@@ -1,6 +1,6 @@
 add_qtc_library(ExtensionSystem
-  DEPENDS Aggregation Utils Qt5::Core Qt5::Widgets
-  PUBLIC_DEPENDS Qt5::Core
+  DEPENDS Aggregation Utils
+  PUBLIC_DEPENDS Qt5::Core Qt5::Widgets
   SOURCES
     extensionsystem_global.h
     invoker.cpp invoker.h
@@ -12,5 +12,8 @@ add_qtc_library(ExtensionSystem
     pluginmanager.cpp pluginmanager.h pluginmanager_p.h
     pluginspec.cpp pluginspec.h pluginspec_p.h
     pluginview.cpp pluginview.h
+  EXPLICIT_MOC
+    pluginmanager.h
+    pluginmanager_p.h
   SKIP_AUTOMOC pluginmanager.cpp
 )

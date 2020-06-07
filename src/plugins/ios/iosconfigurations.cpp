@@ -71,8 +71,8 @@ using namespace Utils;
 using namespace Debugger;
 
 namespace {
-Q_LOGGING_CATEGORY(kitSetupLog, "qtc.ios.kitSetup", QtWarningMsg)
-Q_LOGGING_CATEGORY(iosCommonLog, "qtc.ios.common", QtWarningMsg)
+static Q_LOGGING_CATEGORY(kitSetupLog, "qtc.ios.kitSetup", QtWarningMsg)
+static Q_LOGGING_CATEGORY(iosCommonLog, "qtc.ios.common", QtWarningMsg)
 }
 
 using ToolChainPair = std::pair<ClangToolChain *, ClangToolChain *>;
@@ -233,7 +233,7 @@ static QByteArray decodeProvisioningProfile(const QString &path)
     p.setTimeoutS(3);
     // path is assumed to be valid file path to .mobileprovision
     const QStringList args = {"smime", "-inform", "der", "-verify", "-in", path};
-    Utils::SynchronousProcessResponse res = p.runBlocking("openssl", args);
+    Utils::SynchronousProcessResponse res = p.runBlocking({"openssl", args});
     if (res.result != Utils::SynchronousProcessResponse::Finished)
         qCDebug(iosCommonLog) << "Reading signed provisioning file failed" << path;
     return res.stdOut().toLatin1();
@@ -474,9 +474,8 @@ void IosConfigurations::loadProvisioningData(bool notify)
     const QSettings xcodeSettings(xcodePlistPath, QSettings::NativeFormat);
     const QVariantMap teamMap = xcodeSettings.value(provisioningTeamsTag).toMap();
     QList<QVariantMap> teams;
-    QMapIterator<QString, QVariant> accountiterator(teamMap);
-    while (accountiterator.hasNext()) {
-        accountiterator.next();
+    for (auto accountiterator = teamMap.cbegin(), end = teamMap.cend();
+            accountiterator != end; ++accountiterator) {
         QVariantMap teamInfo = accountiterator.value().toMap();
         int provisioningTeamIsFree = teamInfo.value(freeTeamTag).toBool() ? 1 : 0;
         teamInfo[freeTeamTag] = provisioningTeamIsFree;
@@ -575,29 +574,6 @@ ProvisioningProfilePtr IosConfigurations::provisioningProfile(const QString &pro
                                 Utils::equal(&ProvisioningProfile::identifier, profileID));
 }
 
-static ClangToolChain *createToolChain(const XcodePlatform &platform,
-                                       const XcodePlatform::ToolchainTarget &target,
-                                       Core::Id l)
-{
-    if (!l.isValid())
-        return nullptr;
-
-    if (l != Core::Id(ProjectExplorer::Constants::C_LANGUAGE_ID)
-            && l != Core::Id(ProjectExplorer::Constants::CXX_LANGUAGE_ID))
-        return nullptr;
-
-    auto toolChain = new ClangToolChain;
-    toolChain->setDetection(ToolChain::AutoDetection);
-    toolChain->setLanguage(l);
-    toolChain->setDisplayName(target.name);
-    toolChain->setPlatformCodeGenFlags(target.backendFlags);
-    toolChain->setPlatformLinkerFlags(target.backendFlags);
-    toolChain->resetToolChain(l == Core::Id(ProjectExplorer::Constants::CXX_LANGUAGE_ID) ?
-                                  platform.cxxCompilerPath : platform.cCompilerPath);
-
-    return toolChain;
-}
-
 IosToolChainFactory::IosToolChainFactory()
 {
     setSupportedLanguages({ProjectExplorer::Constants::C_LANGUAGE_ID,
@@ -610,13 +586,20 @@ QList<ToolChain *> IosToolChainFactory::autoDetect(const QList<ToolChain *> &exi
     const QList<XcodePlatform> platforms = XcodeProbe::detectPlatforms().values();
     QList<ToolChain *> toolChains;
     toolChains.reserve(platforms.size());
-    foreach (const XcodePlatform &platform, platforms) {
+    for (const XcodePlatform &platform : platforms) {
         for (const XcodePlatform::ToolchainTarget &target : platform.targets) {
             ToolChainPair platformToolchains = findToolChainForPlatform(platform, target,
                                                                         existingClangToolChains);
-            auto createOrAdd = [&](ClangToolChain* toolChain, Core::Id l) {
+            auto createOrAdd = [&](ClangToolChain *toolChain, Core::Id l) {
                 if (!toolChain) {
-                    toolChain = createToolChain(platform, target, l);
+                    toolChain = new ClangToolChain;
+                    toolChain->setDetection(ToolChain::AutoDetection);
+                    toolChain->setLanguage(l);
+                    toolChain->setDisplayName(target.name);
+                    toolChain->setPlatformCodeGenFlags(target.backendFlags);
+                    toolChain->setPlatformLinkerFlags(target.backendFlags);
+                    toolChain->resetToolChain(l == ProjectExplorer::Constants::CXX_LANGUAGE_ID ?
+                                                  platform.cxxCompilerPath : platform.cCompilerPath);
                     existingClangToolChains.append(toolChain);
                 }
                 toolChains.append(toolChain);

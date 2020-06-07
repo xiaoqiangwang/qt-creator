@@ -233,7 +233,7 @@ NodeTreeItem::NodeTreeItem(const QString &name, const QIcon &icon)
     : TreeItem(name)
     , m_icon(icon)
 {
-    Q_UNUSED(icon);
+    Q_UNUSED(icon)
 }
 
 NodeTreeItem *NodeTreeItem::asNodeItem()
@@ -244,6 +244,31 @@ NodeTreeItem *NodeTreeItem::asNodeItem()
 QIcon NodeTreeItem::icon() const
 {
     return m_icon;
+}
+
+std::vector<PropertyTreeItem *> NodeTreeItem::properties() const
+{
+    std::vector<PropertyTreeItem *> out;
+    for (auto *child : m_children) {
+        if (auto *pti = child->asPropertyItem())
+            out.push_back(pti);
+    }
+
+    return out;
+}
+
+std::string toString(ValueType type)
+{
+    switch (type) {
+    case ValueType::Bool:
+        return "Bool";
+    case ValueType::Integer:
+        return "Integer";
+    case ValueType::Double:
+        return "Double";
+    default:
+        return "Undefined";
+    }
 }
 
 PropertyTreeItem::PropertyTreeItem(const QString &name,
@@ -284,6 +309,16 @@ PropertyTreeItem::Component PropertyTreeItem::component() const
 AnimationCurve PropertyTreeItem::curve() const
 {
     return m_curve;
+}
+
+bool PropertyTreeItem::hasUnified() const
+{
+    return m_curve.hasUnified();
+}
+
+QString PropertyTreeItem::unifyString() const
+{
+    return m_curve.unifyString();
 }
 
 void PropertyTreeItem::setCurve(const AnimationCurve &curve)

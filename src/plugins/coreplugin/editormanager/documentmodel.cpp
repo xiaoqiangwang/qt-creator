@@ -414,6 +414,18 @@ void DocumentModelPrivate::addEditor(IEditor *editor, bool *isNewDocument)
     }
 }
 
+/*!
+    \class Core::DocumentModel
+    \inmodule QtCreator
+    \internal
+*/
+
+/*!
+    \class Core::DocumentModel::Entry
+    \inmodule QtCreator
+    \internal
+*/
+
 DocumentModel::Entry *DocumentModelPrivate::addSuspendedDocument(const QString &fileName,
                                                                  const QString &displayName,
                                                                  Id id)
@@ -504,7 +516,8 @@ DocumentModel::Entry *DocumentModelPrivate::DynamicEntry::operator->() const
 
 void DocumentModelPrivate::DynamicEntry::disambiguate()
 {
-    entry->document->setUniqueDisplayName(entry->fileName().fileName(++pathComponents));
+    const QString display = entry->fileName().fileNameWithPathComponents(++pathComponents);
+    entry->document->setUniqueDisplayName(display);
 }
 
 void DocumentModelPrivate::DynamicEntry::setNumberedName(int number)

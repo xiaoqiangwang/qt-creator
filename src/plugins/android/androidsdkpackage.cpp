@@ -134,6 +134,16 @@ void SystemImage::setPlatform(SdkPlatform *platform)
     m_platform = platform;
 }
 
+int SystemImage::apiLevel() const
+{
+    return m_apiLevel;
+}
+
+void SystemImage::setApiLevel(const int apiLevel)
+{
+    m_apiLevel = apiLevel;
+}
+
 SdkPlatform::SdkPlatform(QVersionNumber version, QString sdkStylePathStr, int api, QObject *parent) :
     AndroidSdkPackage(version, sdkStylePathStr, parent),
     m_apiLevel(api)
@@ -282,6 +292,31 @@ bool ExtraTools::isValid() const
 AndroidSdkPackage::PackageType ExtraTools::type() const
 {
     return AndroidSdkPackage::ExtraToolsPackage;
+}
+
+Ndk::Ndk(QVersionNumber revision, QString sdkStylePathStr, QObject *parent) :
+    AndroidSdkPackage(revision, sdkStylePathStr, parent)
+{
+}
+
+bool Ndk::isValid() const
+{
+    return installedLocation().exists();
+}
+
+AndroidSdkPackage::PackageType Ndk::type() const
+{
+    return AndroidSdkPackage::NDKPackage;
+}
+
+bool Ndk::isNdkBundle() const
+{
+    return m_isBundle;
+}
+
+void Ndk::setAsNdkBundle(const bool isBundle)
+{
+    m_isBundle = isBundle;
 }
 
 } // namespace Android

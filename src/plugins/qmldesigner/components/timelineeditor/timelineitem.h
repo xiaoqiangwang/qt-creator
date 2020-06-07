@@ -31,6 +31,8 @@
 #include <QGraphicsWidget>
 #include <QTimer>
 
+QT_FORWARD_DECLARE_CLASS(QPainterPath)
+
 namespace QmlDesigner {
 
 class TimelineItem : public QGraphicsWidget
@@ -50,7 +52,7 @@ public:
     explicit TimelineFrameHandle(TimelineItem *parent = nullptr);
 
     void setHeight(int height);
-    void setPosition(qreal position);
+    void setPosition(qreal frame);
     void setPositionInteractive(const QPointF &postion) override;
     void commitPosition(const QPointF &point) override;
     qreal position() const;

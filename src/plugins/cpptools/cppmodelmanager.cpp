@@ -52,15 +52,16 @@
 #include "followsymbolinterface.h"
 
 #include <coreplugin/documentmanager.h>
-#include <coreplugin/icore.h>
-#include <coreplugin/vcsmanager.h>
-#include <coreplugin/progressmanager/progressmanager.h>
 #include <coreplugin/editormanager/editormanager.h>
-#include <texteditor/textdocument.h>
+#include <coreplugin/icore.h>
+#include <coreplugin/progressmanager/progressmanager.h>
+#include <coreplugin/vcsmanager.h>
+#include <extensionsystem/pluginmanager.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectmacro.h>
 #include <projectexplorer/session.h>
+#include <texteditor/textdocument.h>
 #include <utils/fileutils.h>
 #include <utils/hostosinfo.h>
 #include <utils/qtcassert.h>
@@ -464,14 +465,6 @@ CppModelManager *CppModelManager::instance()
     return m_instance;
 }
 
-void CppModelManager::createCppModelManager(Internal::CppToolsPlugin *parent)
-{
-    QTC_ASSERT(!m_instance, return;);
-    m_instance = new CppModelManager();
-    m_instance->initCppTools();
-    m_instance->setParent(parent);
-}
-
 void CppModelManager::initCppTools()
 {
     // Objects
@@ -511,6 +504,12 @@ CppModelManager::CppModelManager()
     : CppModelManagerBase(nullptr)
     , d(new CppModelManagerPrivate)
 {
+    m_instance = this;
+
+    // Used for weak dependency in VcsBaseSubmitEditor
+    setObjectName("CppModelManager");
+    ExtensionSystem::PluginManager::addObject(this);
+
     d->m_indexingSupporter = nullptr;
     d->m_enableGC = true;
 
@@ -557,10 +556,14 @@ CppModelManager::CppModelManager()
     initializeBuiltinModelManagerSupport();
 
     d->m_internalIndexingSupport = new BuiltinIndexingSupport;
+
+    initCppTools();
 }
 
 CppModelManager::~CppModelManager()
 {
+    ExtensionSystem::PluginManager::removeObject(this);
+
     delete d->m_internalIndexingSupport;
     delete d;
 }
@@ -608,10 +611,7 @@ void CppModelManager::ensureUpdated()
 QStringList CppModelManager::internalProjectFiles() const
 {
     QStringList files;
-    QMapIterator<ProjectExplorer::Project *, ProjectInfo> it(d->m_projectToProjectsInfo);
-    while (it.hasNext()) {
-        it.next();
-        const ProjectInfo pinfo = it.value();
+    for (const ProjectInfo &pinfo : d->m_projectToProjectsInfo) {
         foreach (const ProjectPart::Ptr &part, pinfo.projectParts()) {
             foreach (const ProjectFile &file, part->files)
                 files += file.path;
@@ -624,10 +624,7 @@ QStringList CppModelManager::internalProjectFiles() const
 ProjectExplorer::HeaderPaths CppModelManager::internalHeaderPaths() const
 {
     ProjectExplorer::HeaderPaths headerPaths;
-    QMapIterator<ProjectExplorer::Project *, ProjectInfo> it(d->m_projectToProjectsInfo);
-    while (it.hasNext()) {
-        it.next();
-        const ProjectInfo pinfo = it.value();
+    for (const ProjectInfo &pinfo : d->m_projectToProjectsInfo) {
         foreach (const ProjectPart::Ptr &part, pinfo.projectParts()) {
             foreach (const ProjectExplorer::HeaderPath &path, part->headerPaths) {
                 ProjectExplorer::HeaderPath hp(QDir::cleanPath(path.path), path.type);
@@ -655,10 +652,7 @@ ProjectExplorer::Macros CppModelManager::internalDefinedMacros() const
 {
     ProjectExplorer::Macros macros;
     QSet<ProjectExplorer::Macro> alreadyIn;
-    QMapIterator<ProjectExplorer::Project *, ProjectInfo> it(d->m_projectToProjectsInfo);
-    while (it.hasNext()) {
-        it.next();
-        const ProjectInfo pinfo = it.value();
+    for (const ProjectInfo &pinfo : d->m_projectToProjectsInfo) {
         for (const ProjectPart::Ptr &part : pinfo.projectParts()) {
             addUnique(part->toolChainMacros, macros, alreadyIn);
             addUnique(part->projectMacros, macros, alreadyIn);
@@ -783,11 +777,8 @@ WorkingCopy CppModelManager::buildWorkingCopyList()
                            cppEditorDocument->revision());
     }
 
-    QSetIterator<AbstractEditorSupport *> it(d->m_extraEditorSupports);
-    while (it.hasNext()) {
-        AbstractEditorSupport *es = it.next();
+    for (AbstractEditorSupport *es : qAsConst(d->m_extraEditorSupports))
         workingCopy.insert(es->fileName(), es->contents(), es->revision());
-    }
 
     // Add the project configuration file
     QByteArray conf = codeModelConfiguration();
@@ -815,9 +806,7 @@ static QSet<QString> tooBigFilesRemoved(const QSet<QString> &files, int fileSize
     QSet<QString> result;
     QFileInfo fileInfo;
 
-    QSetIterator<QString> i(files);
-    while (i.hasNext()) {
-        const QString filePath = i.next();
+    for (const QString &filePath : files) {
         fileInfo.setFile(filePath);
         if (fileSizeExceedsLimit(fileInfo, fileSizeLimitInMb))
             continue;
@@ -887,9 +876,8 @@ QList<CppEditorDocumentHandle *> CppModelManager::cppEditorDocuments() const
 void CppModelManager::removeFilesFromSnapshot(const QSet<QString> &filesToRemove)
 {
     QMutexLocker snapshotLocker(&d->m_snapshotMutex);
-    QSetIterator<QString> i(filesToRemove);
-    while (i.hasNext())
-        d->m_snapshot.remove(i.next());
+    for (const QString &file : filesToRemove)
+        d->m_snapshot.remove(file);
 }
 
 class ProjectInfoComparer
@@ -935,9 +923,7 @@ public:
         commonSourceFiles.intersect(m_oldSourceFiles);
 
         QList<Document::Ptr> documentsToCheck;
-        QSetIterator<QString> i(commonSourceFiles);
-        while (i.hasNext()) {
-            const QString file = i.next();
+        for (const QString &file : commonSourceFiles) {
             if (Document::Ptr document = snapshot.document(file))
                 documentsToCheck << document;
         }
@@ -985,8 +971,6 @@ void CppModelManager::recalculateProjectPartMappings()
 void CppModelManager::watchForCanceledProjectIndexer(const QVector<QFuture<void>> &futures,
                                                      ProjectExplorer::Project *project)
 {
-    d->m_projectToIndexerCanceled.insert(project, false);
-
     for (const QFuture<void> &future : futures) {
         if (future.isCanceled() || future.isFinished())
             continue;
@@ -997,7 +981,8 @@ void CppModelManager::watchForCanceledProjectIndexer(const QVector<QFuture<void>
                 d->m_projectToIndexerCanceled.insert(project, true);
             watcher->deleteLater();
         });
-        connect(watcher, &QFutureWatcher<void>::finished, this, [watcher]() {
+        connect(watcher, &QFutureWatcher<void>::finished, this, [this, project, watcher]() {
+            d->m_projectToIndexerCanceled.remove(project);
             watcher->deleteLater();
         });
         watcher->setFuture(future);
@@ -1128,6 +1113,9 @@ QFuture<void> CppModelManager::updateProjectInfo(QFutureInterface<void> &futureI
     // Trigger reindexing
     const QFuture<void> indexingFuture = updateSourceFiles(futureInterface, filesToReindex,
                                                            ForcedProgressNotification);
+    if (!filesToReindex.isEmpty()) {
+        d->m_projectToIndexerCanceled.insert(project, false);
+    }
     watchForCanceledProjectIndexer({futureInterface.future(), indexingFuture}, project);
     return indexingFuture;
 }
@@ -1147,7 +1135,7 @@ QList<ProjectPart::Ptr> CppModelManager::projectPartFromDependencies(
         const Utils::FilePath &fileName) const
 {
     QSet<ProjectPart::Ptr> parts;
-    const Utils::FilePathList deps = snapshot().filesDependingOn(fileName);
+    const Utils::FilePaths deps = snapshot().filesDependingOn(fileName);
 
     QMutexLocker locker(&d->m_projectMutex);
     for (const Utils::FilePath &dep : deps)
@@ -1169,7 +1157,7 @@ ProjectPart::Ptr CppModelManager::fallbackProjectPart()
     part->languageExtensions &= ~Utils::LanguageExtensions(
         Utils::LanguageExtension::ObjectiveC);
 
-    part->qtVersion = ProjectPart::Qt5;
+    part->qtVersion = Utils::QtVersion::Qt5;
     part->updateLanguageFeatures();
 
     return part;
@@ -1320,6 +1308,60 @@ void CppModelManager::renameIncludes(const QString &oldFileName, const QString &
             file->apply();
         }
     }
+}
+
+// Return the class name which function belongs to
+static const char *belongingClassName(const Function *function)
+{
+    if (!function)
+        return nullptr;
+
+    if (auto funcName = function->name()) {
+        if (auto qualifiedNameId = funcName->asQualifiedNameId()) {
+            if (const Name *funcBaseName = qualifiedNameId->base()) {
+                if (auto identifier = funcBaseName->identifier())
+                    return identifier->chars();
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+QSet<QString> CppModelManager::symbolsInFiles(const QSet<Utils::FilePath> &files) const
+{
+    QSet<QString> uniqueSymbols;
+    const Snapshot cppSnapShot = snapshot();
+
+    // Iterate over the files and get interesting symbols
+    for (const Utils::FilePath &file : files) {
+        // Add symbols from the C++ code model
+        const CPlusPlus::Document::Ptr doc = cppSnapShot.document(file);
+        if (!doc.isNull() && doc->control()) {
+            const CPlusPlus::Control *ctrl = doc->control();
+            CPlusPlus::Symbol **symPtr = ctrl->firstSymbol(); // Read-only
+            while (symPtr != ctrl->lastSymbol()) {
+                const CPlusPlus::Symbol *sym = *symPtr;
+
+                const CPlusPlus::Identifier *symId = sym->identifier();
+                // Add any class, function or namespace identifiers
+                if ((sym->isClass() || sym->isFunction() || sym->isNamespace()) && symId
+                    && symId->chars()) {
+                    uniqueSymbols.insert(QString::fromUtf8(symId->chars()));
+                }
+
+                // Handle specific case : get "Foo" in "void Foo::function() {}"
+                if (sym->isFunction() && !sym->asFunction()->isDeclaration()) {
+                    const char *className = belongingClassName(sym->asFunction());
+                    if (className)
+                        uniqueSymbols.insert(QString::fromUtf8(className));
+                }
+
+                ++symPtr;
+            }
+        }
+    }
+    return uniqueSymbols;
 }
 
 void CppModelManager::onCoreAboutToClose()

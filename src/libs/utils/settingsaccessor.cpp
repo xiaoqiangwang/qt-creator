@@ -100,7 +100,7 @@ bool SettingsAccessor::saveSettings(const QVariantMap &data, QWidget *parent) co
  */
 SettingsAccessor::RestoreData SettingsAccessor::readData(const FilePath &path, QWidget *parent) const
 {
-    Q_UNUSED(parent);
+    Q_UNUSED(parent)
     RestoreData result = readFile(path);
     if (!result.data.isEmpty())
         result.data = preprocessReadSettings(result.data);
@@ -113,7 +113,7 @@ SettingsAccessor::RestoreData SettingsAccessor::readData(const FilePath &path, Q
 optional<SettingsAccessor::Issue>
 SettingsAccessor::writeData(const FilePath &path, const QVariantMap &data, QWidget *parent) const
 {
-    Q_UNUSED(parent);
+    Q_UNUSED(parent)
     return writeFile(path, prepareToWriteSettings(data));
 }
 
@@ -217,7 +217,7 @@ QVariantMap SettingsAccessor::prepareToWriteSettings(const QVariantMap &data) co
 // BackingUpSettingsAccessor:
 // --------------------------------------------------------------------
 
-FilePathList BackUpStrategy::readFileCandidates(const FilePath &baseFileName) const
+FilePaths BackUpStrategy::readFileCandidates(const FilePath &baseFileName) const
 {
 
     const QFileInfo pfi = baseFileName.toFileInfo();
@@ -264,7 +264,7 @@ BackingUpSettingsAccessor::BackingUpSettingsAccessor(std::unique_ptr<BackUpStrat
 SettingsAccessor::RestoreData
 BackingUpSettingsAccessor::readData(const FilePath &path, QWidget *parent) const
 {
-    const FilePathList fileList = readFileCandidates(path);
+    const FilePaths fileList = readFileCandidates(path);
     if (fileList.isEmpty()) // No settings found at all.
         return RestoreData(path, QVariantMap());
 
@@ -277,7 +277,10 @@ BackingUpSettingsAccessor::readData(const FilePath &path, QWidget *parent) const
                 QApplication::translate("Utils::SettingsAccessor",
                                         "<p>No valid settings file could be found.</p>"
                                         "<p>All settings files found in directory \"%1\" "
-                                        "were unsuitable for the current version of %2.</p>")
+                                        "were unsuitable for the current version of %2, "
+                                        "for instance because they were written by an incompatible "
+                                        "version of %2, or because a different settings path "
+                                        "was used.</p>")
                 .arg(path.toUserOutput()).arg(applicationDisplayName), Issue::Type::ERROR);
         i.buttons.insert(QMessageBox::Ok, DiscardAndContinue);
         result.issue = i;
@@ -298,9 +301,9 @@ BackingUpSettingsAccessor::writeData(const FilePath &path, const QVariantMap &da
     return SettingsAccessor::writeData(path, data, parent);
 }
 
-FilePathList BackingUpSettingsAccessor::readFileCandidates(const FilePath &path) const
+FilePaths BackingUpSettingsAccessor::readFileCandidates(const FilePath &path) const
 {
-    FilePathList result = Utils::filteredUnique(m_strategy->readFileCandidates(path));
+    FilePaths result = Utils::filteredUnique(m_strategy->readFileCandidates(path));
     if (result.removeOne(baseFilePath()))
         result.prepend(baseFilePath());
 
@@ -308,7 +311,7 @@ FilePathList BackingUpSettingsAccessor::readFileCandidates(const FilePath &path)
 }
 
 SettingsAccessor::RestoreData
-BackingUpSettingsAccessor::bestReadFileData(const FilePathList &candidates, QWidget *parent) const
+BackingUpSettingsAccessor::bestReadFileData(const FilePaths &candidates, QWidget *parent) const
 {
     SettingsAccessor::RestoreData bestMatch;
     for (const FilePath &c : candidates) {
@@ -362,7 +365,7 @@ int VersionedBackUpStrategy::compare(const SettingsAccessor::RestoreData &data1,
 optional<FilePath>
 VersionedBackUpStrategy::backupName(const QVariantMap &oldData, const FilePath &path, const QVariantMap &data) const
 {
-    Q_UNUSED(data);
+    Q_UNUSED(data)
     FilePath backupName = path;
     const QByteArray oldEnvironmentId = settingsIdFromMap(oldData);
     const int oldVersion = versionFromMap(oldData);
@@ -704,8 +707,8 @@ QVariantMap MergingSettingsAccessor::postprocessMerge(const QVariantMap &main,
                                                       const QVariantMap &secondary,
                                                       const QVariantMap &result) const
 {
-    Q_UNUSED(main);
-    Q_UNUSED(secondary);
+    Q_UNUSED(main)
+    Q_UNUSED(secondary)
     return result;
 }
 

@@ -68,9 +68,10 @@ class PROJECTEXPLORER_EXPORT GccToolChain : public ToolChain
 {
 public:
     GccToolChain(Core::Id typeId);
-    QString typeDisplayName() const override;
+
     Abi targetAbi() const override;
     QString originalTargetTriple() const override;
+    Utils::FilePath installDir() const override;
     QString version() const;
     Abis supportedAbis() const override;
     void setTargetAbi(const Abi &);
@@ -78,14 +79,15 @@ public:
     bool isValid() const override;
 
     Utils::LanguageExtensions languageExtensions(const QStringList &cxxflags) const override;
-    WarningFlags warningFlags(const QStringList &cflags) const override;
+    Utils::WarningFlags warningFlags(const QStringList &cflags) const override;
 
     MacroInspectionRunner createMacroInspectionRunner() const override;
     Macros predefinedMacros(const QStringList &cxxflags) const override;
 
-    BuiltInHeaderPathsRunner createBuiltInHeaderPathsRunner() const override;
+    BuiltInHeaderPathsRunner createBuiltInHeaderPathsRunner(const Utils::Environment &env) const override;
     HeaderPaths builtInHeaderPaths(const QStringList &flags,
-                                   const Utils::FilePath &sysRootPath) const override;
+                                   const Utils::FilePath &sysRootPath,
+                                   const Utils::Environment &env) const override;
 
     void addToEnvironment(Utils::Environment &env) const override;
     Utils::FilePath makeCommand(const Utils::Environment &environment) const override;
@@ -128,6 +130,7 @@ protected:
     void setCompilerCommand(const Utils::FilePath &path);
     void setSupportedAbis(const Abis &abis);
     void setOriginalTargetTriple(const QString &targetTriple);
+    void setInstallDir(const Utils::FilePath &installDir);
     void setMacroCache(const QStringList &allCxxflags, const Macros &macroCache) const;
     Macros macroCache(const QStringList &allCxxflags) const;
 
@@ -136,6 +139,7 @@ protected:
 
     virtual DetectedAbisResult detectSupportedAbis() const;
     virtual QString detectVersion() const;
+    virtual Utils::FilePath detectInstallDir() const;
 
     // Reinterpret options for compiler drivers inheriting from GccToolChain (e.g qcc) to apply -Wp option
     // that passes the initial options directly down to the gcc compiler
@@ -162,20 +166,18 @@ protected:
     class WarningFlagAdder
     {
     public:
-        WarningFlagAdder(const QString &flag, WarningFlags &flags);
-        void operator ()(const char name[], WarningFlags flagsSet);
+        WarningFlagAdder(const QString &flag, Utils::WarningFlags &flags);
+        void operator ()(const char name[], Utils::WarningFlags flagsSet);
 
         bool triggered() const;
     private:
         QByteArray m_flagUtf8;
-        WarningFlags &m_flags;
+        Utils::WarningFlags &m_flags;
         bool m_doesEnable = false;
         bool m_triggered = false;
     };
 
 private:
-    explicit GccToolChain();
-
     void updateSupportedAbis() const;
     static QStringList gccPrepareArguments(const QStringList &flags,
                                            const QString &sysRoot,
@@ -197,6 +199,7 @@ private:
     mutable QString m_originalTargetTriple;
     mutable HeaderPaths m_headerPaths;
     mutable QString m_version;
+    mutable Utils::FilePath m_installDir;
 
     friend class Internal::GccToolChainConfigWidget;
     friend class Internal::GccToolChainFactory;
@@ -214,11 +217,10 @@ public:
     explicit ClangToolChain(Core::Id typeId);
     ~ClangToolChain() override;
 
-    QString typeDisplayName() const override;
     Utils::FilePath makeCommand(const Utils::Environment &environment) const override;
 
     Utils::LanguageExtensions languageExtensions(const QStringList &cxxflags) const override;
-    WarningFlags warningFlags(const QStringList &cflags) const override;
+    Utils::WarningFlags warningFlags(const QStringList &cflags) const override;
 
     IOutputParser *outputParser() const override;
 
@@ -228,7 +230,8 @@ public:
     QString originalTargetTriple() const override;
     QString sysRoot() const override;
 
-    BuiltInHeaderPathsRunner createBuiltInHeaderPathsRunner() const override;
+    BuiltInHeaderPathsRunner createBuiltInHeaderPathsRunner(
+            const Utils::Environment &env) const override;
 
     std::unique_ptr<ToolChainConfigWidget> createConfigurationWidget() override;
 
@@ -256,7 +259,6 @@ private:
 class PROJECTEXPLORER_EXPORT MingwToolChain : public GccToolChain
 {
 public:
-    QString typeDisplayName() const override;
     Utils::FilePath makeCommand(const Utils::Environment &environment) const override;
 
     QStringList suggestedMkspecList() const override;
@@ -275,8 +277,6 @@ private:
 class PROJECTEXPLORER_EXPORT LinuxIccToolChain : public GccToolChain
 {
 public:
-    QString typeDisplayName() const override;
-
     Utils::LanguageExtensions languageExtensions(const QStringList &cxxflags) const override;
     IOutputParser *outputParser() const override;
 

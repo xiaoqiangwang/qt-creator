@@ -1,19 +1,19 @@
 add_qtc_plugin(QtSupport
   DEPENDS Qt5::Xml
   PUBLIC_DEPENDS ProParser
-  PLUGIN_DEPENDS Core CppTools ProjectExplorer ResourceEditor
+  PLUGIN_DEPENDS Core ProjectExplorer ResourceEditor
   SOURCES
     baseqtversion.cpp baseqtversion.h
     codegenerator.cpp codegenerator.h
     codegensettings.cpp codegensettings.h
     codegensettingspage.cpp codegensettingspage.h
     codegensettingspagewidget.ui
-    desktopqtversion.cpp desktopqtversion.h
     exampleslistmodel.cpp exampleslistmodel.h
     gettingstartedwelcomepage.cpp gettingstartedwelcomepage.h
     profilereader.cpp profilereader.h
     qmldumptool.cpp qmldumptool.h
     qscxmlcgenerator.cpp qscxmlcgenerator.h
+    qtbuildaspects.cpp qtbuildaspects.h
     qtconfigwidget.cpp qtconfigwidget.h
     qtcppkitinfo.cpp qtcppkitinfo.h
     qtkitinformation.cpp qtkitinformation.h
@@ -26,10 +26,12 @@ add_qtc_plugin(QtSupport
     qtsupportconstants.h
     qtsupportplugin.cpp qtsupportplugin.h
     qttestparser.cpp qttestparser.h
-    qtversionfactory.cpp qtversionfactory.h
+    qtversionfactory.h
     qtversioninfo.ui
     qtversionmanager.cpp qtversionmanager.h qtversionmanager.ui
+    qtversions.cpp qtversions.h
     screenshotcropper.cpp screenshotcropper.h
     showbuildlog.ui
+    translationwizardpage.cpp translationwizardpage.h
     uicgenerator.cpp uicgenerator.h
 )

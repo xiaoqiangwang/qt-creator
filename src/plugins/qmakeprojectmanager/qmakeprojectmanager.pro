@@ -19,23 +19,17 @@ HEADERS += \
     profilehighlighter.h \
     profilehoverhandler.h \
     wizards/qtprojectparameters.h \
-    wizards/modulespage.h \
-    wizards/filespage.h \
     wizards/qtwizard.h \
     wizards/subdirsprojectwizard.h \
     wizards/subdirsprojectwizarddialog.h \
-    wizards/simpleprojectwizard.h \
     qmakeprojectmanagerconstants.h \
     qmakestep.h \
-    qtmodulesinfo.h \
-    qmakeprojectconfigwidget.h \
     externaleditors.h \
     qmakebuildconfiguration.h \
     qmakeparser.h \
     addlibrarywizard.h \
     librarydetailscontroller.h \
     qmakeprojectmanager_global.h \
-    desktopqmakerunconfiguration.h \
     profilecompletionassist.h \
     makefileparse.h \
     qmakemakestep.h
@@ -54,27 +48,20 @@ SOURCES += \
     profilehighlighter.cpp \
     profilehoverhandler.cpp \
     wizards/qtprojectparameters.cpp \
-    wizards/modulespage.cpp \
-    wizards/filespage.cpp \
     wizards/qtwizard.cpp \
     wizards/subdirsprojectwizard.cpp \
     wizards/subdirsprojectwizarddialog.cpp \
-    wizards/simpleprojectwizard.cpp \
     qmakestep.cpp \
-    qtmodulesinfo.cpp \
-    qmakeprojectconfigwidget.cpp \
     externaleditors.cpp \
     qmakebuildconfiguration.cpp \
     qmakeparser.cpp \
     addlibrarywizard.cpp \
     librarydetailscontroller.cpp \
-    desktopqmakerunconfiguration.cpp \
     profilecompletionassist.cpp \
     makefileparse.cpp \
     qmakemakestep.cpp
 
 FORMS += \
-    qmakestep.ui \
     librarydetailswidget.ui
 
 RESOURCES += qmakeprojectmanager.qrc \

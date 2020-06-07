@@ -38,6 +38,7 @@
 
 using namespace QmakeProjectManager;
 using namespace Internal;
+using namespace ProjectExplorer;
 
 using Utils::FilePath;
 using Utils::QtcProcess;
@@ -191,14 +192,14 @@ void MakeFileParse::parseAssignments(QList<QMakeAssignment> *assignments)
                         m_config.osType = QMakeStepConfig::NoOsType;
                 } else if (value == QLatin1String("qml_debug")) {
                     if (qa.op == QLatin1String("+="))
-                        m_config.linkQmlDebuggingQQ2 = true;
+                        m_config.linkQmlDebuggingQQ2 = TriState::Enabled;
                     else
-                        m_config.linkQmlDebuggingQQ2 = false;
+                        m_config.linkQmlDebuggingQQ2 = TriState::Disabled;
                 } else if (value == QLatin1String("qtquickcompiler")) {
                     if (qa.op == QLatin1String("+="))
-                        m_config.useQtQuickCompiler = true;
+                        m_config.useQtQuickCompiler = TriState::Enabled;
                     else
-                        m_config.useQtQuickCompiler = false;
+                        m_config.useQtQuickCompiler = TriState::Disabled;
                 } else if (value == QLatin1String("force_debug_info")) {
                     if (qa.op == QLatin1String("+="))
                         foundForceDebugInfo = true;
@@ -224,7 +225,7 @@ void MakeFileParse::parseAssignments(QList<QMakeAssignment> *assignments)
     }
 
     if (foundForceDebugInfo && foundSeparateDebugInfo) {
-        m_config.separateDebugInfo = true;
+        m_config.separateDebugInfo = TriState::Enabled;
     } else if (foundForceDebugInfo) {
         // Found only force_debug_info, so readd it
         QMakeAssignment newQA;
@@ -374,9 +375,12 @@ void MakeFileParse::parseCommandLine(const QString &command, const QString &proj
     qCDebug(logging()) << "  Explicit NoBuildAll" << m_qmakeBuildConfig.explicitNoBuildAll;
     qCDebug(logging()) << "  TargetArch" << m_config.archConfig;
     qCDebug(logging()) << "  OsType" << m_config.osType;
-    qCDebug(logging()) << "  LinkQmlDebuggingQQ2" << m_config.linkQmlDebuggingQQ2;
-    qCDebug(logging()) << "  Qt Quick Compiler" << m_config.useQtQuickCompiler;
-    qCDebug(logging()) << "  Separate Debug Info" << m_config.separateDebugInfo;
+    qCDebug(logging()) << "  LinkQmlDebuggingQQ2"
+                       << (m_config.linkQmlDebuggingQQ2 == TriState::Enabled);
+    qCDebug(logging()) << "  Qt Quick Compiler"
+                       <<  (m_config.useQtQuickCompiler == TriState::Enabled);
+    qCDebug(logging()) << "  Separate Debug Info"
+                       << (m_config.separateDebugInfo == TriState::Enabled);
 
     // Create command line of all unfiltered arguments
     foreach (const QMakeAssignment &qa, assignments)
@@ -516,13 +520,13 @@ void QmakeProjectManagerPlugin::testMakefileParser()
 
     QCOMPARE(Utils::QtcProcess::splitArgs(parser.unparsedArguments()),
              Utils::QtcProcess::splitArgs(unparsedArguments));
-    QCOMPARE(parser.effectiveBuildConfig(nullptr), effectiveBuildConfig);
+    QCOMPARE(parser.effectiveBuildConfig({}), effectiveBuildConfig);
 
     const QMakeStepConfig qmsc = parser.config();
     QCOMPARE(qmsc.archConfig, static_cast<QMakeStepConfig::TargetArchConfig>(archConfig));
     QCOMPARE(qmsc.osType, static_cast<QMakeStepConfig::OsType>(osType));
-    QCOMPARE(qmsc.linkQmlDebuggingQQ2, linkQmlDebuggingQQ2);
-    QCOMPARE(qmsc.useQtQuickCompiler, useQtQuickCompiler);
-    QCOMPARE(qmsc.separateDebugInfo, separateDebugInfo);
+    QCOMPARE(qmsc.linkQmlDebuggingQQ2 == TriState::Enabled, linkQmlDebuggingQQ2);
+    QCOMPARE(qmsc.useQtQuickCompiler == TriState::Enabled, useQtQuickCompiler);
+    QCOMPARE(qmsc.separateDebugInfo == TriState::Enabled, separateDebugInfo);
 }
 #endif

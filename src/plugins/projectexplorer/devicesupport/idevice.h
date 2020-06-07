@@ -31,6 +31,7 @@
 #include <utils/hostosinfo.h>
 
 #include <QAbstractSocket>
+#include <QCoreApplication>
 #include <QList>
 #include <QObject>
 #include <QSharedPointer>
@@ -60,8 +61,6 @@ class DeviceProcess;
 class DeviceProcessList;
 class Kit;
 class Runnable;
-class RunControl;
-class RunWorker;
 
 namespace Internal { class IDevicePrivate; }
 
@@ -134,6 +133,7 @@ public:
 
     QString displayName() const;
     void setDisplayName(const QString &name);
+    void setDefaultDisplayName(const QString &name);
 
     // Provide some information on the device suitable for formated
     // output, e.g. in tool tips. Get a list of name value pairs.
@@ -155,7 +155,9 @@ public:
 
     virtual bool isCompatibleWith(const Kit *k) const;
 
-    virtual QString displayType() const = 0;
+    QString displayType() const;
+    Utils::OsType osType() const;
+
     virtual IDeviceWidget *createWidget() = 0;
 
     struct DeviceAction {
@@ -173,14 +175,11 @@ public:
     virtual DeviceProcessList *createProcessListModel(QObject *parent = nullptr) const;
     virtual bool hasDeviceTester() const { return false; }
     virtual DeviceTester *createDeviceTester() const;
-    virtual Utils::OsType osType() const;
 
     virtual bool canCreateProcess() const { return false; }
     virtual DeviceProcess *createProcess(QObject *parent) const;
     virtual DeviceProcessSignalOperation::Ptr signalOperation() const = 0;
     virtual DeviceEnvironmentFetcher::Ptr environmentFetcher() const;
-
-    virtual std::function<RunWorker *(RunControl *)> workerCreator(Core::Id) const { return {}; }
 
     enum DeviceState { DeviceReadyToUse, DeviceConnected, DeviceDisconnected, DeviceStateUnknown };
     DeviceState deviceState() const;
@@ -227,6 +226,8 @@ protected:
 
     using OpenTerminal = std::function<void(const Utils::Environment &, const QString &)>;
     void setOpenTerminal(const OpenTerminal &openTerminal);
+    void setDisplayType(const QString &type);
+    void setOsType(Utils::OsType osType);
 
 private:
     IDevice(const IDevice &) = delete;

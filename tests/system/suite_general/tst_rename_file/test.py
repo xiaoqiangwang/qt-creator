@@ -28,7 +28,7 @@ source("../../shared/qtcreator.py")
 def main():
     # prepare example project
     projectName = "adding"
-    sourceExample = os.path.join(Qt5Path.examplesPath(Targets.DESKTOP_5_6_1_DEFAULT),
+    sourceExample = os.path.join(Qt5Path.examplesPath(Targets.DESKTOP_5_14_1_DEFAULT),
                                  "qml", "referenceexamples", "adding")
     proFile = projectName + ".pro"
     if not neededFilePresent(os.path.join(sourceExample, proFile)):
@@ -53,16 +53,15 @@ def main():
                                ["Resources", "adding.qrc"],
                                ["QML", "example.qml"]]:
         filenames = ["ABCD" + filename.upper(), "abcd" + filename.lower(), "test", "TEST", filename]
-        if (filename.endswith(".qrc") and JIRA.isBugStillOpen(20101)):
-            filenames.remove("ABCD" + filename.upper())
+        if filename.endswith(".h"):
+            filenames.remove("TEST")
+        if filename.endswith(".qrc"):
+            filenames = ["ABCD" + filename.lower(), "abcd" + filename.lower(), filename]
         previous = filenames[-1]
         for filename in filenames:
             tempFiletype = filetype
-            if (filetype == "Resources" and previous in ("test", "TEST")
-                or filetype == "QML" and not previous.endswith(".qml")):
+            if filetype == "QML" and not previous.endswith(".qml"):
                 tempFiletype = "Other files"
-            elif filetype == "Sources" and previous in ("test", "TEST"):
-                tempFiletype = "Headers"
             renameFile(templateDir, usedProFile, projectName + "." + tempFiletype,
                        previous, filename)
             # QTCREATORBUG-13176 does update the navigator async
@@ -96,25 +95,25 @@ def renameFile(projectDir, proFile, branch, oldname, newname):
         itemWithWildcard = addBranchWildcardToRoot(itemText)
         waitForObjectItem(treeview, itemWithWildcard, 10000)
         openItemContextMenu(treeview, itemWithWildcard, 5, 5, 0)
-    # hack for Squish5/Qt5.2 problems of handling menus on Mac - remove asap
-    if platform.system() == 'Darwin':
-        waitFor("macHackActivateContextMenuItem('Rename...')", 5000)
+    if oldname.lower().endswith(".qrc"):
+        menu = ":Qt Creator.Project.Menu.Folder_QMenu"
     else:
-        if oldname.lower().endswith(".qrc"):
-            menu = ":Qt Creator.Project.Menu.Folder_QMenu"
-        else:
-            menu = ":Qt Creator.Project.Menu.File_QMenu"
-        activateItem(waitForObjectItem(menu, "Rename..."))
+        menu = ":Qt Creator.Project.Menu.File_QMenu"
+    activateItem(waitForObjectItem(menu, "Rename..."))
     replaceEdit = waitForObject(":Qt Creator_Utils::NavigationTreeView::QExpandingLineEdit")
     test.compare(replaceEdit.selectedText, oldname.rsplit(".", 1)[0],
                  "Only the filename without the extension is selected?")
     replaceEditorContent(replaceEdit, newname)
     type(replaceEdit, "<Return>")
+    if oldname == "adding.qrc":
+        clickButton(waitForObject("{text='No' type='QPushButton' unnamed='1' visible='1' "
+                                  "window={type='QMessageBox' unnamed='1' visible='1' "
+                                  "        windowTitle='Rename More Files?'}}"))
     test.verify(waitFor("os.path.exists(newFilePath)", 1000),
                 "Verify that file with new name exists: %s" % newFilePath)
     test.compare(readFile(newFilePath), oldFileText,
                  "Comparing content of file before and after renaming")
-    test.verify(waitFor("newname in safeReadFile(proFile)", 2000),
+    test.verify(waitFor("' ' + newname in safeReadFile(proFile)", 2000),
                 "Verify that new filename '%s' was added to pro-file." % newname)
     if oldname not in newname:
         test.verify(oldname not in readFile(proFile),

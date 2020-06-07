@@ -25,7 +25,6 @@
 
 import QtQuick 2.1
 import StudioControls 1.0 as StudioControls
-import QtQuick.Controls.Styles 1.1
 
 StudioControls.CheckBox {
     id: checkBox
@@ -41,6 +40,7 @@ StudioControls.CheckBox {
     actionIndicator.icon.color: extFuncLogic.color
     actionIndicator.icon.text: extFuncLogic.glyph
     actionIndicator.onClicked: extFuncLogic.show()
+    actionIndicator.forceVisible: extFuncLogic.menuVisible
 
     labelColor: colorLogic.textColor
     ColorLogic {

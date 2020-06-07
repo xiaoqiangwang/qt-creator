@@ -61,6 +61,7 @@ public:
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
+    void sort(int column, Qt::SortOrder order = Qt::AscendingOrder) override;
 
     Q_SCRIPTABLE bool isDefaultVirgin() const;
 
@@ -78,6 +79,10 @@ public slots:
 
 private:
     void runSessionNameInputDialog(ProjectExplorer::Internal::SessionNameInputDialog *sessionInputDialog, std::function<void(const QString &)> createSession);
+
+    QStringList m_sortedSessions;
+    int m_currentSortColumn = 0;
+    Qt::SortOrder m_currentSortOrder = Qt::AscendingOrder;
 };
 
 } // namespace Internal

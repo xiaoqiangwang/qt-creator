@@ -33,20 +33,21 @@ QT_BEGIN_NAMESPACE
 class QLineEdit;
 class QListWidget;
 class QListWidgetItem;
+class QRadioButton;
 QT_END_NAMESPACE
 
 namespace Utils {
 class CommandLine;
-class PathChooser;
 } // Utils
 
-namespace ProjectExplorer { class ToolChain; }
+namespace ProjectExplorer {
+class RunConfiguration;
+} // ProjectManager
 
 namespace CMakeProjectManager {
 namespace Internal {
 
 class CMakeBuildConfiguration;
-class CMakeRunConfiguration;
 class CMakeBuildStepFactory;
 
 class CMakeBuildStep : public ProjectExplorer::AbstractProcessStep
@@ -55,19 +56,20 @@ class CMakeBuildStep : public ProjectExplorer::AbstractProcessStep
     friend class CMakeBuildStepFactory;
 
 public:
-    explicit CMakeBuildStep(ProjectExplorer::BuildStepList *bsl);
+    CMakeBuildStep(ProjectExplorer::BuildStepList *bsl, Core::Id id);
 
     CMakeBuildConfiguration *cmakeBuildConfiguration() const;
 
     QString buildTarget() const;
     bool buildsBuildTarget(const QString &target) const;
     void setBuildTarget(const QString &target);
-    void clearBuildTargets();
 
     QString toolArguments() const;
     void setToolArguments(const QString &list);
 
-    Utils::CommandLine cmakeCommand(CMakeRunConfiguration *rc) const;
+    Utils::CommandLine cmakeCommand(ProjectExplorer::RunConfiguration *rc) const;
+
+    QStringList knownBuildTargets();
 
     QVariantMap toMap() const override;
 
@@ -78,7 +80,6 @@ public:
     static QStringList specialTargets();
 
 signals:
-    void cmakeCommandChanged();
     void targetToBuildChanged();
     void buildTargetsChanged();
 
@@ -104,7 +105,6 @@ private:
     void handleProjectWasParsed(bool success);
 
     void handleBuildTargetChanges(bool success);
-    CMakeRunConfiguration *targetsActiveRunConfiguration() const;
 
     QMetaObject::Connection m_runTrigger;
 
@@ -128,7 +128,9 @@ private:
     void toolArgumentsEdited();
     void updateDetails();
     void buildTargetsChanged();
-    void selectedBuildTargetsChanged();
+    void updateBuildTarget();
+
+    QRadioButton *itemWidget(QListWidgetItem *item);
 
     CMakeBuildStep *m_buildStep;
     QLineEdit *m_toolArguments;

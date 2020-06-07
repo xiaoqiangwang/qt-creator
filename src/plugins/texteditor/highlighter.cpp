@@ -29,10 +29,13 @@
 #include "textdocumentlayout.h"
 #include "tabsettings.h"
 #include "texteditorsettings.h"
+#include "texteditor.h"
 
+#include <coreplugin/editormanager/documentmodel.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/messagemanager.h>
 #include <utils/mimetypes/mimedatabase.h>
+#include <utils/stylehelper.h>
 #include <utils/qtcassert.h>
 
 #include <DefinitionDownloader>
@@ -248,7 +251,7 @@ void Highlighter::addCustomHighlighterPath(const Utils::FilePath &path)
     highlightRepository()->addCustomSearchPath(path.toString());
 }
 
-void Highlighter::updateDefinitions(std::function<void()> callback) {
+void Highlighter::downloadDefinitions(std::function<void()> callback) {
     auto downloader =
         new KSyntaxHighlighting::DefinitionDownloader(highlightRepository());
     connect(downloader, &KSyntaxHighlighting::DefinitionDownloader::done,
@@ -256,6 +259,7 @@ void Highlighter::updateDefinitions(std::function<void()> callback) {
                 Core::MessageManager::write(tr("Highlighter updates: done"),
                                             Core::MessageManager::ModeSwitch);
                 downloader->deleteLater();
+                reload();
                 if (callback)
                     callback();
             });
@@ -267,6 +271,17 @@ void Highlighter::updateDefinitions(std::function<void()> callback) {
                                             Core::MessageManager::ModeSwitch);
             });
     downloader->start();
+}
+
+void Highlighter::reload()
+{
+    highlightRepository()->reload();
+    for (auto editor : Core::DocumentModel::editorsForOpenedDocuments()) {
+        if (auto textEditor = qobject_cast<BaseTextEditor *>(editor)) {
+            if (qobject_cast<Highlighter *>(textEditor->textDocument()->syntaxHighlighter()))
+                textEditor->editorWidget()->configureGenericHighlighter();
+        }
+    }
 }
 
 void Highlighter::handleShutdown()
@@ -286,12 +301,14 @@ static bool isClosingParenthesis(QChar c)
 
 void Highlighter::highlightBlock(const QString &text)
 {
-    if (!definition().isValid())
+    if (!definition().isValid()) {
+        formatSpaces(text);
         return;
+    }
     QTextBlock block = currentBlock();
     KSyntaxHighlighting::State state;
     TextDocumentLayout::setBraceDepth(block, TextDocumentLayout::braceDepth(block.previous()));
-    if (TextBlockUserData *data = TextDocumentLayout::testUserData(block)) {
+    if (TextBlockUserData *data = TextDocumentLayout::textUserData(block)) {
         state = data->syntaxState();
         data->setFoldingStartIncluded(false);
         data->setFoldingEndIncluded(false);
@@ -324,7 +341,40 @@ void Highlighter::highlightBlock(const QString &text)
 
 void Highlighter::applyFormat(int offset, int length, const KSyntaxHighlighting::Format &format)
 {
-    setFormat(offset, length, formatForCategory(format.textStyle()));
+    const KSyntaxHighlighting::Theme defaultTheme;
+    QTextCharFormat qformat = formatForCategory(format.textStyle());
+
+    if (format.hasTextColor(defaultTheme)) {
+        const QColor textColor = format.textColor(defaultTheme);
+        if (format.hasBackgroundColor(defaultTheme)) {
+            const QColor backgroundColor = format.hasBackgroundColor(defaultTheme);
+            if (Utils::StyleHelper::isReadableOn(backgroundColor, textColor)) {
+                qformat.setForeground(textColor);
+                qformat.setBackground(backgroundColor);
+            } else if (Utils::StyleHelper::isReadableOn(qformat.background().color(), textColor)) {
+                qformat.setForeground(textColor);
+            }
+        } else if (Utils::StyleHelper::isReadableOn(qformat.background().color(), textColor)) {
+            qformat.setForeground(textColor);
+        }
+    } else if (format.hasBackgroundColor(defaultTheme)) {
+        const QColor backgroundColor = format.hasBackgroundColor(defaultTheme);
+        if (Utils::StyleHelper::isReadableOn(backgroundColor, qformat.foreground().color()))
+            qformat.setBackground(backgroundColor);
+    }
+
+    if (format.isBold(defaultTheme))
+        qformat.setFontWeight(QFont::Bold);
+
+    if (format.isItalic(defaultTheme))
+        qformat.setFontItalic(true);
+
+    if (format.isUnderline(defaultTheme))
+        qformat.setFontUnderline(true);
+
+    if (format.isStrikeThrough(defaultTheme))
+        qformat.setFontStrikeOut(true);
+    setFormat(offset, length, qformat);
 }
 
 void Highlighter::applyFolding(int offset,

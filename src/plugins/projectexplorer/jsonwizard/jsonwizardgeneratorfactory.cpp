@@ -36,10 +36,10 @@
 #include <coreplugin/dialogs/promptoverwritedialog.h>
 #include <texteditor/icodestylepreferences.h>
 #include <texteditor/icodestylepreferencesfactory.h>
-#include <texteditor/normalindenter.h>
 #include <texteditor/storagesettings.h>
 #include <texteditor/tabsettings.h>
 #include <texteditor/texteditorsettings.h>
+#include <texteditor/textindenter.h>
 
 #include <utils/algorithm.h>
 #include <utils/mimetypes/mimedatabase.h>
@@ -80,7 +80,7 @@ static ICodeStylePreferences *codeStylePreferences(Project *project, Id language
 
 bool JsonWizardGenerator::formatFile(const JsonWizard *wizard, GeneratedFile *file, QString *errorMessage)
 {
-    Q_UNUSED(errorMessage);
+    Q_UNUSED(errorMessage)
 
     if (file->isBinary() || file->contents().isEmpty())
         return true; // nothing to do
@@ -101,7 +101,7 @@ bool JsonWizardGenerator::formatFile(const JsonWizard *wizard, GeneratedFile *fi
         indenter->setFileName(Utils::FilePath::fromString(file->path()));
     }
     if (!indenter)
-        indenter = new NormalIndenter(&doc);
+        indenter = new TextIndenter(&doc);
     ICodeStylePreferences *codeStylePrefs = codeStylePreferences(baseProject, languageId);
     indenter->setCodeStylePreferences(codeStylePrefs);
 
@@ -124,33 +124,33 @@ bool JsonWizardGenerator::formatFile(const JsonWizard *wizard, GeneratedFile *fi
 
 bool JsonWizardGenerator::writeFile(const JsonWizard *wizard, GeneratedFile *file, QString *errorMessage)
 {
-    Q_UNUSED(wizard);
-    Q_UNUSED(file);
-    Q_UNUSED(errorMessage);
+    Q_UNUSED(wizard)
+    Q_UNUSED(file)
+    Q_UNUSED(errorMessage)
     return true;
 }
 
 bool JsonWizardGenerator::postWrite(const JsonWizard *wizard, GeneratedFile *file, QString *errorMessage)
 {
-    Q_UNUSED(wizard);
-    Q_UNUSED(file);
-    Q_UNUSED(errorMessage);
+    Q_UNUSED(wizard)
+    Q_UNUSED(file)
+    Q_UNUSED(errorMessage)
     return true;
 }
 
 bool JsonWizardGenerator::polish(const JsonWizard *wizard, GeneratedFile *file, QString *errorMessage)
 {
-    Q_UNUSED(wizard);
-    Q_UNUSED(file);
-    Q_UNUSED(errorMessage);
+    Q_UNUSED(wizard)
+    Q_UNUSED(file)
+    Q_UNUSED(errorMessage)
     return true;
 }
 
 bool JsonWizardGenerator::allDone(const JsonWizard *wizard, GeneratedFile *file, QString *errorMessage)
 {
-    Q_UNUSED(wizard);
-    Q_UNUSED(file);
-    Q_UNUSED(errorMessage);
+    Q_UNUSED(wizard)
+    Q_UNUSED(file)
+    Q_UNUSED(errorMessage)
     return true;
 }
 
@@ -309,9 +309,9 @@ JsonWizardGenerator *FileGeneratorFactory::create(Id typeId, const QVariant &dat
                                                   const QString &path, Id platform,
                                                   const QVariantMap &variables)
 {
-    Q_UNUSED(path);
-    Q_UNUSED(platform);
-    Q_UNUSED(variables);
+    Q_UNUSED(path)
+    Q_UNUSED(platform)
+    Q_UNUSED(variables)
 
     QTC_ASSERT(canCreate(typeId), return nullptr);
 
@@ -349,9 +349,9 @@ JsonWizardGenerator *ScannerGeneratorFactory::create(Id typeId, const QVariant &
                                                      const QString &path, Id platform,
                                                      const QVariantMap &variables)
 {
-    Q_UNUSED(path);
-    Q_UNUSED(platform);
-    Q_UNUSED(variables);
+    Q_UNUSED(path)
+    Q_UNUSED(platform)
+    Q_UNUSED(variables)
 
     QTC_ASSERT(canCreate(typeId), return nullptr);
 

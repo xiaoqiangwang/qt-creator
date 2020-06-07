@@ -34,13 +34,14 @@ namespace ProjectExplorer {
 namespace Internal {
 
 enum class TerminalMode { On, Off, Smart };
+enum class AppOutputPaneMode { FlashOnOutput, PopupOnOutput, PopupOnFirstOutput };
+enum class BuildBeforeRunMode { Off, WholeProject, AppOnly };
+enum class StopBeforeBuild { None, SameProject, All, SameBuildDir, SameApp };
 
 class ProjectExplorerSettings
 {
 public:
-    enum StopBeforeBuild { StopNone = 0, StopSameProject, StopAll, StopSameBuildDir };
-
-    bool buildBeforeDeploy = true;
+    BuildBeforeRunMode buildBeforeDeploy = BuildBeforeRunMode::WholeProject;
     bool deployBeforeRun = true;
     bool saveBeforeBuild = false;
     bool useJom = true;
@@ -50,9 +51,10 @@ public:
     bool addLibraryPathsToRunEnv = true;
     bool closeSourceFilesWithProject = true;
     bool clearIssuesOnRebuild = true;
-    StopBeforeBuild stopBeforeBuild = StopBeforeBuild::StopNone;
+    bool abortBuildAllOnError = true;
+    bool lowBuildPriority = false;
+    StopBeforeBuild stopBeforeBuild = StopBeforeBuild::None;
     TerminalMode terminalMode = TerminalMode::Smart;
-    QString buildDirectoryTemplate;
 
     // Add a UUid which is used to identify the development environment.
     // This is used to warn the user when he is trying to open a .user file that was created
@@ -75,14 +77,15 @@ inline bool operator==(const ProjectExplorerSettings &p1, const ProjectExplorerS
             && p1.terminalMode == p2.terminalMode
             && p1.closeSourceFilesWithProject == p2.closeSourceFilesWithProject
             && p1.clearIssuesOnRebuild == p2.clearIssuesOnRebuild
-            && p1.buildDirectoryTemplate == p2.buildDirectoryTemplate;
+            && p1.abortBuildAllOnError == p2.abortBuildAllOnError
+            && p1.lowBuildPriority == p2.lowBuildPriority;
 }
 
 class AppOutputSettings
 {
 public:
-    bool popUpForRunOutput = true;
-    bool popUpForDebugOutput = false;
+    AppOutputPaneMode runOutputMode = AppOutputPaneMode::PopupOnFirstOutput;
+    AppOutputPaneMode debugOutputMode = AppOutputPaneMode::FlashOnOutput;
     bool cleanOldOutput = false;
     bool mergeChannels = false;
     bool wrapOutput = false;

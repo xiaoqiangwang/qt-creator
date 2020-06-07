@@ -35,11 +35,11 @@
 using CppTools::Internal::ProjectInfoGenerator;
 using CppTools::ProjectFile;
 using CppTools::ProjectInfo;
-using CppTools::ProjectUpdateInfo;
 using CppTools::ProjectPart;
-using CppTools::RawProjectPart;
 
 using ProjectExplorer::Macros;
+using ProjectExplorer::ProjectUpdateInfo;
+using ProjectExplorer::RawProjectPart;
 using ProjectExplorer::ToolChain;
 
 using testing::Eq;

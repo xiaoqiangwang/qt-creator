@@ -28,6 +28,7 @@
 #include <utils/fileutils.h>
 #include <utils/macroexpander.h>
 #include <utils/qtcprocess.h>
+#include <utils/theme/theme.h>
 
 #include <QDir>
 
@@ -54,33 +55,17 @@ ProcessParameters::ProcessParameters() :
 {
 }
 
+/*!
+    Sets the command to run.
+*/
 void ProcessParameters::setCommandLine(const CommandLine &cmdLine)
 {
-    m_command = cmdLine.executable();
-    m_arguments = cmdLine.arguments();
+    m_command = cmdLine;
     m_effectiveCommand.clear();
     m_effectiveArguments.clear();
+    resolveAll();
 }
 
-/*!
-    Sets the executable to run.
-*/
-
-void ProcessParameters::setCommand(const Utils::FilePath &cmd)
-{
-    m_command = cmd;
-    m_effectiveCommand.clear();
-}
-
-/*!
-    Sets the command line arguments used by the process.
-*/
-
-void ProcessParameters::setArguments(const QString &arguments)
-{
-    m_arguments = arguments;
-    m_effectiveArguments.clear();
-}
 
 /*!
     Sets the \a workingDirectory for the process for a build configuration.
@@ -132,7 +117,7 @@ FilePath ProcessParameters::effectiveWorkingDirectory() const
 FilePath ProcessParameters::effectiveCommand() const
 {
     if (m_effectiveCommand.isEmpty()) {
-        FilePath cmd = m_command;
+        FilePath cmd = m_command.executable();
         if (m_macroExpander)
             cmd = m_macroExpander->expand(cmd);
         m_effectiveCommand =
@@ -158,7 +143,7 @@ bool ProcessParameters::commandMissing() const
 QString ProcessParameters::effectiveArguments() const
 {
     if (m_effectiveArguments.isEmpty()) {
-        m_effectiveArguments = m_arguments;
+        m_effectiveArguments = m_command.arguments();
         if (m_macroExpander)
             m_effectiveArguments = m_macroExpander->expand(m_effectiveArguments);
     }
@@ -167,7 +152,7 @@ QString ProcessParameters::effectiveArguments() const
 
 QString ProcessParameters::prettyCommand() const
 {
-    QString cmd = m_command.toString();
+    QString cmd = m_command.executable().toString();
     if (m_macroExpander)
         cmd = m_macroExpander->expand(cmd);
     return Utils::FilePath::fromString(cmd).fileName();
@@ -185,8 +170,19 @@ QString ProcessParameters::prettyArguments() const
     return args.toString();
 }
 
+static QString invalidCommandMessage(const QString &displayName)
+{
+    return QString("<b>%1:</b> <font color='%3'>%2</font>")
+                    .arg(displayName,
+                         QtcProcess::tr("Invalid command"),
+                         creatorTheme()->color(Theme::TextColorError).name());
+}
+
 QString ProcessParameters::summary(const QString &displayName) const
 {
+    if (m_commandMissing)
+        return invalidCommandMessage(displayName);
+
     return QString::fromLatin1("<b>%1:</b> %2 %3")
             .arg(displayName,
                  Utils::QtcProcess::quoteArg(prettyCommand()),
@@ -195,6 +191,9 @@ QString ProcessParameters::summary(const QString &displayName) const
 
 QString ProcessParameters::summaryInWorkdir(const QString &displayName) const
 {
+    if (m_commandMissing)
+        return invalidCommandMessage(displayName);
+
     return QString::fromLatin1("<b>%1:</b> %2 %3 in %4")
             .arg(displayName,
                  Utils::QtcProcess::quoteArg(prettyCommand()),

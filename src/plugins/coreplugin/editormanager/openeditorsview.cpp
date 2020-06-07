@@ -63,6 +63,7 @@ OpenEditorsWidget::OpenEditorsWidget()
 
     connect(this, &OpenDocumentsTreeView::customContextMenuRequested,
             this, &OpenEditorsWidget::contextMenuRequested);
+    updateCurrentItem(EditorManager::currentEditor());
 }
 
 OpenEditorsWidget::~OpenEditorsWidget() = default;
@@ -91,7 +92,7 @@ void OpenEditorsWidget::handleActivated(const QModelIndex &index)
         // work around a bug in itemviews where the delegate wouldn't get the QStyle::State_MouseOver
         QPoint cursorPos = QCursor::pos();
         QWidget *vp = viewport();
-        QMouseEvent e(QEvent::MouseMove, vp->mapFromGlobal(cursorPos), cursorPos, Qt::NoButton, nullptr, nullptr);
+        QMouseEvent e(QEvent::MouseMove, vp->mapFromGlobal(cursorPos), cursorPos, Qt::NoButton, {}, {});
         QCoreApplication::sendEvent(vp, &e);
     }
 }
@@ -133,7 +134,8 @@ OpenEditorsViewFactory::OpenEditorsViewFactory()
 {
     setId("Open Documents");
     setDisplayName(OpenEditorsWidget::tr("Open Documents"));
-    setActivationSequence(QKeySequence(useMacShortcuts ? tr("Meta+O") : tr("Alt+O")));
+    setActivationSequence(QKeySequence(useMacShortcuts ? OpenEditorsWidget::tr("Meta+O")
+                                                       : OpenEditorsWidget::tr("Alt+O")));
     setPriority(200);
 }
 

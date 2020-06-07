@@ -131,9 +131,57 @@ void PropertyEditorQmlBackend::setupPropertyEditorValue(const PropertyName &name
 
 }
 
-QVariant properDefaultLayoutAttachedProperties(const QmlObjectNode &qmlObjectNode, const PropertyName &propertyName)
+PropertyName auxNamePostFix(const PropertyName &propertyName)
 {
-    QVariant value = qmlObjectNode.modelValue(propertyName);
+    return propertyName + "__AUX";
+}
+
+QVariant properDefaultAuxiliaryProperties(const QmlObjectNode &qmlObjectNode,
+                                          const PropertyName &propertyName)
+{
+    const ModelNode node = qmlObjectNode.modelNode();
+    const PropertyName auxName = propertyName;
+
+    if (node.hasAuxiliaryData(auxName))
+        return node.auxiliaryData(auxName);
+    if (propertyName == "transitionColor")
+        return QColor(Qt::red);
+    if (propertyName == "areaColor")
+        return QColor(Qt::red);
+    if (propertyName == "blockColor")
+        return QColor(Qt::red);
+    if (propertyName == "areaFillColor")
+        return QColor(Qt::transparent);
+    else if (propertyName == "color")
+        return QColor(Qt::red);
+    else if (propertyName == "fillColor")
+        return QColor(Qt::transparent);
+    else if (propertyName == "width")
+        return 4;
+    else if (propertyName == "dash")
+        return false;
+    else if (propertyName == "inOffset")
+        return 0;
+    else if (propertyName == "outOffset")
+        return 0;
+    else if (propertyName == "breakPoint")
+        return 50;
+    else if (propertyName == "customId")
+        return QString();
+    else if (propertyName == "joinConnection")
+        return false;
+
+    return {};
+}
+
+QVariant properDefaultLayoutAttachedProperties(const QmlObjectNode &qmlObjectNode,
+                                               const PropertyName &propertyName)
+{
+    const QVariant value = qmlObjectNode.modelValue("Layout." + propertyName);
+    QVariant marginsValue = qmlObjectNode.modelValue("Layout.margins");
+
+    if (!marginsValue.isValid())
+        marginsValue.setValue(0.0);
 
     if (value.isValid())
         return value;
@@ -153,11 +201,10 @@ QVariant properDefaultLayoutAttachedProperties(const QmlObjectNode &qmlObjectNod
      if ("columnSpan" == propertyName || "rowSpan" == propertyName)
          return 1;
 
-     if ("topMargin" == propertyName || "bottomMargin" == propertyName)
-         return 0;
-
-     if ("leftMargin" == propertyName || "rightMargin" == propertyName)
-         return 0;
+     if ("topMargin" == propertyName || "bottomMargin" == propertyName ||
+         "leftMargin" == propertyName || "rightMargin" == propertyName ||
+         "margins" == propertyName)
+         return marginsValue;
 
     return QVariant();
 }
@@ -169,12 +216,43 @@ void PropertyEditorQmlBackend::setupLayoutAttachedProperties(const QmlObjectNode
         static const PropertyNameList propertyNames =
             {"alignment", "column", "columnSpan", "fillHeight", "fillWidth", "maximumHeight", "maximumWidth",
                 "minimumHeight", "minimumWidth", "preferredHeight", "preferredWidth", "row", "rowSpan",
-                "topMargin", "bottomMargin", "leftMargin", "rightMargin"};
+                "topMargin", "bottomMargin", "leftMargin", "rightMargin", "margins"};
 
-        foreach (const PropertyName &propertyName, propertyNames) {
+        for (const PropertyName &propertyName : propertyNames) {
             createPropertyEditorValue(qmlObjectNode, "Layout." + propertyName, properDefaultLayoutAttachedProperties(qmlObjectNode, propertyName), propertyEditor);
         }
     }
+}
+
+void PropertyEditorQmlBackend::setupAuxiliaryProperties(const QmlObjectNode &qmlObjectNode,
+                                                        PropertyEditorView *propertyEditor)
+{
+
+    const QmlItemNode itemNode(qmlObjectNode);
+
+    PropertyNameList propertyNames;
+
+    propertyNames.append("customId");
+
+    if (itemNode.isFlowTransition()) {
+        propertyNames.append({"color", "width", "inOffset", "outOffset", "dash", "breakPoint"});
+    } else if (itemNode.isFlowItem()) {
+        propertyNames.append({"color", "width", "inOffset", "outOffset", "joinConnection"});
+    } else if (itemNode.isFlowActionArea()) {
+        propertyNames.append({"color", "width", "fillColor", "outOffset", "dash"});
+    } else if (itemNode.isFlowDecision()) {
+        propertyNames.append({"color", "width", "fillColor", "dash"});
+    } else if (itemNode.isFlowWildcard()) {
+        propertyNames.append({"color", "width", "fillColor", "dash"});
+    } else if (itemNode.isFlowView()) {
+        propertyNames.append({"transitionColor", "areaColor", "areaFillColor", "blockColor" });
+    }
+
+    for (const PropertyName &propertyName : propertyNames) {
+        createPropertyEditorValue(qmlObjectNode, auxNamePostFix(propertyName),
+                                  properDefaultAuxiliaryProperties(qmlObjectNode, propertyName), propertyEditor);
+    }
+
 }
 
 void PropertyEditorQmlBackend::createPropertyEditorValue(const QmlObjectNode &qmlObjectNode,
@@ -214,19 +292,13 @@ void PropertyEditorQmlBackend::createPropertyEditorValue(const QmlObjectNode &qm
     }
 }
 
-void PropertyEditorQmlBackend::setValue(const QmlObjectNode & qmlObjectNode, const PropertyName &name, const QVariant &value)
+void PropertyEditorQmlBackend::setValue(const QmlObjectNode & , const PropertyName &name, const QVariant &value)
 {
     PropertyName propertyName = name;
     propertyName.replace('.', '_');
     auto propertyValue = qobject_cast<PropertyEditorValue*>(variantToQObject(m_backendValuesPropertyMap.value(QString::fromUtf8(propertyName))));
-    if (propertyValue) {
+    if (propertyValue)
         propertyValue->setValue(value);
-
-        if (!qmlObjectNode.hasBindingProperty(name))
-            propertyValue->setExpression(value.toString());
-        else
-            propertyValue->setExpression(qmlObjectNode.expression(name));
-    }
 }
 
 QQmlContext *PropertyEditorQmlBackend::context() {
@@ -270,7 +342,7 @@ void PropertyEditorQmlBackend::setup(const QmlObjectNode &qmlObjectNode, const Q
 
         qCInfo(propertyEditorBenchmark) << Q_FUNC_INFO;
 
-        QTime time;
+        QElapsedTimer time;
         if (propertyEditorBenchmark().isInfoEnabled())
             time.start();
 
@@ -278,6 +350,7 @@ void PropertyEditorQmlBackend::setup(const QmlObjectNode &qmlObjectNode, const Q
             createPropertyEditorValue(qmlObjectNode, propertyName, qmlObjectNode.instanceValue(propertyName), propertyEditor);
 
         setupLayoutAttachedProperties(qmlObjectNode, propertyEditor);
+        setupAuxiliaryProperties(qmlObjectNode, propertyEditor);
 
         // model node
         m_backendModelNode.setup(qmlObjectNode.modelNode());
@@ -306,9 +379,12 @@ void PropertyEditorQmlBackend::setup(const QmlObjectNode &qmlObjectNode, const Q
 
         // anchors
         m_backendAnchorBinding.setup(qmlObjectNode.modelNode());
-        context()->setContextProperty(QLatin1String("anchorBackend"), &m_backendAnchorBinding);
-
-        context()->setContextProperty(QLatin1String("transaction"), m_propertyEditorTransaction.data());
+        context()->setContextProperties(
+            QVector<QQmlContext::PropertyPair>{
+                {{"anchorBackend"}, QVariant::fromValue(&m_backendAnchorBinding)},
+                {{"transaction"}, QVariant::fromValue(m_propertyEditorTransaction.data())}
+            }
+        );
 
         qCInfo(propertyEditorBenchmark) << "anchors:" << time.elapsed();
 
@@ -321,7 +397,12 @@ void PropertyEditorQmlBackend::setup(const QmlObjectNode &qmlObjectNode, const Q
         contextObject()->setStateName(stateName);
         if (!qmlObjectNode.isValid())
             return;
+
         context()->setContextProperty(QLatin1String("propertyCount"), QVariant(qmlObjectNode.modelNode().properties().count()));
+
+        QStringList stateNames = qmlObjectNode.allStateNames();
+        stateNames.prepend("base state");
+        contextObject()->setAllStateNames(stateNames);
 
         contextObject()->setIsBaseState(qmlObjectNode.isInBaseState());
 
@@ -379,9 +460,13 @@ void PropertyEditorQmlBackend::initialSetup(const TypeName &typeName, const QUrl
     QObject::connect(valueObject, &PropertyEditorValue::valueChanged, &backendValuesPropertyMap(), &DesignerPropertyMap::valueChanged);
     m_backendValuesPropertyMap.insert(QLatin1String("id"), QVariant::fromValue(valueObject));
 
-    context()->setContextProperty(QLatin1String("anchorBackend"), &m_backendAnchorBinding);
-    context()->setContextProperty(QLatin1String("modelNodeBackend"), &m_backendModelNode);
-    context()->setContextProperty(QLatin1String("transaction"), m_propertyEditorTransaction.data());
+    context()->setContextProperties(
+        QVector<QQmlContext::PropertyPair>{
+            {{"anchorBackend"}, QVariant::fromValue(&m_backendAnchorBinding)},
+            {{"modelNodeBackend"}, QVariant::fromValue(&m_backendModelNode)},
+            {{"transaction"}, QVariant::fromValue(m_propertyEditorTransaction.data())}
+        }
+    );
 
     contextObject()->setSpecificsUrl(qmlSpecificsFile);
 
@@ -629,7 +714,21 @@ void PropertyEditorQmlBackend::setValueforLayoutAttachedProperties(const QmlObje
 {
     PropertyName propertyName = name;
     propertyName.replace("Layout.", "");
-    setValue(qmlObjectNode,  name, properDefaultLayoutAttachedProperties(qmlObjectNode, propertyName));
+    setValue(qmlObjectNode, name, properDefaultLayoutAttachedProperties(qmlObjectNode, propertyName));
+
+    if (propertyName == "margins") {
+        const QVariant marginsValue = properDefaultLayoutAttachedProperties(qmlObjectNode, "margins");
+        setValue(qmlObjectNode, "Layout.topMargin", marginsValue);
+        setValue(qmlObjectNode, "Layout.bottomMargin", marginsValue);
+        setValue(qmlObjectNode, "Layout.leftMargin", marginsValue);
+        setValue(qmlObjectNode, "Layout.rightMargin", marginsValue);
+    }
+}
+
+void PropertyEditorQmlBackend::setValueforAuxiliaryProperties(const QmlObjectNode &qmlObjectNode, const PropertyName &name)
+{
+    const PropertyName propertyName = auxNamePostFix(name);
+     setValue(qmlObjectNode, propertyName, qmlObjectNode.modelNode().auxiliaryData(name));
 }
 
 QUrl PropertyEditorQmlBackend::getQmlUrlForMetaInfo(const NodeMetaInfo &metaInfo, TypeName &className)

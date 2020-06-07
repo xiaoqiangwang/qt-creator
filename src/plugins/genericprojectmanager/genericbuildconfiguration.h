@@ -27,8 +27,6 @@
 
 #include <projectexplorer/buildconfiguration.h>
 
-namespace Utils { class FilePath; }
-
 namespace GenericProjectManager {
 namespace Internal {
 
@@ -37,27 +35,15 @@ class GenericBuildConfiguration : public ProjectExplorer::BuildConfiguration
     Q_OBJECT
 
     friend class ProjectExplorer::BuildConfigurationFactory;
-    GenericBuildConfiguration(ProjectExplorer::Target *parent, Core::Id id);
+    GenericBuildConfiguration(ProjectExplorer::Target *target, Core::Id id);
 
-    void initialize(const ProjectExplorer::BuildInfo &info) override;
-    BuildType buildType() const override;
     void addToEnvironment(Utils::Environment &env) const final;
 };
 
-class GenericBuildConfigurationFactory : public ProjectExplorer::BuildConfigurationFactory
+class GenericBuildConfigurationFactory final : public ProjectExplorer::BuildConfigurationFactory
 {
-    Q_OBJECT
-
 public:
     GenericBuildConfigurationFactory();
-    ~GenericBuildConfigurationFactory() override;
-
-private:
-    QList<ProjectExplorer::BuildInfo> availableBuilds(const ProjectExplorer::Target *parent) const override;
-    QList<ProjectExplorer::BuildInfo> availableSetups(const ProjectExplorer::Kit *k,
-                                                      const QString &projectPath) const override;
-
-    ProjectExplorer::BuildInfo createBuildInfo(const ProjectExplorer::Kit *k, const Utils::FilePath &buildDir) const;
 };
 
 } // namespace Internal

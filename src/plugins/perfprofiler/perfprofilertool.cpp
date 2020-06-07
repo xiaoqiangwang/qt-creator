@@ -138,6 +138,7 @@ PerfProfilerTool::PerfProfilerTool()
 
     m_tracePointsButton = new QToolButton;
     m_tracePointsButton->setDefaultAction(tracePointsAction);
+    m_objectsToDelete << m_tracePointsButton;
 
     auto action = new QAction(tr("Performance Analyzer"), this);
     action->setToolTip(tr("Finds performance bottlenecks."));
@@ -150,6 +151,7 @@ PerfProfilerTool::PerfProfilerTool()
 
     m_startAction = Debugger::createStartAction();
     m_stopAction = Debugger::createStopAction();
+    m_objectsToDelete << m_startAction << m_stopAction;
 
     QObject::connect(m_startAction, &QAction::triggered, action, &QAction::triggered);
     QObject::connect(m_startAction, &QAction::changed, action, [action, tracePointsAction, this] {
@@ -157,7 +159,7 @@ PerfProfilerTool::PerfProfilerTool()
         tracePointsAction->setEnabled(m_startAction->isEnabled());
     });
 
-    connect(ProjectExplorerPlugin::instance(), &ProjectExplorerPlugin::updateRunActions,
+    connect(ProjectExplorerPlugin::instance(), &ProjectExplorerPlugin::runActionsUpdated,
             this, &PerfProfilerTool::updateRunActions);
 
     m_recordButton = new QToolButton;
@@ -169,13 +171,21 @@ PerfProfilerTool::PerfProfilerTool()
     m_recordedLabel->setProperty("panelwidget", true);
     m_delayLabel = new QLabel;
     m_delayLabel->setProperty("panelwidget", true);
+    m_objectsToDelete << m_recordButton << m_clearButton << m_filterButton << m_aggregateButton
+                      << m_recordedLabel << m_delayLabel;
 
     m_perspective.setAboutToActivateCallback([this]() { createViews(); });
     updateRunActions();
 }
 
+PerfProfilerTool::~PerfProfilerTool()
+{
+    qDeleteAll(m_objectsToDelete);
+}
+
 void PerfProfilerTool::createViews()
 {
+    m_objectsToDelete.clear();
     m_traceView = new PerfProfilerTraceView(nullptr, this);
     m_traceView->setWindowTitle(tr("Timeline"));
     connect(m_traceView, &PerfProfilerTraceView::gotoSourceLocation,
@@ -231,12 +241,10 @@ void PerfProfilerTool::createViews()
     connect(recordMenu, &QMenu::aboutToShow, recordMenu, [recordMenu] {
         recordMenu->hide();
         PerfSettings *settings = nullptr;
-        Target *target = nullptr;
-        if (auto project = ProjectExplorer::SessionManager::startupProject()) {
-            if ((target = project->activeTarget())) {
-                if (auto runConfig = target->activeRunConfiguration())
-                    settings = runConfig->currentSettings<PerfSettings>(Constants::PerfSettingsId);
-            }
+        Target *target = SessionManager::startupTarget();
+        if (target) {
+            if (auto runConfig = target->activeRunConfiguration())
+                settings = runConfig->currentSettings<PerfSettings>(Constants::PerfSettingsId);
         }
 
         PerfConfigWidget *widget = new PerfConfigWidget(
@@ -355,7 +363,6 @@ void PerfProfilerTool::createViews()
     m_perspective.addToolBarWidget(m_tracePointsButton);
 
     m_perspective.setAboutToActivateCallback(Perspective::Callback());
-    emit viewsCreated();
 }
 
 PerfProfilerTool *PerfProfilerTool::instance()
@@ -553,12 +560,12 @@ void PerfProfilerTool::gotoSourceLocation(QString filePath, int lineNumber, int 
 
 }
 
-static Utils::FilePathList collectQtIncludePaths(const ProjectExplorer::Kit *kit)
+static Utils::FilePaths collectQtIncludePaths(const ProjectExplorer::Kit *kit)
 {
     QtSupport::BaseQtVersion *qt = QtSupport::QtKitAspect::qtVersion(kit);
     if (qt == nullptr)
-        return Utils::FilePathList();
-    Utils::FilePathList paths{qt->headerPath()};
+        return Utils::FilePaths();
+    Utils::FilePaths paths{qt->headerPath()};
     QDirIterator dit(paths.first().toString(), QStringList(), QDir::Dirs | QDir::NoDotAndDotDot,
                      QDirIterator::Subdirectories);
     while (dit.hasNext()) {
@@ -573,9 +580,9 @@ static Utils::FilePath sysroot(const Kit *kit)
     return SysRootKitAspect::sysRoot(kit);
 }
 
-static Utils::FilePathList sourceFiles(const Project *currentProject = nullptr)
+static Utils::FilePaths sourceFiles(const Project *currentProject = nullptr)
 {
-    Utils::FilePathList sourceFiles;
+    Utils::FilePaths sourceFiles;
 
     // Have the current project first.
     if (currentProject)

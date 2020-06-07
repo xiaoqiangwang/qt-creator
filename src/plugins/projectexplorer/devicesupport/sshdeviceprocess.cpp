@@ -28,6 +28,7 @@
 #include "idevice.h"
 #include "../runcontrol.h"
 
+#include <coreplugin/icore.h>
 #include <ssh/sshconnection.h>
 #include <ssh/sshconnectionmanager.h>
 #include <ssh/sshremoteprocess.h>
@@ -194,15 +195,16 @@ void SshDeviceProcess::handleConnected()
         d->process->requestX11Forwarding(display);
     if (runInTerminal()) {
         d->process->requestTerminal();
-        const QStringList cmdLine = d->process->fullLocalCommandLine();
         connect(&d->consoleProcess, QOverload<QProcess::ProcessError>::of(&ConsoleProcess::error),
                 this, &DeviceProcess::error);
         connect(&d->consoleProcess, &ConsoleProcess::processStarted,
                 this, &SshDeviceProcess::handleProcessStarted);
         connect(&d->consoleProcess, &ConsoleProcess::stubStopped,
                 this, [this] { handleProcessFinished(d->consoleProcess.errorString()); });
-        d->consoleProcess.start(cmdLine.first(), cmdLine.mid(1).join(' '),
-                                ConsoleProcess::MetaCharMode::Ignore);
+        d->consoleProcess.setAbortOnMetaChars(false);
+        d->consoleProcess.setSettings(Core::ICore::settings());
+        d->consoleProcess.setCommand(d->process->fullLocalCommandLine());
+        d->consoleProcess.start();
     } else {
         connect(d->process.get(), &QSsh::SshRemoteProcess::started,
                 this, &SshDeviceProcess::handleProcessStarted);
@@ -298,7 +300,7 @@ void SshDeviceProcess::handleKillOperationTimeout()
 
 QString SshDeviceProcess::fullCommandLine(const Runnable &runnable) const
 {
-    QString cmdLine = runnable.executable;
+    QString cmdLine = runnable.executable.toString();
     if (!runnable.commandLineArguments.isEmpty())
         cmdLine.append(QLatin1Char(' ')).append(runnable.commandLineArguments);
     return cmdLine;
@@ -320,12 +322,12 @@ void SshDeviceProcess::SshDeviceProcessPrivate::doSignal(Signal signal)
     case SshDeviceProcessPrivate::Connected:
     case SshDeviceProcessPrivate::ProcessRunning:
         DeviceProcessSignalOperation::Ptr signalOperation = q->device()->signalOperation();
-        quint64 processId = q->processId();
+        const qint64 processId = q->processId();
         if (signal == Signal::Interrupt) {
             if (processId != 0)
                 signalOperation->interruptProcess(processId);
             else
-                signalOperation->interruptProcess(runnable.executable);
+                signalOperation->interruptProcess(runnable.executable.toString());
         } else {
             if (killOperation) // We are already in the process of killing the app.
                 return;
@@ -336,7 +338,7 @@ void SshDeviceProcess::SshDeviceProcessPrivate::doSignal(Signal signal)
             if (processId != 0)
                 signalOperation->killProcess(processId);
             else
-                signalOperation->killProcess(runnable.executable);
+                signalOperation->killProcess(runnable.executable.toString());
         }
         break;
     }

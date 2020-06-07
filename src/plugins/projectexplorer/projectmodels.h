@@ -45,6 +45,8 @@ class ProjectNode;
 
 namespace Internal {
 
+bool compareNodes(const Node *n1, const Node *n2);
+
 class WrapperNode : public Utils::TypedTreeItem<WrapperNode>
 {
 public:
@@ -78,9 +80,11 @@ public:
 
     bool projectFilterEnabled();
     bool generatedFilesFilterEnabled();
+    bool disabledFilesFilterEnabled() const { return m_filterDisabledFiles; }
     bool trimEmptyDirectoriesEnabled();
     void setProjectFilterEnabled(bool filter);
     void setGeneratedFilesFilterEnabled(bool filter);
+    void setDisabledFilesFilterEnabled(bool filter);
     void setTrimEmptyDirectories(bool filter);
 
     void onExpanded(const QModelIndex &idx);
@@ -93,6 +97,7 @@ signals:
 private:
     bool m_filterProjects = false;
     bool m_filterGeneratedFiles = true;
+    bool m_filterDisabledFiles = false;
     bool m_trimEmptyDirectories = true;
 
     static const QLoggingCategory &logger();

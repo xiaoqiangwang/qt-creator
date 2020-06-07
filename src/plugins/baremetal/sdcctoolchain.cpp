@@ -72,6 +72,8 @@ static QString compilerTargetFlag(const Abi &abi)
     switch (abi.architecture()) {
     case Abi::Architecture::Mcs51Architecture:
         return QString("-mmcs51");
+    case Abi::Architecture::Stm8Architecture:
+        return QString("-mstm8");
     default:
         return {};
     }
@@ -92,13 +94,9 @@ static Macros dumpPredefinedMacros(const FilePath &compiler, const QStringList &
     cpp.setEnvironment(env);
     cpp.setTimeoutS(10);
 
-    QStringList arguments;
-    arguments.push_back(compilerTargetFlag(abi));
-    arguments.push_back("-dM");
-    arguments.push_back("-E");
-    arguments.push_back(fakeIn.fileName());
+    const CommandLine cmd(compiler, {compilerTargetFlag(abi),  "-dM", "-E", fakeIn.fileName()});
 
-    const SynchronousProcessResponse response = cpp.runBlocking(compiler.toString(), arguments);
+    const SynchronousProcessResponse response = cpp.runBlocking(cmd);
     if (response.result != SynchronousProcessResponse::Finished
             || response.exitCode != 0) {
         qWarning() << response.exitMessage(compiler.toString(), 10);
@@ -119,11 +117,9 @@ static HeaderPaths dumpHeaderPaths(const FilePath &compiler, const QStringList &
     cpp.setEnvironment(env);
     cpp.setTimeoutS(10);
 
-    QStringList arguments;
-    arguments.push_back(compilerTargetFlag(abi));
-    arguments.push_back("--print-search-dirs");
+    const CommandLine cmd(compiler, {compilerTargetFlag(abi), "--print-search-dirs"});
 
-    const SynchronousProcessResponse response = cpp.runBlocking(compiler.toString(), arguments);
+    const SynchronousProcessResponse response = cpp.runBlocking(cmd);
     if (response.result != SynchronousProcessResponse::Finished
             || response.exitCode != 0) {
         qWarning() << response.exitMessage(compiler.toString(), 10);
@@ -175,6 +171,8 @@ static Abi::Architecture guessArchitecture(const Macros &macros)
     for (const Macro &macro : macros) {
         if (macro.key == "__SDCC_mcs51")
             return Abi::Architecture::Mcs51Architecture;
+        if (macro.key == "__SDCC_stm8")
+            return Abi::Architecture::Stm8Architecture;
     }
     return Abi::Architecture::UnknownArchitecture;
 }
@@ -218,11 +216,8 @@ static Utils::FilePath compilerPathFromEnvironment(const QString &compilerName)
 
 SdccToolChain::SdccToolChain() :
     ToolChain(Constants::SDCC_TOOLCHAIN_TYPEID)
-{ }
-
-QString SdccToolChain::typeDisplayName() const
 {
-    return Internal::SdccToolChainFactory::tr("SDCC");
+    setTypeDisplayName(Internal::SdccToolChainFactory::tr("SDCC"));
 }
 
 void SdccToolChain::setTargetAbi(const Abi &abi)
@@ -279,38 +274,29 @@ Utils::LanguageExtensions SdccToolChain::languageExtensions(const QStringList &)
 
 WarningFlags SdccToolChain::warningFlags(const QStringList &cxxflags) const
 {
-    Q_UNUSED(cxxflags);
+    Q_UNUSED(cxxflags)
     return WarningFlags::Default;
 }
 
-ToolChain::BuiltInHeaderPathsRunner SdccToolChain::createBuiltInHeaderPathsRunner() const
+ToolChain::BuiltInHeaderPathsRunner SdccToolChain::createBuiltInHeaderPathsRunner(
+        const Environment &) const
 {
     Environment env = Environment::systemEnvironment();
     addToEnvironment(env);
 
     const Utils::FilePath compilerCommand = m_compilerCommand;
-    const Core::Id languageId = language();
     const Abi abi = m_targetAbi;
 
-    HeaderPathsCache headerPaths = headerPathsCache();
-
-    return [env, compilerCommand, headerPaths, languageId, abi](const QStringList &flags,
-                                                                const QString &fileName,
-                                                                const QString &) {
-        Q_UNUSED(flags)
-        Q_UNUSED(fileName)
-
-        const HeaderPaths paths = dumpHeaderPaths(compilerCommand, env.toStringList(), abi);
-        headerPaths->insert({}, paths);
-
-        return paths;
+    return [env, compilerCommand, abi](const QStringList &, const QString &, const QString &) {
+        return dumpHeaderPaths(compilerCommand, env.toStringList(), abi);
     };
 }
 
 HeaderPaths SdccToolChain::builtInHeaderPaths(const QStringList &cxxFlags,
-                                              const FilePath &fileName) const
+                                              const FilePath &fileName,
+                                              const Environment &env) const
 {
-    return createBuiltInHeaderPathsRunner()(cxxFlags, fileName.toString(), "");
+    return createBuiltInHeaderPathsRunner(env)(cxxFlags, fileName.toString(), "");
 }
 
 void SdccToolChain::addToEnvironment(Environment &env) const
@@ -475,21 +461,41 @@ QList<ToolChain *> SdccToolChainFactory::autoDetectToolchain(
         const Candidate &candidate, Core::Id language) const
 {
     const auto env = Environment::systemEnvironment();
-    const Macros macros = dumpPredefinedMacros(candidate.compilerPath, env.toStringList(), {});
-    if (macros.isEmpty())
-        return {};
-    const Abi abi = guessAbi(macros);
 
-    const auto tc = new SdccToolChain;
-    tc->setDetection(ToolChain::AutoDetection);
-    tc->setLanguage(language);
-    tc->setCompilerCommand(candidate.compilerPath);
-    tc->setTargetAbi(abi);
-    tc->setDisplayName(buildDisplayName(abi.architecture(), language, candidate.compilerVersion));
+    // Table of supported ABI's by SDCC compiler.
+    const Abi knownAbis[] = {
+        {Abi::Mcs51Architecture},
+        {Abi::Stm8Architecture}
+    };
 
-    const auto languageVersion = ToolChain::languageVersion(language, macros);
-    tc->predefinedMacrosCache()->insert({}, {macros, languageVersion});
-    return {tc};
+    QList<ToolChain *> tcs;
+
+    // Probe each ABI from the table, because the SDCC compiler
+    // can be compiled with or without the specified architecture.
+    for (const auto &knownAbi : knownAbis) {
+        const Macros macros = dumpPredefinedMacros(candidate.compilerPath,
+                                                   env.toStringList(), knownAbi);
+        if (macros.isEmpty())
+            continue;
+        const Abi abi = guessAbi(macros);
+        if (knownAbi.architecture() != abi.architecture())
+            continue;
+
+        const auto tc = new SdccToolChain;
+        tc->setDetection(ToolChain::AutoDetection);
+        tc->setLanguage(language);
+        tc->setCompilerCommand(candidate.compilerPath);
+        tc->setTargetAbi(abi);
+        tc->setDisplayName(buildDisplayName(abi.architecture(), language,
+                                            candidate.compilerVersion));
+
+        const auto languageVersion = ToolChain::languageVersion(language, macros);
+        tc->predefinedMacrosCache()->insert({}, {macros, languageVersion});
+
+        tcs.push_back(tc);
+    }
+
+    return tcs;
 }
 
 // SdccToolChainConfigWidget

@@ -50,15 +50,13 @@ public:
     };
 
     friend class IosDeployStepFactory;
-    explicit IosDeployStep(ProjectExplorer::BuildStepList *bc);
+    IosDeployStep(ProjectExplorer::BuildStepList *bc, Core::Id id);
     static Core::Id stepId();
 
     void cleanup();
 private:
     void doRun() override;
     void doCancel() override;
-    bool fromMap(const QVariantMap &map) override;
-    QVariantMap toMap() const override;
 
     void handleIsTransferringApp(Ios::IosToolHandler *handler, const QString &bundlePath,
                            const QString &deviceId, int progress, int maxProgress,
@@ -76,8 +74,6 @@ private:
     IosSimulator::ConstPtr iossimulator() const;
 
     QString deviceId() const;
-    void raiseError(const QString &error);
-    void writeOutput(const QString &text, OutputFormat = OutputFormat::NormalMessage);
     void checkProvisioningProfile();
 
     TransferStatus m_transferStatus = NoTransfer;

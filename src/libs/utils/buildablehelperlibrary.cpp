@@ -46,7 +46,7 @@ QString BuildableHelperLibrary::qtChooserToQmakePath(const QString &path)
     const QString toolDir = QLatin1String("QTTOOLDIR=\"");
     SynchronousProcess proc;
     proc.setTimeoutS(1);
-    SynchronousProcessResponse response = proc.runBlocking(path, QStringList(QLatin1String("-print-env")));
+    SynchronousProcessResponse response = proc.runBlocking({path, {"-print-env"}});
     if (response.result != SynchronousProcessResponse::Finished)
         return QString();
     const QString output = response.stdOut();
@@ -78,7 +78,7 @@ static FilePath findQmakeInDir(const FilePath &path)
     if (path.isEmpty())
         return FilePath();
 
-    const QString qmake = "qmake";
+    const QString qmake = HostOsInfo::withExecutableSuffix("qmake");
     QDir dir(path.toString());
     if (dir.exists(qmake)) {
         const QString qmakePath = dir.absoluteFilePath(qmake);
@@ -101,15 +101,15 @@ static FilePath findQmakeInDir(const FilePath &path)
 
 FilePath BuildableHelperLibrary::findSystemQt(const Environment &env)
 {
-    const FilePathList list = findQtsInEnvironment(env, 1);
+    const FilePaths list = findQtsInEnvironment(env, 1);
     return list.size() == 1 ? list.first() : FilePath();
 }
 
-FilePathList BuildableHelperLibrary::findQtsInEnvironment(const Environment &env, int maxCount)
+FilePaths BuildableHelperLibrary::findQtsInEnvironment(const Environment &env, int maxCount)
 {
-    FilePathList qmakeList;
+    FilePaths qmakeList;
     std::set<QString> canonicalEnvPaths;
-    const FilePathList paths = env.path();
+    const FilePaths paths = env.path();
     for (const FilePath &path : paths) {
         if (!canonicalEnvPaths.insert(path.toFileInfo().canonicalFilePath()).second)
             continue;
@@ -130,7 +130,7 @@ QString BuildableHelperLibrary::qtVersionForQMake(const QString &qmakePath)
 
     SynchronousProcess qmake;
     qmake.setTimeoutS(5);
-    SynchronousProcessResponse response = qmake.runBlocking(qmakePath, QStringList(QLatin1String("--version")));
+    SynchronousProcessResponse response = qmake.runBlocking({qmakePath, {"--version"}});
     if (response.result != SynchronousProcessResponse::Finished) {
         qWarning() << response.exitMessage(qmakePath, 5);
         return QString();
@@ -338,9 +338,7 @@ bool BuildableHelperLibrary::buildHelper(const BuildHelperArguments &arguments,
     log->append(QCoreApplication::translate("ProjectExplorer::BuildableHelperLibrary",
                                             "Running %1 %2 ...\n")
                 .arg(makeFullPath.toUserOutput(), arguments.makeArguments.join(QLatin1Char(' '))));
-    if (!runBuildProcess(proc, makeFullPath, arguments.makeArguments, 120, false, log, errorMessage))
-        return false;
-    return true;
+    return runBuildProcess(proc, makeFullPath, arguments.makeArguments, 120, false, log, errorMessage);
 }
 
 bool BuildableHelperLibrary::getHelperFileInfoFor(const QStringList &validBinaryFilenames,

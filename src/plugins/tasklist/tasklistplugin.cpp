@@ -153,8 +153,8 @@ static bool parseTaskFile(QString *errorString, const FilePath &name)
         }
         description = unescape(description);
 
-        TaskHub::addTask(type, description, Constants::TASKLISTTASK_ID,
-                         FilePath::fromUserInput(file), line);
+        TaskHub::addTask(Task(type, description, FilePath::fromUserInput(file), line,
+                              Constants::TASKLISTTASK_ID));
     }
     return true;
 }
@@ -224,10 +224,12 @@ bool TaskListPlugin::loadFile(QString *errorString, const FilePath &fileName)
     clearTasks();
 
     bool result = parseTaskFile(errorString, fileName);
-    if (result)
-        SessionManager::setValue(QLatin1String(SESSION_FILE_KEY), fileName.toString());
-    else
+    if (result) {
+        if (!SessionManager::isDefaultSession(SessionManager::activeSession()))
+            SessionManager::setValue(QLatin1String(SESSION_FILE_KEY), fileName.toString());
+    } else {
         stopMonitoring();
+    }
 
     return result;
 }

@@ -354,12 +354,16 @@ QVariant::Type VcsBaseClientSettings::valueType(const QString &key) const
 FilePath VcsBaseClientSettings::binaryPath() const
 {
     if (d->m_binaryFullPath.isEmpty()) {
-        const FilePathList searchPaths
-                = Utils::transform(searchPathList(), [](const QString &s) { return FilePath::fromString(s); });
+        const FilePaths searchPaths = Utils::transform(searchPathList(), &FilePath::fromString);
         d->m_binaryFullPath = Environment::systemEnvironment().searchInPath(
                     stringValue(binaryPathKey), searchPaths);
     }
     return d->m_binaryFullPath;
+}
+
+int VcsBaseClientSettings::vcsTimeoutS() const
+{
+    return intValue(VcsBaseClientSettings::timeoutKey);
 }
 
 QStringList VcsBaseClientSettings::searchPathList() const
@@ -394,7 +398,7 @@ QVariant VcsBaseClientSettings::keyDefaultValue(const QString &key) const
 
 void VcsBaseClientSettings::readLegacySettings(const QSettings *settings)
 {
-    Q_UNUSED(settings);
+    Q_UNUSED(settings)
 }
 
 } // namespace VcsBase

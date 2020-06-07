@@ -31,6 +31,7 @@
 #include <texteditor/codeassist/keywordscompletionassist.h>
 
 #include <utils/fileutils.h>
+#include <utils/optional.h>
 #include <utils/synchronousprocess.h>
 
 #include <QObject>
@@ -48,10 +49,9 @@ namespace Internal {  class IntrospectionData;  }
 class CMAKE_EXPORT CMakeTool
 {
 public:
-    enum Detection {
-        ManualDetection,
-        AutoDetection
-    };
+    enum Detection { ManualDetection, AutoDetection };
+
+    enum ReaderType { TeaLeaf, ServerMode, FileApi };
 
     struct Version
     {
@@ -89,16 +89,22 @@ public:
     Core::Id id() const { return m_id; }
     QVariantMap toMap () const;
 
-    void setCMakeExecutable(const Utils::FilePath &executable);
     void setAutorun(bool autoRun);
     void setAutoCreateBuildDirectory(bool autoBuildDir);
 
+    void setFilePath(const Utils::FilePath &executable);
+    Utils::FilePath filePath() const;
     Utils::FilePath cmakeExecutable() const;
+    void setQchFilePath(const Utils::FilePath &path);
+    Utils::FilePath qchFilePath() const;
+    static Utils::FilePath cmakeExecutable(const Utils::FilePath &path);
     bool isAutoRun() const;
     bool autoCreateBuildDirectory() const;
     QList<Generator> supportedGenerators() const;
     TextEditor::Keywords keywords();
     bool hasServerMode() const;
+    bool hasFileApi() const;
+    QVector<std::pair<QString, int>> supportedFileApiObjects() const;
     Version version() const;
 
     bool isAutoDetected() const;
@@ -108,6 +114,10 @@ public:
     void setPathMapper(const PathMapper &includePathMapper);
     PathMapper pathMapper() const;
 
+    ReaderType readerType() const;
+
+    static Utils::FilePath searchQchFile(const Utils::FilePath &executable);
+
 private:
     enum class QueryType {
         GENERATORS,
@@ -116,7 +126,7 @@ private:
     };
     void readInformation(QueryType type) const;
 
-    Utils::SynchronousProcessResponse run(const QStringList &args, bool mayFail = false) const;
+    Utils::SynchronousProcessResponse run(const QStringList &args, int timeoutS = 1) const;
     void parseFunctionDetailsOutput(const QString &output);
     QStringList parseVariableOutput(const QString &output);
 
@@ -130,10 +140,13 @@ private:
     Core::Id m_id;
     QString m_displayName;
     Utils::FilePath m_executable;
+    Utils::FilePath m_qchFilePath;
 
     bool m_isAutoRun = true;
     bool m_isAutoDetected = false;
     bool m_autoCreateBuildDirectory = false;
+
+    Utils::optional<ReaderType> m_readerType;
 
     std::unique_ptr<Internal::IntrospectionData> m_introspection;
 

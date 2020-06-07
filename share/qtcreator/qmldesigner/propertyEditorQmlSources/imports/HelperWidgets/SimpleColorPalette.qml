@@ -24,10 +24,8 @@
 ****************************************************************************/
 
 import QtQuick 2.1
-import QtQuick.Controls 2.5
 import StudioControls 1.0 as StudioControls
 import HelperWidgets 2.0
-import QtQuick.Controls.Private 1.0 // showing a ToolTip
 
 Item {
     property color selectedColor
@@ -75,9 +73,12 @@ Item {
                 border.width: 1
             }
 
-            MouseArea {
+            ToolTipArea {
                 anchors.fill: parent
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+                tooltip: colorCode
+
                 onClicked: {
                     if ((mouse.button === Qt.LeftButton) && clickable)
                         selectedColor = colorRectangle.color
@@ -87,6 +88,7 @@ Item {
                         contextMenu.popup()
                 }
             }
+
             StudioControls.Menu {
                 id: contextMenu
                 StudioControls.MenuItem {

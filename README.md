@@ -8,7 +8,7 @@ The standalone binary packages support the following platforms:
 
 * Windows 7 or later
 * (K)Ubuntu Linux 16.04 (64-bit) or later
-* macOS 10.12 or later
+* macOS 10.13 or later
 
 ## Contributing
 
@@ -38,7 +38,8 @@ Prerequisites:
   Clang PCH Manager and Clang Refactoring plugins, see the section
   "Get LLVM/Clang for the Clang Code Model". The LLVM C++ API provides no compatibility garantee,
   so if later versions don't compile we don't support that version.)
-* CMake (only for manual builds of LLVM/Clang)
+* CMake (for manual builds of LLVM/Clang, and Qt Creator itself)
+* Ninja (optional, recommended for building with CMake)
 * Qbs 1.7.x (optional, sources also contain Qbs itself)
 
 The installed toolchains have to match the one Qt was compiled with.
@@ -264,28 +265,93 @@ http://llvm.org/docs/GettingStarted.html#git-mirror:
 
       For Linux/macOS:
 
-          cmake -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_RTTI=ON -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" -DCMAKE_INSTALL_PREFIX=<installation location> ../llvm-project/llvm
-          make install
+          cmake \
+            -D CMAKE_BUILD_TYPE=Release \
+            -D LLVM_ENABLE_RTTI=ON \
+            -D LLVM_ENABLE_PROJECTS="clang;clang-tools-extra" \
+            -D CMAKE_INSTALL_PREFIX=<installation location> \
+            ../llvm-project/llvm
+          cmake --build . --target install
 
       For Windows:
 
-          cmake -G "NMake Makefiles JOM" -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_RTTI=ON -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" -DCMAKE_INSTALL_PREFIX=<installation location> ..\llvm-project\llvm
-          jom install
+          cmake ^
+            -G "NMake Makefiles JOM" ^
+            -D CMAKE_BUILD_TYPE=Release ^
+            -D LLVM_ENABLE_RTTI=ON ^
+            -D LLVM_ENABLE_PROJECTS="clang;clang-tools-extra" ^
+            -D CMAKE_INSTALL_PREFIX=<installation location> ^
+            ..\llvm-project\llvm
+          cmake --build . --target install
 
 ### Clang-Format
 
 The ClangFormat plugin depends on the additional patch
 
-    https://code.qt.io/cgit/clang/clang.git/commit/?h=release_80-based&id=f98a155c89df094fb8f419a20629065f25fe599a
+    https://code.qt.io/cgit/clang/clang.git/commit/?h=release_80-based&id=fa1b9053729ec6a4425a44ec5502dd388928274a
 
 While the plugin builds without it, it will be disabled on start with an error message.
 
 Note that the plugin is disabled by default.
 
+### Building Qt Creator with CMake
+
+Qt Creator can also be built with CMake. The main Qt Creator dependencies, Qt and LLVM/Clang, both
+offer CMake find packages, which reduce the steps of configuring Qt Creator to a minimum.
+
+   Configure and build Qt Creator:
+
+      mkdir build
+      cd build
+
+    For Linux/macOS:
+
+      cmake \
+        -G Ninja \
+        -D CMAKE_BUILD_TYPE=Release \
+        -D CMAKE_PREFIX_PATH=~/Qt/5.12.5/gcc_64;~/llvm \
+        ../qt-creator
+      cmake --build .
+
+    For Windows:
+
+      cmake ^
+        -G Ninja ^
+        -D CMAKE_BUILD_TYPE=Release ^
+        -D CMAKE_PREFIX_PATH=c:\Qt\5.12.5\msvc2017_64;c:\llvm ^
+        ..\qt-creator
+      cmake --build .
+
 ## Third-party Components
 
 Qt Creator includes the following third-party components,
 we thank the authors who made this possible:
+
+### YAML Parser yaml-cpp (MIT License)
+
+  https://github.com/jbeder/yaml-cpp
+
+  QtCreator/src/libs/3rdparty/yaml-cpp
+
+  Copyright (c) 2008-2015 Jesse Beder.
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+  THE SOFTWARE.
 
 ### KSyntaxHighlighting
 
@@ -475,3 +541,42 @@ SQLite (https://www.sqlite.org) is in the Public Domain.
   This Font Software is licensed under the SIL Open Font License, Version 1.1.
 
   The font and license files can be found in QtCreator/src/libs/3rdparty/fonts.
+
+### JSON Library by Niels Lohmann
+
+  Used by the Chrome Trace Format Visualizer plugin instead of QJson
+  because of QJson's current hard limit of 128 Mb object size and
+  trace files often being much larger.
+
+  The sources can be found in `QtCreator/src/libs/3rdparty/json`.
+
+  The class is licensed under the MIT License:
+
+  Copyright © 2013-2019 Niels Lohmann
+
+  Permission is hereby granted, free of charge, to any person obtaining a
+  copy of this software and associated documentation files (the “Software”), to
+  deal in the Software without restriction, including without limitation the
+  rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is furnished
+  to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included
+  in all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS
+  OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+  \endcode
+
+  The class contains the UTF-8 Decoder from Bjoern Hoehrmann which is
+  licensed under the MIT License (see above). Copyright © 2008-2009 Björn
+  Hoehrmann bjoern@hoehrmann.de
+
+  The class contains a slightly modified version of the Grisu2 algorithm
+  from Florian Loitsch which is licensed under the MIT License (see above).
+  Copyright © 2009 Florian Loitsch

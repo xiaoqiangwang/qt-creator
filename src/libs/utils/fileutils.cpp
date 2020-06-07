@@ -35,7 +35,7 @@
 #include <QDebug>
 #include <QDateTime>
 #include <QOperatingSystemVersion>
-#include <QRegExp>
+#include <QRegularExpression>
 #include <QTimer>
 #include <QUrl>
 #include <qplatformdefs.h>
@@ -45,10 +45,6 @@
 #endif
 
 #ifdef Q_OS_WIN
-// We need defines for Windows 8
-#undef _WIN32_WINNT
-#define _WIN32_WINNT _WIN32_WINNT_WIN8
-
 #include <qt_windows.h>
 #include <shlobj.h>
 #endif
@@ -74,6 +70,32 @@ namespace Utils {
 
 */
 
+CommandLine::CommandLine() = default;
+
+CommandLine::CommandLine(const QString &executable)
+    : m_executable(FilePath::fromString(executable))
+{}
+
+CommandLine::CommandLine(const FilePath &executable)
+    : m_executable(executable)
+{}
+
+CommandLine::CommandLine(const QString &exe, const QStringList &args)
+    : CommandLine(FilePath::fromString(exe), args)
+{}
+
+CommandLine::CommandLine(const FilePath &exe, const QStringList &args)
+    : m_executable(exe)
+{
+    addArgs(args);
+}
+
+CommandLine::CommandLine(const FilePath &exe, const QString &args, RawType)
+    : m_executable(exe)
+{
+    addArgs(args, Raw);
+}
+
 void CommandLine::addArg(const QString &arg, OsType osType)
 {
     QtcProcess::addArg(&m_arguments, arg, osType);
@@ -85,7 +107,7 @@ void CommandLine::addArgs(const QStringList &inArgs, OsType osType)
         addArg(arg, osType);
 }
 
-void CommandLine::addArgs(const QString &inArgs)
+void CommandLine::addArgs(const QString &inArgs, RawType)
 {
     QtcProcess::addArgs(&m_arguments, inArgs);
 }
@@ -93,6 +115,11 @@ void CommandLine::addArgs(const QString &inArgs)
 QString CommandLine::toUserOutput() const
 {
     return m_executable.toUserOutput() + ' ' + m_arguments;
+}
+
+QStringList CommandLine::splitArguments(OsType osType) const
+{
+    return QtcProcess::splitArgs(m_arguments, osType);
 }
 
 /*! \class Utils::FileUtils
@@ -298,10 +325,10 @@ QString FilePath::shortNativePath() const
 QString FileUtils::fileSystemFriendlyName(const QString &name)
 {
     QString result = name;
-    result.replace(QRegExp(QLatin1String("\\W")), QLatin1String("_"));
-    result.replace(QRegExp(QLatin1String("_+")), QLatin1String("_")); // compact _
-    result.remove(QRegExp(QLatin1String("^_*"))); // remove leading _
-    result.remove(QRegExp(QLatin1String("_+$"))); // remove trailing _
+    result.replace(QRegularExpression(QLatin1String("\\W")), QLatin1String("_"));
+    result.replace(QRegularExpression(QLatin1String("_+")), QLatin1String("_")); // compact _
+    result.remove(QRegularExpression(QLatin1String("^_*"))); // remove leading _
+    result.remove(QRegularExpression(QLatin1String("_+$"))); // remove trailing _
     if (result.isEmpty())
         result = QLatin1String("unknown");
     return result;
@@ -309,8 +336,8 @@ QString FileUtils::fileSystemFriendlyName(const QString &name)
 
 int FileUtils::indexOfQmakeUnfriendly(const QString &name, int startpos)
 {
-    static QRegExp checkRegExp(QLatin1String("[^a-zA-Z0-9_.-]"));
-    return checkRegExp.indexIn(name, startpos);
+    static const QRegularExpression checkRegExp(QLatin1String("[^a-zA-Z0-9_.-]"));
+    return checkRegExp.match(name, startpos).capturedStart();
 }
 
 QString FileUtils::qmakeFriendlyName(const QString &name)
@@ -371,13 +398,13 @@ bool FileUtils::isRelativePath(const QString &path)
     return true;
 }
 
-QString FileUtils::resolvePath(const QString &baseDir, const QString &fileName)
+FilePath FilePath::resolvePath(const QString &fileName) const
 {
     if (fileName.isEmpty())
-        return QString();
-    if (isAbsolutePath(fileName))
-        return QDir::cleanPath(fileName);
-    return QDir::cleanPath(baseDir + QLatin1Char('/') + fileName);
+        return {}; // FIXME: Isn't this odd?
+    if (FileUtils::isAbsolutePath(fileName))
+        return FilePath::fromString(QDir::cleanPath(fileName));
+    return FilePath::fromString(QDir::cleanPath(toString() + QLatin1Char('/') + fileName));
 }
 
 FilePath FileUtils::commonPath(const FilePath &oldCommonPath, const FilePath &filePath)
@@ -705,7 +732,13 @@ QString FilePath::toUserOutput() const
     return m_url.toString();
 }
 
-QString FilePath::fileName(int pathComponents) const
+QString FilePath::fileName() const
+{
+    const QChar slash = QLatin1Char('/');
+    return m_data.mid(m_data.lastIndexOf(slash) + 1);
+}
+
+QString FilePath::fileNameWithPathComponents(int pathComponents) const
 {
     if (pathComponents < 0)
         return m_data;
@@ -737,6 +770,13 @@ bool FilePath::exists() const
     return !isEmpty() && QFileInfo::exists(m_data);
 }
 
+/// \returns a bool indicating whether a path is writable.
+bool FilePath::isWritablePath() const
+{
+    const QFileInfo fi{m_data};
+    return exists() && fi.isDir() && fi.isWritable();
+}
+
 /// Find the parent directory of a given directory.
 
 /// Returns an empty FilePath if the current directory is already
@@ -758,6 +798,13 @@ FilePath FilePath::parentDir() const
     QTC_ASSERT(parent != path, return FilePath());
 
     return FilePath::fromString(parent);
+}
+
+FilePath FilePath::absolutePath() const
+{
+    FilePath result = *this;
+    result.m_data = QFileInfo(m_data).absolutePath();
+    return result;
 }
 
 /// Constructs a FilePath from \a filename
@@ -881,15 +928,22 @@ bool FilePath::isChildOf(const QDir &dir) const
     return isChildOf(FilePath::fromString(dir.absolutePath()));
 }
 
+/// \returns whether FilePath startsWith \a s
+bool FilePath::startsWith(const QString &s) const
+{
+    return m_data.startsWith(s, HostOsInfo::fileNameCaseSensitivity());
+}
+
 /// \returns whether FilePath endsWith \a s
 bool FilePath::endsWith(const QString &s) const
 {
     return m_data.endsWith(s, HostOsInfo::fileNameCaseSensitivity());
 }
 
-bool FilePath::isLocal() const
+bool FilePath::isDir() const
 {
-    return m_url.isEmpty() || m_url.isLocalFile();
+    QTC_CHECK(m_url.isEmpty()); // FIXME: Not implemented yet.
+    return QFileInfo(m_data).isDir();
 }
 
 /// \returns the relativeChildPath of FilePath to parent if FilePath is a child of parent
@@ -942,3 +996,11 @@ void withNtfsPermissions(const std::function<void()> &task)
 }
 #endif
 } // namespace Utils
+
+std::hash<Utils::FilePath>::result_type
+    std::hash<Utils::FilePath>::operator()(const std::hash<Utils::FilePath>::argument_type &fn) const
+{
+    if (Utils::HostOsInfo::fileNameCaseSensitivity() == Qt::CaseInsensitive)
+        return hash<string>()(fn.toString().toUpper().toStdString());
+    return hash<string>()(fn.toString().toStdString());
+}

@@ -42,8 +42,10 @@ class IosConfigurations;
 namespace Internal {
 class IosDeviceManager;
 
-class IosDevice : public ProjectExplorer::IDevice
+class IosDevice final : public ProjectExplorer::IDevice
 {
+    Q_DECLARE_TR_FUNCTIONS(Ios::Internal::IosDevice)
+
 public:
     using Dict = QMap<QString, QString>;
     using ConstPtr = QSharedPointer<const IosDevice>;
@@ -52,7 +54,6 @@ public:
     ProjectExplorer::IDevice::DeviceInfo deviceInformation() const override;
     ProjectExplorer::IDeviceWidget *createWidget() override;
     ProjectExplorer::DeviceProcessSignalOperation::Ptr signalOperation() const override;
-    QString displayType() const override;
 
     void fromMap(const QVariantMap &map) override;
     QVariantMap toMap() const override;
@@ -60,7 +61,6 @@ public:
     QString osVersion() const;
     Utils::Port nextPort() const;
     bool canAutoDetectPorts() const override;
-    Utils::OsType osType() const override;
 
     static QString name();
 
@@ -70,14 +70,16 @@ protected:
     IosDevice();
     IosDevice(const QString &uid);
 
+    enum CtorHelper {};
+    IosDevice(CtorHelper);
+
     Dict m_extraInfo;
     bool m_ignoreDevice = false;
     mutable quint16 m_lastPort;
 };
 
-class IosDeviceFactory : public ProjectExplorer::IDeviceFactory
+class IosDeviceFactory final : public ProjectExplorer::IDeviceFactory
 {
-    Q_OBJECT
 public:
     IosDeviceFactory();
 

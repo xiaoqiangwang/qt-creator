@@ -140,7 +140,7 @@ BinEditorWidget::BinEditorWidget(QWidget *parent)
     : QAbstractScrollArea(parent), d(new BinEditorWidgetPrivate(this))
 {
     m_bytesPerLine = 16;
-    m_ieditor = 0;
+    m_ieditor = nullptr;
     m_baseAddr = 0;
     m_blockSize = 4096;
     m_size = 0;
@@ -1179,7 +1179,6 @@ QString BinEditorWidget::toolTip(const QHelpEvent *helpEvent) const
         if (!pos)
             return QString();
         selStart = pos.value();
-        selEnd = selStart;
         byteCount = 1;
     }
 
@@ -1557,7 +1556,7 @@ void BinEditorWidget::undo()
     setCursorPosition(cmd.position);
     if (emitModificationChanged)
         emit modificationChanged(m_undoStack.size() != m_unmodifiedState);
-    if (!m_undoStack.size())
+    if (m_undoStack.isEmpty())
         emit undoAvailable(false);
     if (m_redoStack.size() == 1)
         emit redoAvailable(true);
@@ -1578,7 +1577,7 @@ void BinEditorWidget::redo()
         emit modificationChanged(m_undoStack.size() != m_unmodifiedState);
     if (m_undoStack.size() == 1)
         emit undoAvailable(true);
-    if (!m_redoStack.size())
+    if (m_redoStack.isEmpty())
         emit redoAvailable(false);
 }
 

@@ -62,9 +62,8 @@ static void onSimOperation(const SimulatorInfo &simInfo, SimulatorOperationDialo
     dlg->addMessage(simInfo, response, contextStr);
 }
 
-IosSettingsWidget::IosSettingsWidget(QWidget *parent)
-    : QWidget(parent),
-      m_ui(new Ui::IosSettingsWidget),
+IosSettingsWidget::IosSettingsWidget()
+    : m_ui(new Ui::IosSettingsWidget),
       m_simControl(new SimulatorControl(this))
 {
     m_ui->setupUi(this);
@@ -93,6 +92,12 @@ IosSettingsWidget::IosSettingsWidget(QWidget *parent)
 IosSettingsWidget::~IosSettingsWidget()
 {
     delete m_ui;
+}
+
+void IosSettingsWidget::apply()
+{
+    saveSettings();
+    IosConfigurations::updateAutomaticKitList();
 }
 
 /*!

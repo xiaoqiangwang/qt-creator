@@ -23,7 +23,6 @@
 **
 ****************************************************************************/
 
-#include "cppcheckconstants.h"
 #include "cppcheckdiagnostic.h"
 #include "cppcheckoptions.h"
 #include "cppcheckrunner.h"
@@ -45,10 +44,12 @@
 namespace Cppcheck {
 namespace Internal {
 
-CppcheckTool::CppcheckTool(CppcheckTextMarkManager &marks) :
-    m_marks(marks),
+CppcheckTool::CppcheckTool(CppcheckDiagnosticManager &manager,
+                           const Core::Id &progressId) :
+    m_manager(manager),
     m_progressRegexp("^.* checked (\\d+)% done$"),
-    m_messageRegexp("^(.+),(\\d+),(\\w+),(\\w+),(.*)$")
+    m_messageRegexp("^(.+),(\\d+),(\\w+),(\\w+),(.*)$"),
+    m_progressId(progressId)
 {
     m_runner = std::make_unique<CppcheckRunner>(*this);
     QTC_ASSERT(m_progressRegexp.isValid(), return);
@@ -169,8 +170,7 @@ QStringList CppcheckTool::additionalArguments(const CppTools::ProjectPart &part)
         break;
     }
 
-    using QtVersion = CppTools::ProjectPart::QtVersion;
-    if (part.qtVersion != QtVersion::NoQt)
+    if (part.qtVersion != Utils::QtVersion::None)
         result.push_back("--library=qt");
 
     return result;
@@ -181,11 +181,11 @@ const CppcheckOptions &CppcheckTool::options() const
     return m_options;
 }
 
-void CppcheckTool::check(const Utils::FilePathList &files)
+void CppcheckTool::check(const Utils::FilePaths &files)
 {
     QTC_ASSERT(m_project, return);
 
-    Utils::FilePathList filtered;
+    Utils::FilePaths filtered;
     if (m_filters.isEmpty()) {
         filtered = files;
     } else {
@@ -208,7 +208,7 @@ void CppcheckTool::check(const Utils::FilePathList &files)
         return;
     }
 
-    std::map<CppTools::ProjectPart::Ptr, Utils::FilePathList> groups;
+    std::map<CppTools::ProjectPart::Ptr, Utils::FilePaths> groups;
     for (const Utils::FilePath &file : qAsConst(filtered)) {
         const QString stringed = file.toString();
         for (const CppTools::ProjectPart::Ptr &part : parts) {
@@ -224,7 +224,7 @@ void CppcheckTool::check(const Utils::FilePathList &files)
         addToQueue(group.second, *group.first);
 }
 
-void CppcheckTool::addToQueue(const Utils::FilePathList &files, CppTools::ProjectPart &part)
+void CppcheckTool::addToQueue(const Utils::FilePaths &files, CppTools::ProjectPart &part)
 {
     const QString key = part.id();
     if (!m_cachedAdditionalArguments.contains(key))
@@ -232,7 +232,7 @@ void CppcheckTool::addToQueue(const Utils::FilePathList &files, CppTools::Projec
     m_runner->addToQueue(files, m_cachedAdditionalArguments[key]);
 }
 
-void CppcheckTool::stop(const Utils::FilePathList &files)
+void CppcheckTool::stop(const Utils::FilePaths &files)
 {
     m_runner->removeFromQueue(files);
     m_runner->stop(files);
@@ -247,8 +247,7 @@ void CppcheckTool::startParsing()
 
     m_progress = std::make_unique<QFutureInterface<void>>();
     const Core::FutureProgress *progress = Core::ProgressManager::addTask(
-                m_progress->future(), QObject::tr("Cppcheck"),
-                Constants::CHECK_PROGRESS_ID);
+                m_progress->future(), QObject::tr("Cppcheck"), m_progressId);
     QObject::connect(progress, &Core::FutureProgress::canceled,
                      this, [this]{stop({});});
     m_progress->setProgressRange(0, 100);
@@ -311,7 +310,7 @@ void CppcheckTool::parseErrorLine(const QString &line)
     diagnostic.checkId = match.captured(Id);
     diagnostic.message = match.captured(Message);
     if (diagnostic.isValid())
-        m_marks.add(diagnostic);
+        m_manager.add(diagnostic);
 }
 
 void CppcheckTool::finishParsing()

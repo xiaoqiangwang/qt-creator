@@ -42,7 +42,10 @@ namespace ProjectExplorer {
 class Project;
 class Target;
 class BuildConfiguration;
+class BuildSystem;
 class DeployConfiguration;
+class RunConfiguration;
+
 enum class SetActive { Cascade, NoCascade };
 
 class PROJECTEXPLORER_EXPORT SessionManager : public QObject
@@ -58,6 +61,7 @@ public:
     // higher level session management
     static QString activeSession();
     static QString lastSession();
+    static QString startupSession();
     static QStringList sessions();
     static QDateTime sessionDateTime(const QString &session);
 
@@ -70,7 +74,7 @@ public:
     static bool cloneSession(const QString &original, const QString &clone);
     static bool renameSession(const QString &original, const QString &newName);
 
-    static bool loadSession(const QString &session);
+    static bool loadSession(const QString &session, bool initial = false);
 
     static bool save();
     static void closeAllProjects();
@@ -96,6 +100,9 @@ public:
 
     static Utils::FilePath sessionNameToFileName(const QString &session);
     static Project *startupProject();
+    static Target *startupTarget();
+    static BuildSystem *startupBuildSystem();
+    static RunConfiguration *startupRunConfiguration();
 
     static const QList<Project *> projects();
     static bool hasProjects();
@@ -119,6 +126,8 @@ public:
     static bool loadingSession();
 
 signals:
+    void targetAdded(ProjectExplorer::Target *target);
+    void targetRemoved(ProjectExplorer::Target *target);
     void projectAdded(ProjectExplorer::Project *project);
     void aboutToRemoveProject(ProjectExplorer::Project *project);
     void projectDisplayNameChanged(ProjectExplorer::Project *project);

@@ -31,6 +31,7 @@
 #include <utils/mimetypes/mimetype.h>
 #include <utils/runextensions.h>
 
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -43,24 +44,43 @@ using namespace Utils;
 namespace CompilationDatabaseProjectManager {
 namespace Internal {
 
-CompilationDbParser::CompilationDbParser(const QString &projectName, const FilePath &projectPath,
-                                         const FilePath &rootPath, MimeBinaryCache &mimeBinaryCache,
+CompilationDbParser::CompilationDbParser(const QString &projectName,
+                                         const FilePath &projectPath,
+                                         const FilePath &rootPath,
+                                         MimeBinaryCache &mimeBinaryCache,
+                                         BuildSystem::ParseGuard &&guard,
                                          QObject *parent)
-    : QObject(parent),
-      m_projectName(projectName),
-      m_projectFilePath(projectPath),
-      m_rootPath(rootPath),
-      m_mimeBinaryCache(mimeBinaryCache)
+    : QObject(parent)
+    , m_projectName(projectName)
+    , m_projectFilePath(projectPath)
+    , m_rootPath(rootPath)
+    , m_mimeBinaryCache(mimeBinaryCache)
+    , m_guard(std::move(guard))
 {
     connect(&m_parserWatcher, &QFutureWatcher<void>::finished, this, [this] {
         m_dbContents = m_parserWatcher.result();
         if (!m_treeScanner || m_treeScanner->isFinished())
-            finish();
+            finish(ParseResult::Success);
     });
 }
 
 void CompilationDbParser::start()
 {
+    // Check hash first.
+    QFile file(m_projectFilePath.toString());
+    if (!file.open(QIODevice::ReadOnly)) {
+        finish(ParseResult::Failure);
+        return;
+    }
+    m_projectFileContents = file.readAll();
+    const QByteArray newHash = QCryptographicHash::hash(m_projectFileContents,
+                                                        QCryptographicHash::Sha1);
+    if (m_projectFileHash == newHash) {
+        finish(ParseResult::Cached);
+        return;
+    }
+    m_projectFileHash = newHash;
+
     // Thread 1: Scan disk.
     if (!m_rootPath.isEmpty()) {
         m_treeScanner = new TreeScanner(this);
@@ -91,7 +111,7 @@ void CompilationDbParser::start()
                                        "CompilationDatabase.Scan.Tree");
         connect(m_treeScanner, &TreeScanner::finished, this, [this] {
             if (m_parserWatcher.isFinished())
-                finish();
+                finish(ParseResult::Success);
         });
     }
 
@@ -112,6 +132,7 @@ void CompilationDbParser::stop()
         m_treeScanner->disconnect();
         m_treeScanner->future().cancel();
     }
+    m_guard = {};
     deleteLater();
 }
 
@@ -121,9 +142,9 @@ QList<FileNode *> CompilationDbParser::scannedFiles() const
             ? m_treeScanner->release() : QList<FileNode *>();
 }
 
-void CompilationDbParser::finish()
+void CompilationDbParser::finish(ParseResult result)
 {
-    emit finished(true);
+    emit finished(result);
     deleteLater();
 }
 
@@ -149,28 +170,24 @@ static FilePath jsonObjectFilename(const QJsonObject &object)
     const QString workingDir = QDir::fromNativeSeparators(object["directory"].toString());
     FilePath fileName = FilePath::fromString(QDir::fromNativeSeparators(object["file"].toString()));
     if (fileName.toFileInfo().isRelative())
-        fileName = FilePath::fromString(workingDir + "/" + fileName.toString()).canonicalPath();
+        fileName = FilePath::fromString(QDir::cleanPath(workingDir + "/" + fileName.toString()));
     return fileName;
 }
 
-static std::vector<DbEntry> readJsonObjects(const QString &filePath)
+std::vector<DbEntry> CompilationDbParser::readJsonObjects() const
 {
     std::vector<DbEntry> result;
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly))
-        return result;
 
-    const QByteArray contents = file.readAll();
-    int objectStart = contents.indexOf('{');
-    int objectEnd = contents.indexOf('}', objectStart + 1);
+    int objectStart = m_projectFileContents.indexOf('{');
+    int objectEnd = m_projectFileContents.indexOf('}', objectStart + 1);
 
     QSet<QString> flagsCache;
     while (objectStart >= 0 && objectEnd >= 0) {
         const QJsonDocument document = QJsonDocument::fromJson(
-                    contents.mid(objectStart, objectEnd - objectStart + 1));
+                    m_projectFileContents.mid(objectStart, objectEnd - objectStart + 1));
         if (document.isNull()) {
             // The end was found incorrectly, search for the next one.
-            objectEnd = contents.indexOf('}', objectEnd + 1);
+            objectEnd = m_projectFileContents.indexOf('}', objectEnd + 1);
             continue;
         }
 
@@ -180,8 +197,8 @@ static std::vector<DbEntry> readJsonObjects(const QString &filePath)
                                                      fileName.toFileInfo().baseName());
         result.push_back({flags, fileName, object["directory"].toString()});
 
-        objectStart = contents.indexOf('{', objectEnd + 1);
-        objectEnd = contents.indexOf('}', objectStart + 1);
+        objectStart = m_projectFileContents.indexOf('{', objectEnd + 1);
+        objectEnd = m_projectFileContents.indexOf('}', objectStart + 1);
     }
 
     return result;
@@ -212,7 +229,7 @@ QStringList readExtraFiles(const QString &filePath)
 DbContents CompilationDbParser::parseProject()
 {
     DbContents dbContents;
-    dbContents.entries = readJsonObjects(m_projectFilePath.toString());
+    dbContents.entries = readJsonObjects();
     dbContents.extraFileName = m_projectFilePath.toString() +
             Constants::COMPILATIONDATABASEPROJECT_FILES_SUFFIX;
     dbContents.extras = readExtraFiles(dbContents.extraFileName);

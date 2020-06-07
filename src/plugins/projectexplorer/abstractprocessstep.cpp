@@ -30,6 +30,8 @@
 #include "ioutputparser.h"
 #include "processparameters.h"
 #include "project.h"
+#include "projectexplorer.h"
+#include "projectexplorersettings.h"
 #include "target.h"
 #include "task.h"
 
@@ -109,6 +111,7 @@ public:
     QByteArray deferredText;
     bool m_ignoreReturnValue = false;
     bool m_skipFlush = false;
+    bool m_lowPriority = false;
 
     void readData(void (AbstractProcessStep::*func)(const QString &), bool isUtf8 = false);
     void processLine(const QByteArray &data,
@@ -213,7 +216,9 @@ void AbstractProcessStep::doRun()
         }
     }
 
-    const CommandLine effectiveCommand{d->m_param.effectiveCommand(), d->m_param.effectiveArguments()};
+    const CommandLine effectiveCommand(d->m_param.effectiveCommand(),
+                                       d->m_param.effectiveArguments(),
+                                       CommandLine::Raw);
     if (!effectiveCommand.executable().exists()) {
         processStartupFailed();
         finish(false);
@@ -225,6 +230,8 @@ void AbstractProcessStep::doRun()
     d->m_process->setWorkingDirectory(wd.absolutePath());
     d->m_process->setEnvironment(d->m_param.environment());
     d->m_process->setCommand(effectiveCommand);
+    if (d->m_lowPriority && ProjectExplorerPlugin::projectExplorerSettings().lowBuildPriority)
+        d->m_process->setLowPriority();
 
     connect(d->m_process.get(), &QProcess::readyReadStandardOutput,
             this, &AbstractProcessStep::processReadyReadStdOutput);
@@ -242,6 +249,11 @@ void AbstractProcessStep::doRun()
         return;
     }
     processStarted();
+}
+
+void AbstractProcessStep::setLowPriority()
+{
+    d->m_lowPriority = true;
 }
 
 void AbstractProcessStep::doCancel()
@@ -434,7 +446,7 @@ void AbstractProcessStep::taskAdded(const Task &task, int linkedOutputLines, int
         while (filePath.startsWith("../"))
             filePath.remove(0, 3);
         bool found = false;
-        const Utils::FilePathList candidates
+        const Utils::FilePaths candidates
                 = d->m_fileFinder.findFile(QUrl::fromLocalFile(filePath), &found);
         if (found && candidates.size() == 1)
             editable.file = candidates.first();
@@ -462,7 +474,7 @@ void AbstractProcessStep::slotProcessFinished(int, QProcess::ExitStatus)
 
     const QString stdOutLine = process ? QString::fromLocal8Bit(process->readAllStandardOutput()) : QString();
     for (const QString &l : stdOutLine.split('\n'))
-        stdError(l);
+        stdOutput(l);
 
     cleanUp(process);
 }

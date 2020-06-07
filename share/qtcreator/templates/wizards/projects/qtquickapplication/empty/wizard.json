@@ -2,10 +2,10 @@
     "version": 1,
     "supportedProjectTypes": [ "CMakeProjectManager.CMakeProject", "Qbs.QbsProject", "Qt4ProjectManager.Qt4Project" ],
     "id": "U.QtQuickApplicationEmpty",
-    "category": "F.Application",
+    "category": "E.ApplicationQtQuick",
     "trDescription": "Creates a Qt Quick application that contains an empty window.",
     "trDisplayName": "Qt Quick Application - Empty",
-    "trDisplayCategory": "Application",
+    "trDisplayCategory": "Application (Qt Quick)",
     "icon": "icon.png",
     "featuresRequired": [ "QtSupport.Wizards.FeatureQt.5.6" ],
     "enabled": "%{JS: value('Plugins').indexOf('QmakeProjectManager') >= 0 || value('Plugins').indexOf('QbsProjectManager') >= 0 || value('Plugins').indexOf('CMakeProjectManager') >= 0}",
@@ -22,6 +22,7 @@
         { "key": "QtQuickVirtualKeyboardImport", "value": "%{JS: value('QtVersion').QtQuickVirtualKeyboardImport}" },
         { "key": "QtQuickFeature", "value": "QtSupport.Wizards.FeatureQtQuick.%{QtQuickVersion}" },
         { "key": "UseVirtualKeyboardByDefault", "value": "%{JS: value('Plugins').indexOf('Boot2Qt') >= 0 || value('Plugins').indexOf('Boot2QtQdb') >= 0}" },
+        { "key": "HasTranslation", "value": "%{JS: value('TsFileName') !== ''}" },
         { "key": "SetQPAPhysicalSize", "value": "%{UseVirtualKeyboardByDefault}" }
     ],
 
@@ -43,6 +44,7 @@
                     "name": "BuildSystem",
                     "trDisplayName": "Build system:",
                     "type": "ComboBox",
+                    "persistenceKey": "BuildSystemType",
                     "data":
                     {
                         "index": 0,
@@ -78,11 +80,30 @@
                     "name": "QtVersion",
                     "trDisplayName": "Minimal required Qt version:",
                     "type": "ComboBox",
+                    "persistenceKey": "QtQuick.minimumQtVersion",
                     "data":
                     {
-                        "index": 1,
+                        "index": 3,
                         "items":
                         [
+                            {
+                                "trKey": "Qt 5.15",
+                                "value":
+                                {
+                                    "QtQuickVersion": "2.15",
+                                    "QtQuickWindowVersion": "2.15",
+                                    "QtQuickVirtualKeyboardImport": "QtQuick.VirtualKeyboard 2.15"
+                                }
+                            },
+                            {
+                                "trKey": "Qt 5.14",
+                                "value":
+                                {
+                                    "QtQuickVersion": "2.14",
+                                    "QtQuickWindowVersion": "2.14",
+                                    "QtQuickVirtualKeyboardImport": "QtQuick.VirtualKeyboard 2.14"
+                                }
+                            },
                             {
                                 "trKey": "Qt 5.13",
                                 "value":
@@ -162,12 +183,18 @@
                     "name": "UseVirtualKeyboard",
                     "trDisplayName": "Use Qt Virtual Keyboard",
                     "type": "CheckBox",
+                    "persistenceKey": "QtQuick.UseVirtualKeyboard.%{UseVirtualKeyboardByDefault}",
                     "data":
                     {
                         "checked": "%{UseVirtualKeyboardByDefault}"
                     }
                 }
             ]
+        },
+        {
+            "trDisplayName": "Translation File",
+            "trShortTitle": "Translation",
+            "typeId": "QtTranslation"
         },
         {
             "trDisplayName": "Kit Selection",
@@ -220,6 +247,11 @@
                 },
                 {
                     "source": "qml.qrc"
+                },
+                {
+                    "source": "../../translation.ts",
+                    "target": "%{TsFileName}",
+                    "condition": "%{HasTranslation}"
                 },
                 {
                     "source": "../../git.ignore",

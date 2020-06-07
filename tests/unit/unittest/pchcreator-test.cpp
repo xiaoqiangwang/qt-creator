@@ -91,7 +91,7 @@ protected:
 
     ClangBackEnd::FilePathId id(ClangBackEnd::FilePathView path)
     {
-        return creator.filePathCache().filePathId(path);
+        return filePathCache.filePathId(path);
     }
 
     FilePathIds sorted(FilePathIds &&filePathIds)
@@ -104,18 +104,19 @@ protected:
 protected:
     Sqlite::Database database{":memory:", Sqlite::JournalMode::Memory};
     ClangBackEnd::RefactoringDatabaseInitializer<Sqlite::Database> databaseInitializer{database};
+    ClangBackEnd::FilePathCaching filePathCache{database};
     FilePath main1Path = TESTDATA_DIR "/builddependencycollector/project/main3.cpp";
     FilePath main2Path = TESTDATA_DIR "/builddependencycollector/project/main2.cpp";
     FilePath header1Path = TESTDATA_DIR "/builddependencycollector/project/header1.h";
     FilePath header2Path = TESTDATA_DIR "/builddependencycollector/project/header2.h";
     FilePath generatedFilePath = TESTDATA_DIR "/builddependencycollector/project/generated_file.h";
     TestEnvironment environment;
-    FileContainer generatedFile{generatedFilePath.clone(), "#pragma once", {}};
+    FileContainer generatedFile{generatedFilePath.clone(), id(generatedFilePath), "#pragma once", {}};
     NiceMock<MockPchManagerClient> mockPchManagerClient;
     NiceMock<MockClangPathWatcher> mockClangPathWatcher;
     NiceMock<MockBuildDependenciesStorage> mockBuildDependenciesStorage;
     ClangBackEnd::PchCreator creator{environment,
-                                     database,
+                                     filePathCache,
                                      mockPchManagerClient,
                                      mockClangPathWatcher,
                                      mockBuildDependenciesStorage};
@@ -228,34 +229,26 @@ TEST_F(PchCreatorVerySlowTest, SourcesAreWatchedAfterSucess)
 {
     creator.generatePch(std::move(pchTask1));
 
-    EXPECT_CALL(mockClangPathWatcher,
-                updateIdPaths(ElementsAre(
-                    AllOf(Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::Source}),
-                          Field(&ClangBackEnd::IdPaths::filePathIds,
-                                UnorderedElementsAre(id(main2Path)))))));
-
-    EXPECT_CALL(mockClangPathWatcher,
-                updateIdPaths(ElementsAre(AllOf(
-                    Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::UserInclude}),
-                    Field(&ClangBackEnd::IdPaths::filePathIds,
-                          UnorderedElementsAre(
-                              id(TESTDATA_DIR "/builddependencycollector/project/header1.h"),
-                              id(TESTDATA_DIR "/builddependencycollector/project/header2.h")))))));
     EXPECT_CALL(
         mockClangPathWatcher,
-        updateIdPaths(ElementsAre(
+        updateIdPaths(UnorderedElementsAre(
+            AllOf(Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::Source}),
+                  Field(&ClangBackEnd::IdPaths::filePathIds, UnorderedElementsAre(id(main2Path)))),
+            AllOf(Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::UserInclude}),
+                  Field(&ClangBackEnd::IdPaths::filePathIds,
+                        UnorderedElementsAre(
+                            id(TESTDATA_DIR "/builddependencycollector/project/header1.h"),
+                            id(TESTDATA_DIR "/builddependencycollector/project/header2.h")))),
             AllOf(Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::ProjectInclude}),
                   Field(&ClangBackEnd::IdPaths::filePathIds,
                         UnorderedElementsAre(
                             id(TESTDATA_DIR "/builddependencycollector/external/external1.h"),
-                            id(TESTDATA_DIR "/builddependencycollector/external/external2.h")))))));
-    EXPECT_CALL(mockClangPathWatcher,
-                updateIdPaths(ElementsAre(AllOf(
-                    Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::SystemInclude}),
-                    Field(&ClangBackEnd::IdPaths::filePathIds,
-                          UnorderedElementsAre(
-                              id(TESTDATA_DIR "/builddependencycollector/system/system1.h"),
-                              id(TESTDATA_DIR "/builddependencycollector/system/system2.h")))))));
+                            id(TESTDATA_DIR "/builddependencycollector/external/external2.h")))),
+            AllOf(Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::SystemInclude}),
+                  Field(&ClangBackEnd::IdPaths::filePathIds,
+                        UnorderedElementsAre(
+                            id(TESTDATA_DIR "/builddependencycollector/system/system1.h"),
+                            id(TESTDATA_DIR "/builddependencycollector/system/system2.h")))))));
 
     creator.doInMainThreadAfterFinished();
 }
@@ -266,34 +259,26 @@ TEST_F(PchCreatorVerySlowTest, SourcesAreWatchedAfterFail)
     pchTask1.projectIncludeSearchPaths = {};
     creator.generatePch(std::move(pchTask1));
 
-    EXPECT_CALL(mockClangPathWatcher,
-                updateIdPaths(ElementsAre(
-                    AllOf(Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::Source}),
-                          Field(&ClangBackEnd::IdPaths::filePathIds,
-                                UnorderedElementsAre(id(main2Path)))))));
-
-    EXPECT_CALL(mockClangPathWatcher,
-                updateIdPaths(ElementsAre(AllOf(
-                    Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::UserInclude}),
-                    Field(&ClangBackEnd::IdPaths::filePathIds,
-                          UnorderedElementsAre(
-                              id(TESTDATA_DIR "/builddependencycollector/project/header1.h"),
-                              id(TESTDATA_DIR "/builddependencycollector/project/header2.h")))))));
     EXPECT_CALL(
         mockClangPathWatcher,
-        updateIdPaths(ElementsAre(
+        updateIdPaths(UnorderedElementsAre(
+            AllOf(Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::Source}),
+                  Field(&ClangBackEnd::IdPaths::filePathIds, UnorderedElementsAre(id(main2Path)))),
+            AllOf(Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::UserInclude}),
+                  Field(&ClangBackEnd::IdPaths::filePathIds,
+                        UnorderedElementsAre(
+                            id(TESTDATA_DIR "/builddependencycollector/project/header1.h"),
+                            id(TESTDATA_DIR "/builddependencycollector/project/header2.h")))),
             AllOf(Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::ProjectInclude}),
                   Field(&ClangBackEnd::IdPaths::filePathIds,
                         UnorderedElementsAre(
                             id(TESTDATA_DIR "/builddependencycollector/external/external1.h"),
-                            id(TESTDATA_DIR "/builddependencycollector/external/external2.h")))))));
-    EXPECT_CALL(mockClangPathWatcher,
-                updateIdPaths(ElementsAre(AllOf(
-                    Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::SystemInclude}),
-                    Field(&ClangBackEnd::IdPaths::filePathIds,
-                          UnorderedElementsAre(
-                              id(TESTDATA_DIR "/builddependencycollector/system/system1.h"),
-                              id(TESTDATA_DIR "/builddependencycollector/system/system2.h")))))));
+                            id(TESTDATA_DIR "/builddependencycollector/external/external2.h")))),
+            AllOf(Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::SystemInclude}),
+                  Field(&ClangBackEnd::IdPaths::filePathIds,
+                        UnorderedElementsAre(
+                            id(TESTDATA_DIR "/builddependencycollector/system/system1.h"),
+                            id(TESTDATA_DIR "/builddependencycollector/system/system2.h")))))));
 
     creator.doInMainThreadAfterFinished();
 }
@@ -421,33 +406,26 @@ TEST_F(PchCreatorSlowTest, NoIncludesInTheMainThreadCalls)
                 precompiledHeadersUpdated(
                     Field(&ClangBackEnd::PrecompiledHeadersUpdatedMessage::projectPartIds,
                           ElementsAre(Eq(creator.projectPartPch().projectPartId)))));
-    EXPECT_CALL(mockClangPathWatcher,
-                updateIdPaths(ElementsAre(
-                    AllOf(Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::Source}),
-                          Field(&ClangBackEnd::IdPaths::filePathIds,
-                                UnorderedElementsAre(id(main2Path)))))));
-    EXPECT_CALL(mockClangPathWatcher,
-                updateIdPaths(ElementsAre(AllOf(
-                    Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::UserInclude}),
-                    Field(&ClangBackEnd::IdPaths::filePathIds,
-                          UnorderedElementsAre(
-                              id(TESTDATA_DIR "/builddependencycollector/project/header1.h"),
-                              id(TESTDATA_DIR "/builddependencycollector/project/header2.h")))))));
     EXPECT_CALL(
         mockClangPathWatcher,
-        updateIdPaths(ElementsAre(
+        updateIdPaths(UnorderedElementsAre(
+            AllOf(Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::Source}),
+                  Field(&ClangBackEnd::IdPaths::filePathIds, UnorderedElementsAre(id(main2Path)))),
+            AllOf(Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::UserInclude}),
+                  Field(&ClangBackEnd::IdPaths::filePathIds,
+                        UnorderedElementsAre(
+                            id(TESTDATA_DIR "/builddependencycollector/project/header1.h"),
+                            id(TESTDATA_DIR "/builddependencycollector/project/header2.h")))),
             AllOf(Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::ProjectInclude}),
                   Field(&ClangBackEnd::IdPaths::filePathIds,
                         UnorderedElementsAre(
                             id(TESTDATA_DIR "/builddependencycollector/external/external1.h"),
-                            id(TESTDATA_DIR "/builddependencycollector/external/external2.h")))))));
-    EXPECT_CALL(mockClangPathWatcher,
-                updateIdPaths(ElementsAre(AllOf(
-                    Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::SystemInclude}),
-                    Field(&ClangBackEnd::IdPaths::filePathIds,
-                          UnorderedElementsAre(
-                              id(TESTDATA_DIR "/builddependencycollector/system/system1.h"),
-                              id(TESTDATA_DIR "/builddependencycollector/system/system2.h")))))));
+                            id(TESTDATA_DIR "/builddependencycollector/external/external2.h")))),
+            AllOf(Field(&ClangBackEnd::IdPaths::id, ProjectChunkId{1, SourceType::SystemInclude}),
+                  Field(&ClangBackEnd::IdPaths::filePathIds,
+                        UnorderedElementsAre(
+                            id(TESTDATA_DIR "/builddependencycollector/system/system1.h"),
+                            id(TESTDATA_DIR "/builddependencycollector/system/system2.h")))))));
     EXPECT_CALL(mockBuildDependenciesStorage, updatePchCreationTimeStamp(Gt(0), Eq(1)));
 
     creator.doInMainThreadAfterFinished();

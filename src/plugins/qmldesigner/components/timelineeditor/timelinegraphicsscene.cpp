@@ -57,6 +57,7 @@
 
 #include <utils/hostosinfo.h>
 
+#include <QApplication>
 #include <QComboBox>
 #include <QGraphicsLinearLayout>
 #include <QGraphicsProxyWidget>
@@ -112,7 +113,7 @@ TimelineGraphicsScene::TimelineGraphicsScene(TimelineWidget *parent)
         if (auto *rview = rulerView())
             rview->setSceneRect(rect);
 
-        m_currentFrameIndicator->setHeight(m_layout->geometry().height());
+        m_currentFrameIndicator->setHeight(9999); // big enough number (> timeline widget height)
     });
 
     auto moveFrameIndicator = [this](const QPointF &pos) {
@@ -171,14 +172,73 @@ void TimelineGraphicsScene::invalidateLayout()
     m_layout->invalidate();
 }
 
-void TimelineGraphicsScene::setCurrenFrame(const QmlTimeline &timeline, qreal frame)
+void TimelineGraphicsScene::updateKeyframePositionsCache()
 {
-    if (timeline.isValid())
+    if (currentTimeline().isValid()) {
+        auto kfPos = keyframePositions();
+        std::sort(kfPos.begin(), kfPos.end());
+        kfPos.erase(std::unique(kfPos.begin(), kfPos.end()), kfPos.end()); // remove duplicates
+
+        m_keyframePositionsCache = kfPos;
+    }
+}
+
+// snap a frame to nearest keyframe or ruler tick
+qreal TimelineGraphicsScene::snap(qreal frame, bool snapToPlayhead)
+{
+    qreal rulerFrameTick = m_layout->ruler()->getFrameTick();
+    qreal nearestRulerTickFrame = qRound(frame / rulerFrameTick) * rulerFrameTick;
+    // get nearest keyframe to the input frame
+    bool nearestKeyframeFound = false;
+    qreal nearestKeyframe = 0;
+    for (int i = 0; i < m_keyframePositionsCache.size(); ++i) {
+        qreal kf_i = m_keyframePositionsCache[i];
+        if (kf_i > frame) {
+            nearestKeyframeFound = true;
+            nearestKeyframe = kf_i;
+            if (i > 0) {
+                qreal kf_p = m_keyframePositionsCache[i - 1]; // previous kf
+                if (frame - kf_p < kf_i - frame)
+                    nearestKeyframe = kf_p;
+            }
+            break;
+        }
+    }
+
+    // playhead past last keyframe case
+    if (!nearestKeyframeFound && !m_keyframePositionsCache.empty())
+        nearestKeyframe = m_keyframePositionsCache.last();
+
+    qreal playheadFrame = m_currentFrameIndicator->position();
+
+    qreal dKeyframe = qAbs(nearestKeyframe - frame);
+    qreal dPlayhead = snapToPlayhead ? qAbs(playheadFrame - frame) : 99999.;
+    qreal dRulerTick = qAbs(nearestRulerTickFrame - frame);
+
+    if (dKeyframe <= qMin(dPlayhead, dRulerTick))
+        return nearestKeyframe;
+
+    if (dRulerTick <= dPlayhead)
+        return nearestRulerTickFrame;
+
+    return playheadFrame;
+}
+
+// set the playhead frame and return the updated frame in case of snapping
+qreal TimelineGraphicsScene::setCurrenFrame(const QmlTimeline &timeline, qreal frame)
+{
+    if (timeline.isValid()) {
+        if (QApplication::keyboardModifiers() & Qt::ShiftModifier) // playhead snapping
+            frame = snap(frame, false);
         m_currentFrameIndicator->setPosition(frame);
-    else
+    } else {
         m_currentFrameIndicator->setPosition(0);
+    }
 
     invalidateCurrentValues();
+    emitStatusBarPlayheadFrameChanged(frame);
+
+    return frame;
 }
 
 void TimelineGraphicsScene::setCurrentFrame(int frame)
@@ -187,14 +247,12 @@ void TimelineGraphicsScene::setCurrentFrame(int frame)
 
     if (timeline.isValid()) {
         timeline.modelNode().setAuxiliaryData("currentFrame@NodeInstance", frame);
-        m_currentFrameIndicator->setPosition(frame + timeline.startKeyframe());
+        m_currentFrameIndicator->setPosition(frame);
     } else {
         m_currentFrameIndicator->setPosition(0);
     }
 
     invalidateCurrentValues();
-
-    emitStatusBarFrameMessageChanged(frame);
 }
 
 void TimelineGraphicsScene::setStartFrame(int frame)
@@ -314,11 +372,10 @@ void TimelineGraphicsScene::commitCurrentFrame(qreal frame)
     QmlTimeline timeline(timelineModelNode());
 
     if (timeline.isValid()) {
+        frame = setCurrenFrame(timeline, qRound(frame));
         timeline.modelNode().setAuxiliaryData("currentFrame@NodeInstance", qRound(frame));
-        setCurrenFrame(timeline, qRound(frame));
         invalidateCurrentValues();
     }
-    emitStatusBarFrameMessageChanged(int(frame));
 }
 
 QList<TimelineKeyframeItem *> TimelineGraphicsScene::selectedKeyframes() const
@@ -501,6 +558,11 @@ QList<QGraphicsItem *> TimelineGraphicsScene::itemsAt(const QPointF &pos)
 void TimelineGraphicsScene::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
     auto topItem = TimelineMovableAbstractItem::topMoveableItem(itemsAt(event->scenePos()));
+
+    // if pressed the ruler, set topItem to the playhead
+    if (!topItem && rulerView()->rect().contains(event->scenePos().toPoint()))
+        topItem = m_currentFrameIndicator;
+
     m_tools.mousePressEvent(topItem, event);
     QGraphicsScene::mousePressEvent(event);
 }
@@ -700,10 +762,10 @@ void TimelineGraphicsScene::emitScrollOffsetChanged()
         TimelineMovableAbstractItem::emitScrollOffsetChanged(item);
 }
 
-void TimelineGraphicsScene::emitStatusBarFrameMessageChanged(int frame)
+void TimelineGraphicsScene::emitStatusBarPlayheadFrameChanged(int frame)
 {
     emit statusBarMessageChanged(
-        QString(TimelineConstants::timelineStatusBarFrameNumber).arg(frame));
+        tr(TimelineConstants::statusBarPlayheadFrame).arg(frame));
 }
 
 bool TimelineGraphicsScene::event(QEvent *event)

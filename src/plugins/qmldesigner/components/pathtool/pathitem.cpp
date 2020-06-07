@@ -36,6 +36,7 @@
 #include <theme.h>
 
 #include <QPainter>
+#include <QPainterPath>
 #include <QMenu>
 #include <QtDebug>
 #include <QGraphicsSceneMouseEvent>
@@ -104,9 +105,9 @@ void PathItem::writeCubicPath(const ModelNode &pathNode, const CubicSegment &cub
 
 void PathItem::writePathAttributes(const ModelNode &pathNode, const QMap<QString, QVariant> &attributes)
 {
-    QMapIterator<QString, QVariant> attributesIterator(attributes);
-    while (attributesIterator.hasNext()) {
-        attributesIterator.next();
+    for (auto attributesIterator = attributes.cbegin(), end = attributes.cend();
+              attributesIterator != end;
+              ++attributesIterator) {
         QList<QPair<PropertyName, QVariant> > propertyList;
         propertyList.append(PropertyPair("name", attributesIterator.key()));
         propertyList.append(PropertyPair("value", attributesIterator.value()));
@@ -471,7 +472,7 @@ static QRectF boundingRectForPath(const QList<ControlPoint> &controlPoints)
         yMaximum = qMax(yMaximum, controlPoint.coordinate().y());
     }
 
-    return QRect(xMinimum, yMinimum, xMaximum - xMinimum, yMaximum - yMinimum);
+    return QRectF(xMinimum, yMinimum, xMaximum - xMinimum, yMaximum - yMinimum);
 }
 
 void PathItem::updateBoundingRect()

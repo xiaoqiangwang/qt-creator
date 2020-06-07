@@ -44,6 +44,7 @@ class BuildConfiguration;
 class BuildStepConfigWidget;
 class BuildStepFactory;
 class BuildStepList;
+class BuildSystem;
 class DeployConfiguration;
 class Target;
 class Task;
@@ -69,11 +70,13 @@ public:
     bool enabled() const;
     void setEnabled(bool b);
 
+    BuildStepList *stepList() const;
+
     BuildConfiguration *buildConfiguration() const;
     DeployConfiguration *deployConfiguration() const;
     ProjectConfiguration *projectConfiguration() const;
-    Target *target() const;
-    Project *project() const override;
+
+    BuildSystem *buildSystem() const;
 
     enum class OutputFormat {
         Stdout, Stderr, // These are for forwarded output from external tools
@@ -83,8 +86,6 @@ public:
     enum OutputNewlineSetting { DoAppendNewline, DontAppendNewline };
 
     static void reportRunResult(QFutureInterface<bool> &fi, bool success);
-
-    bool isActive() const override;
 
     bool widgetExpandedByDefault() const;
     void setWidgetExpandedByDefault(bool widgetExpandedByDefault);
@@ -97,6 +98,10 @@ public:
     void setImmutable(bool immutable) { m_immutable = immutable; }
 
     virtual QVariant data(Core::Id id) const;
+    void setSummaryUpdater(const std::function<QString ()> &summaryUpdater);
+
+    void addMacroExpander();
+
 signals:
     /// Adds a \p task to the Issues pane.
     /// Do note that for linking compile output with tasks, you should first emit the task
@@ -120,6 +125,8 @@ protected:
     bool isCanceled() const;
 
 private:
+    using ProjectConfiguration::parent;
+
     virtual void doRun() = 0;
     virtual void doCancel();
 
@@ -128,7 +135,9 @@ private:
     bool m_immutable = false;
     bool m_widgetExpandedByDefault = true;
     bool m_runInGuiThread = true;
+    bool m_addMacroExpander = false;
     Utils::optional<bool> m_wasExpanded;
+    std::function<QString()> m_summaryUpdater;
 };
 
 class PROJECTEXPLORER_EXPORT BuildStepInfo
@@ -173,7 +182,7 @@ protected:
     {
         QTC_CHECK(!m_info.creator);
         m_info.id = id;
-        m_info.creator = [](BuildStepList *bsl) { return new BuildStepType(bsl); };
+        m_info.creator = [id](BuildStepList *bsl) { return new BuildStepType(bsl, id); };
     }
 
     void setSupportedStepList(Core::Id id);
@@ -209,6 +218,9 @@ public:
     void setDisplayName(const QString &displayName);
     void setSummaryText(const QString &summaryText);
 
+    void setSummaryUpdater(const std::function<QString()> &summaryUpdater);
+    void recreateSummary();
+
 signals:
     void updateSummary();
 
@@ -216,6 +228,7 @@ private:
     BuildStep *m_step = nullptr;
     QString m_displayName;
     QString m_summaryText;
+    std::function<QString()> m_summaryUpdater;
 };
 
 } // namespace ProjectExplorer

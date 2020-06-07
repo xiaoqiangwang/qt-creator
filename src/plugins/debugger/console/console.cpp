@@ -64,7 +64,7 @@ Console::Console()
     m_consoleWidget->setEnabled(true);
 
     auto vbox = new QVBoxLayout(m_consoleWidget);
-    vbox->setMargin(0);
+    vbox->setContentsMargins(0, 0, 0, 0);
     vbox->setSpacing(0);
 
     m_consoleView = new ConsoleView(m_consoleItemModel, m_consoleWidget);
@@ -283,21 +283,6 @@ void Console::evaluate(const QString &expression)
         m_consoleItemModel->shiftEditableRow();
         printItem(item);
     }
-}
-
-static Console *theConsole = nullptr;
-
-Console *debuggerConsole()
-{
-    if (!theConsole)
-        theConsole = new Console;
-    return theConsole;
-}
-
-void destroyDebuggerConsole()
-{
-    delete theConsole;
-    theConsole = nullptr;
 }
 
 } // Internal

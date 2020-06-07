@@ -76,7 +76,67 @@ DiffEditorController *DiffEditorDocument::controller() const
     return m_controller;
 }
 
+static void appendRow(ChunkData *chunk, const RowData &row)
+{
+    const bool isSeparator = row.leftLine.textLineType == TextLineData::Separator
+            && row.rightLine.textLineType == TextLineData::Separator;
+    if (!isSeparator)
+        chunk->rows.append(row);
+}
+
+ChunkData DiffEditorDocument::filterChunk(const ChunkData &data,
+                                          const ChunkSelection &selection, bool revert)
+{
+    if (selection.isNull())
+        return data;
+
+    ChunkData chunk(data);
+    chunk.rows.clear();
+    for (int i = 0; i < data.rows.count(); ++i) {
+        RowData row = data.rows[i];
+        const bool isLeftSelected = selection.leftSelection.contains(i);
+        const bool isRightSelected = selection.rightSelection.contains(i);
+
+        if (isLeftSelected || isRightSelected) {
+            if (row.equal || (isLeftSelected && isRightSelected)) {
+                appendRow(&chunk, row);
+            } else if (isLeftSelected) {
+                RowData newRow = row;
+
+                row.rightLine = TextLineData(TextLineData::Separator);
+                appendRow(&chunk, row);
+
+                if (revert) {
+                    newRow.leftLine = newRow.rightLine;
+                    newRow.equal = true;
+                    appendRow(&chunk, newRow);
+                }
+            } else { // isRightSelected
+                if (!revert) {
+                    RowData newRow = row;
+                    newRow.rightLine = newRow.leftLine;
+                    newRow.equal = true;
+                    appendRow(&chunk, newRow);
+                }
+
+                row.leftLine = TextLineData(TextLineData::Separator);
+                appendRow(&chunk, row);
+            }
+        } else {
+            if (revert)
+                row.leftLine = row.rightLine;
+            else
+                row.rightLine = row.leftLine;
+            row.equal = true;
+            appendRow(&chunk, row);
+        }
+    }
+
+    return chunk;
+}
+
 QString DiffEditorDocument::makePatch(int fileIndex, int chunkIndex,
+                                      const ChunkSelection &selection,
                                       bool revert, bool addPrefix,
                                       const QString &overriddenFileName) const
 {
@@ -90,7 +150,7 @@ QString DiffEditorDocument::makePatch(int fileIndex, int chunkIndex,
     if (chunkIndex >= fileData.chunks.count())
         return QString();
 
-    const ChunkData &chunkData = fileData.chunks.at(chunkIndex);
+    const ChunkData chunkData = filterChunk(fileData.chunks.at(chunkIndex), selection, revert);
     const bool lastChunk = (chunkIndex == fileData.chunks.count() - 1);
 
     const QString fileName = !overriddenFileName.isEmpty()
@@ -187,7 +247,7 @@ bool DiffEditorDocument::ignoreWhitespace() const
 
 bool DiffEditorDocument::setContents(const QByteArray &contents)
 {
-    Q_UNUSED(contents);
+    Q_UNUSED(contents)
     return true;
 }
 

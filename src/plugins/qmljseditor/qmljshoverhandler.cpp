@@ -59,13 +59,12 @@ using namespace QmlJS;
 using namespace TextEditor;
 
 namespace QmlJSEditor {
-namespace Internal {
 
 namespace {
 
     QString textAt(const Document::Ptr doc,
-                   const AST::SourceLocation &from,
-                   const AST::SourceLocation &to)
+                   const SourceLocation &from,
+                   const SourceLocation &to)
     {
         return doc->source().mid(from.offset, to.end() - from.begin());
     }
@@ -517,6 +516,5 @@ bool QmlJSHoverHandler::setQmlHelpItem(const ScopeChain &scopeChain,
     return false;
 }
 
-} // namespace Internal
 } // namespace QmlJSEditor
 

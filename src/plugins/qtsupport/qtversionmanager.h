@@ -35,7 +35,9 @@ class QTSUPPORT_EXPORT QtVersionManager : public QObject
     Q_OBJECT
     // for getUniqueId();
     friend class BaseQtVersion;
+    friend class QtVersionFactory;
     friend class Internal::QtOptionsPageWidget;
+
 public:
     static QtVersionManager *instance();
     QtVersionManager();
@@ -58,12 +60,13 @@ public:
     // Sorting is potentially expensive since it might require qmake --query to run for each version!
     static QList<BaseQtVersion *> sortVersions(const QList<BaseQtVersion *> &input);
 
-    static BaseQtVersion *qtVersionForQMakeBinary(const Utils::FilePath &qmakePath);
-
     static void addVersion(BaseQtVersion *version);
     static void removeVersion(BaseQtVersion *version);
 
-    static bool isValidId(int id);
+    // Call latest in extensionsInitialized of plugin depending on QtSupport
+    static void registerExampleSet(const QString &displayName,
+                                   const QString &manifestPath,
+                                   const QString &examplesPath);
 
 signals:
     // content of BaseQtVersion objects with qmake path might have changed
@@ -71,11 +74,18 @@ signals:
     void qtVersionsLoaded();
 
 private:
+    enum class DocumentationSetting { HighestOnly, All, None };
+
+    static void updateDocumentation(const QList<BaseQtVersion *> &added,
+                                    const QList<BaseQtVersion *> &removed,
+                                    const QList<BaseQtVersion *> &allNew);
     void updateFromInstaller(bool emitSignal = true);
     void triggerQtVersionRestore();
 
     // Used by QtOptionsPage
-    static void setNewQtVersions(QList<BaseQtVersion *> newVersions);
+    static void setNewQtVersions(const QList<BaseQtVersion *> &newVersions);
+    static void setDocumentationSetting(const DocumentationSetting &setting);
+    static DocumentationSetting documentationSetting();
     // Used by QtVersion
     static int getUniqueId();
 };

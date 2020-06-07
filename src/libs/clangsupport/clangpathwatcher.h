@@ -390,9 +390,7 @@ public:
 
     FilePathIds watchedPaths(const WatcherEntries &entries) const
     {
-        auto filePathIds = Utils::transform<FilePathIds>(entries, [](WatcherEntry entry) {
-            return entry.filePathId;
-        });
+        auto filePathIds = Utils::transform<FilePathIds>(entries, &WatcherEntry::filePathId);
 
         std::sort(filePathIds.begin(), filePathIds.end());
 
@@ -412,7 +410,7 @@ public:
 
         for (WatcherEntry entry : foundEntries) {
             if (idPaths.empty() || idPaths.back().id != entry.id)
-                idPaths.push_back({entry.id, {}});
+                idPaths.emplace_back(entry.id, FilePathIds{});
             idPaths.back().filePathIds.push_back(entry.filePathId);
         }
 

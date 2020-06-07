@@ -25,19 +25,21 @@
 
 #pragma once
 
+#include "remotelinux_export.h"
+
 #include <projectexplorer/deploymentdata.h>
 #include <projectexplorer/makestep.h>
 
+namespace ProjectExplorer { class BaseStringAspect; }
 namespace Utils { class FilePath; }
 
 namespace RemoteLinux {
-namespace Internal {
 
-class MakeInstallStep : public ProjectExplorer::MakeStep
+class REMOTELINUX_EXPORT MakeInstallStep : public ProjectExplorer::MakeStep
 {
     Q_OBJECT
 public:
-    MakeInstallStep(ProjectExplorer::BuildStepList *parent);
+    MakeInstallStep(ProjectExplorer::BuildStepList *parent, Core::Id id);
 
     static Core::Id stepId();
     static QString displayName();
@@ -56,11 +58,13 @@ private:
     void updateCommandFromAspect();
     void updateArgsFromAspect();
     void updateFullCommandLine();
+    void updateFromCustomCommandLineAspect();
+
+    ProjectExplorer::BaseStringAspect *customCommandLineAspect() const;
 
     ProjectExplorer::DeploymentData m_deploymentData;
     bool m_noInstallTarget = false;
     bool m_isCmakeProject = false;
 };
 
-} // namespace Internal
 } // namespace RemoteLinux

@@ -42,6 +42,7 @@ const char RENAMEFILE[]           = "ProjectExplorer.RenameFile";
 const char REMOVEFILE[]           = "ProjectExplorer.RemoveFile";
 
 // Context
+const char C_PROJECTEXPLORER[]    = "Project Explorer";
 const char C_PROJECT_TREE[]       = "ProjectExplorer.ProjectTreeContext";
 
 // Menus
@@ -144,6 +145,7 @@ const char PREFERRED_PROJECT_NODE[] = "ProjectExplorer.PreferredProjectNode";
 const char PREFERRED_PROJECT_NODE_PATH[] = "ProjectExplorer.PreferredProjectPath";
 const char PROJECT_POINTER[] = "ProjectExplorer.Project";
 const char PROJECT_KIT_IDS[] = "ProjectExplorer.Profile.Ids";
+const char QT_KEYWORDS_ENABLED[] = "ProjectExplorer.QtKeywordsEnabled";
 
 // Build step lists ids:
 const char BUILDSTEPS_CLEAN[] = "ProjectExplorer.BuildSteps.Clean";
@@ -195,10 +197,13 @@ const char GENERATOR_ID_PREFIX[] = "PE.Wizard.Generator.";
 // RunMode
 const char NO_RUN_MODE[]="RunConfiguration.NoRunMode";
 const char NORMAL_RUN_MODE[]="RunConfiguration.NormalRunMode";
-const char QML_PROFILER_RUN_MODE[]="RunConfiguration.QmlProfilerRunMode";
-const char PERFPROFILER_RUN_MODE[]="PerfProfiler.RunMode";
 const char DEBUG_RUN_MODE[]="RunConfiguration.DebugRunMode";
+const char QML_PROFILER_RUN_MODE[]="RunConfiguration.QmlProfilerRunMode";
+const char QML_PROFILER_RUNNER[]="RunConfiguration.QmlProfilerRunner";
 const char QML_PREVIEW_RUN_MODE[]="RunConfiguration.QmlPreviewRunMode";
+const char QML_PREVIEW_RUNNER[]="RunConfiguration.QmlPreviewRunner";
+const char PERFPROFILER_RUN_MODE[]="PerfProfiler.RunMode";
+const char PERFPROFILER_RUNNER[]="PerfProfiler.Runner";
 
 // Navigation Widget
 const char PROJECTTREE_ID[] = "Projects";
@@ -214,8 +219,11 @@ const char FILEOVERLAY_SCXML[]=":/projectexplorer/images/fileoverlay_scxml.png";
 const char FILEOVERLAY_PY[]=":/projectexplorer/images/fileoverlay_py.png";
 const char FILEOVERLAY_UNKNOWN[]=":/projectexplorer/images/fileoverlay_unknown.png";
 
+// Settings
 const char ADD_FILES_DIALOG_FILTER_HISTORY_KEY[] = "ProjectExplorer.AddFilesFilterKey";
 const char PROJECT_ROOT_PATH_KEY[] = "ProjectExplorer.Project.RootPath";
+const char STARTUPSESSION_KEY[] = "ProjectExplorer/SessionToRestore";
+const char LASTSESSION_KEY[] = "ProjectExplorer/StartupSession";
 
 } // namespace Constants
 } // namespace ProjectExplorer

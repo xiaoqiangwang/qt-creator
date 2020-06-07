@@ -341,7 +341,7 @@ void PropertiesView::MView::edit()
 
 void PropertiesView::MView::visitMElement(const MElement *element)
 {
-    Q_UNUSED(element);
+    Q_UNUSED(element)
 
     prepare();
     if (!m_stereotypeComboBox) {
@@ -352,8 +352,13 @@ void PropertiesView::MView::visitMElement(const MElement *element)
         m_stereotypeComboBox->addItems(m_propertiesView->stereotypeController()->knownStereotypes(m_stereotypeElement));
         connect(m_stereotypeComboBox->lineEdit(), &QLineEdit::textEdited,
                 this, &PropertiesView::MView::onStereotypesChanged);
+#if QT_VERSION < QT_VERSION_CHECK(5, 14, 0)
         connect(m_stereotypeComboBox, QOverload<const QString &>::of(&QComboBox::activated),
                 this, &PropertiesView::MView::onStereotypesChanged);
+#else
+        connect(m_stereotypeComboBox, &QComboBox::textActivated,
+                this, &PropertiesView::MView::onStereotypesChanged);
+#endif
     }
     if (!m_stereotypeComboBox->hasFocus()) {
         QList<QString> stereotypeList;
@@ -848,7 +853,7 @@ void PropertiesView::MView::visitMConnection(const MConnection *connection)
 
 void PropertiesView::MView::visitDElement(const DElement *element)
 {
-    Q_UNUSED(element);
+    Q_UNUSED(element)
 
     if (m_modelElements.size() > 0 && m_modelElements.at(0)) {
         m_propertiesTitle.clear();
@@ -1077,6 +1082,21 @@ void PropertiesView::MView::visitDItem(const DItem *item)
 void PropertiesView::MView::visitDRelation(const DRelation *relation)
 {
     visitDElement(relation);
+#ifdef SHOW_DEBUG_PROPERTIES
+    if (!m_pointsLabel) {
+        m_pointsLabel = new QLabel(m_topWidget);
+        addRow(tr("Intermediate points:"), m_pointsLabel, "intermediate points");
+    }
+    QString points;
+    for (const auto &point : relation->intermediatePoints()) {
+        if (!points.isEmpty())
+            points.append(", ");
+        points.append(QString("(%1,%2)").arg(point.pos().x()).arg(point.pos().y()));
+    }
+    if (points.isEmpty())
+        points = tr("none");
+    m_pointsLabel->setText(points);
+#endif
 }
 
 void PropertiesView::MView::visitDInheritance(const DInheritance *inheritance)

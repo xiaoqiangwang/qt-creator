@@ -69,10 +69,12 @@ static bool compilerExists(const FilePath &compilerPath)
 static QString cppLanguageOption(const FilePath &compiler)
 {
     const QString baseName = compiler.toFileInfo().baseName();
-    if (baseName == "iccarm")
+    if (baseName == "iccarm" || baseName == "iccrl78")
         return QString("--c++");
-    if (baseName == "icc8051" || baseName == "iccavr")
+    if (baseName == "icc8051" || baseName == "iccavr"
+            || baseName == "iccstm8" || baseName == "icc430") {
         return QString("--ec++");
+    }
     return {};
 }
 
@@ -95,17 +97,16 @@ static Macros dumpPredefinedMacros(const FilePath &compiler, const Core::Id lang
     cpp.setEnvironment(env);
     cpp.setTimeoutS(10);
 
-    QStringList arguments;
-    arguments.push_back(fakeIn.fileName());
+    CommandLine cmd(compiler, {fakeIn.fileName()});
     if (languageId == ProjectExplorer::Constants::CXX_LANGUAGE_ID)
-        arguments.push_back(cppLanguageOption(compiler));
-    arguments.push_back("--predef_macros");
-    arguments.push_back(outpath);
+        cmd.addArg(cppLanguageOption(compiler));
+    cmd.addArg("--predef_macros");
+    cmd.addArg(outpath);
 
-    const SynchronousProcessResponse response = cpp.runBlocking(compiler.toString(), arguments);
+    const SynchronousProcessResponse response = cpp.runBlocking(cmd);
     if (response.result != SynchronousProcessResponse::Finished
             || response.exitCode != 0) {
-        qWarning() << response.exitMessage(compiler.toString(), 10);
+        qWarning() << response.exitMessage(cmd.toUserOutput(), 10);
         return {};
     }
 
@@ -141,16 +142,14 @@ static HeaderPaths dumpHeaderPaths(const FilePath &compiler, const Core::Id lang
     cpp.setEnvironment(env);
     cpp.setTimeoutS(10);
 
-    QStringList arguments;
-    arguments.push_back(fakeIn.fileName());
+    CommandLine cmd(compiler, {fakeIn.fileName()});
     if (languageId == ProjectExplorer::Constants::CXX_LANGUAGE_ID)
-        arguments.push_back(cppLanguageOption(compiler));
-    arguments.push_back("--preinclude");
-    arguments.push_back(".");
+        cmd.addArg(cppLanguageOption(compiler));
+    cmd.addArg("--preinclude");
+    cmd.addArg(".");
 
     // Note: Response should retutn an error, just don't check on errors.
-    const SynchronousProcessResponse response = cpp.runBlocking(compiler.toString(),
-                                                                arguments);
+    const SynchronousProcessResponse response = cpp.runBlocking(cmd);
 
     HeaderPaths headerPaths;
 
@@ -192,6 +191,12 @@ static Abi::Architecture guessArchitecture(const Macros &macros)
             return Abi::Architecture::Mcs51Architecture;
         if (macro.key == "__ICCAVR__")
             return Abi::Architecture::AvrArchitecture;
+        if (macro.key == "__ICCSTM8__")
+            return Abi::Architecture::Stm8Architecture;
+        if (macro.key == "__ICC430__")
+            return Abi::Architecture::Msp430Architecture;
+        if (macro.key == "__ICCRL78__")
+            return Abi::Architecture::Rl78Architecture;
     }
     return Abi::Architecture::UnknownArchitecture;
 }
@@ -208,10 +213,14 @@ static unsigned char guessWordWidth(const Macros &macros)
 
 static Abi::BinaryFormat guessFormat(Abi::Architecture arch)
 {
-    if (arch == Abi::Architecture::ArmArchitecture)
+    if (arch == Abi::Architecture::ArmArchitecture
+            || arch == Abi::Architecture::Stm8Architecture
+            || arch == Abi::Architecture::Rl78Architecture) {
         return Abi::BinaryFormat::ElfFormat;
+    }
     if (arch == Abi::Architecture::Mcs51Architecture
-            || arch == Abi::Architecture::AvrArchitecture) {
+            || arch == Abi::Architecture::AvrArchitecture
+            || arch == Abi::Architecture::Msp430Architecture) {
         return Abi::BinaryFormat::UbrofFormat;
     }
     return Abi::BinaryFormat::UnknownFormat;
@@ -237,11 +246,8 @@ static QString buildDisplayName(Abi::Architecture arch, Core::Id language,
 
 IarToolChain::IarToolChain() :
     ToolChain(Constants::IAREW_TOOLCHAIN_TYPEID)
-{ }
-
-QString IarToolChain::typeDisplayName() const
 {
-    return Internal::IarToolChainFactory::tr("IAREW");
+    setTypeDisplayName(Internal::IarToolChainFactory::tr("IAREW"));
 }
 
 void IarToolChain::setTargetAbi(const Abi &abi)
@@ -278,8 +284,14 @@ ToolChain::MacroInspectionRunner IarToolChain::createMacroInspectionRunner() con
             (const QStringList &flags) {
         Q_UNUSED(flags)
 
-        const Macros macros = dumpPredefinedMacros(compilerCommand, languageId,
-                                                   env.toStringList());
+        Macros macros = dumpPredefinedMacros(compilerCommand, languageId, env.toStringList());
+        macros.append({"__intrinsic", "", MacroType::Define});
+        macros.append({"__nounwind", "", MacroType::Define});
+        macros.append({"__noreturn", "", MacroType::Define});
+        macros.append({"__packed", "", MacroType::Define});
+        macros.append({"__spec_string", "", MacroType::Define});
+        macros.append({"__constrange(__a,__b)", "", MacroType::Define});
+
         const auto languageVersion = ToolChain::languageVersion(languageId, macros);
         const auto report = MacroInspectionReport{macros, languageVersion};
         macrosCache->insert({}, report);
@@ -300,11 +312,12 @@ Utils::LanguageExtensions IarToolChain::languageExtensions(const QStringList &) 
 
 WarningFlags IarToolChain::warningFlags(const QStringList &cxxflags) const
 {
-    Q_UNUSED(cxxflags);
+    Q_UNUSED(cxxflags)
     return WarningFlags::Default;
 }
 
-ToolChain::BuiltInHeaderPathsRunner IarToolChain::createBuiltInHeaderPathsRunner() const
+ToolChain::BuiltInHeaderPathsRunner IarToolChain::createBuiltInHeaderPathsRunner(
+        const Environment &) const
 {
     Environment env = Environment::systemEnvironment();
     addToEnvironment(env);
@@ -328,9 +341,10 @@ ToolChain::BuiltInHeaderPathsRunner IarToolChain::createBuiltInHeaderPathsRunner
 }
 
 HeaderPaths IarToolChain::builtInHeaderPaths(const QStringList &cxxFlags,
-                                             const FilePath &fileName) const
+                                             const FilePath &fileName,
+                                             const Environment &env) const
 {
-    return createBuiltInHeaderPathsRunner()(cxxFlags, fileName.toString(), "");
+    return createBuiltInHeaderPathsRunner(env)(cxxFlags, fileName.toString(), "");
 }
 
 void IarToolChain::addToEnvironment(Environment &env) const
@@ -430,6 +444,9 @@ QList<ToolChain *> IarToolChainFactory::autoDetect(const QList<ToolChain *> &alr
         {{"EWARM"}, {"\\arm\\bin\\iccarm.exe"}},
         {{"EWAVR"}, {"\\avr\\bin\\iccavr.exe"}},
         {{"EW8051"}, {"\\8051\\bin\\icc8051.exe"}},
+        {{"EWSTM8"}, {"\\stm8\\bin\\iccstm8.exe"}},
+        {{"EW430"}, {"\\430\\bin\\icc430.exe"}},
+        {{"EWRL78"}, {"\\rl78\\bin\\iccrl78.exe"}},
     };
 
     QSettings registry(kRegistryNode, QSettings::NativeFormat);
@@ -447,7 +464,7 @@ QList<ToolChain *> IarToolChainFactory::autoDetect(const QList<ToolChain *> &alr
                     if (!compilerPath.isEmpty()) {
                         // Build full compiler path.
                         compilerPath += entry.subExePath;
-                        const FileName fn = FileName::fromString(compilerPath);
+                        const FilePath fn = FilePath::fromString(compilerPath);
                         if (compilerExists(fn)) {
                             // Note: threeLevelKey is a guessed toolchain version.
                             candidates.push_back({fn, threeLevelKey});

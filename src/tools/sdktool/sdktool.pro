@@ -18,6 +18,7 @@ SOURCES += \
     addkitoperation.cpp \
     addqtoperation.cpp \
     addtoolchainoperation.cpp \
+    addvalueoperation.cpp \
     findkeyoperation.cpp \
     findvalueoperation.cpp \
     getoperation.cpp \
@@ -33,6 +34,8 @@ SOURCES += \
     $$UTILS/environment.cpp \
     $$UTILS/fileutils.cpp \
     $$UTILS/hostosinfo.cpp \
+    $$UTILS/namevaluedictionary.cpp \
+    $$UTILS/namevalueitem.cpp \
     $$UTILS/persistentsettings.cpp \
     $$UTILS/qtcassert.cpp \
     $$UTILS/qtcprocess.cpp \
@@ -48,6 +51,7 @@ HEADERS += \
     addkitoperation.h \
     addqtoperation.h \
     addtoolchainoperation.h \
+    addvalueoperation.h \
     findkeyoperation.h \
     findvalueoperation.h \
     getoperation.h \
@@ -63,6 +67,8 @@ HEADERS += \
     $$UTILS/environment.h \
     $$UTILS/fileutils.h \
     $$UTILS/hostosinfo.h \
+    $$UTILS/namevaluedictionary.h \
+    $$UTILS/namevalueitem.h \
     $$UTILS/persistentsettings.h \
     $$UTILS/qtcassert.h \
     $$UTILS/qtcprocess.h \

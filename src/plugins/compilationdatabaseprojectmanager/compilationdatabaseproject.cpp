@@ -29,26 +29,25 @@
 #include "compilationdbparser.h"
 
 #include <coreplugin/icontext.h>
-#include <cpptools/cppkitinfo.h>
 #include <cpptools/cppprojectupdater.h>
 #include <cpptools/projectinfo.h>
 #include <projectexplorer/buildinfo.h>
 #include <projectexplorer/buildsteplist.h>
 #include <projectexplorer/buildtargetinfo.h>
+#include <projectexplorer/deploymentdata.h>
 #include <projectexplorer/gcctoolchain.h>
 #include <projectexplorer/headerpath.h>
 #include <projectexplorer/kitinformation.h>
 #include <projectexplorer/kitmanager.h>
 #include <projectexplorer/namedwidget.h>
-#include <projectexplorer/processstep.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/projectnodes.h>
 #include <projectexplorer/target.h>
-#include <projectexplorer/toolchainconfigwidget.h>
 #include <projectexplorer/toolchainmanager.h>
 #include <texteditor/textdocument.h>
 
 #include <utils/algorithm.h>
+#include <utils/filesystemwatcher.h>
 #include <utils/qtcassert.h>
 #include <utils/runextensions.h>
 
@@ -60,6 +59,7 @@
 #endif
 
 using namespace ProjectExplorer;
+using namespace Utils;
 
 namespace CompilationDatabaseProjectManager {
 namespace Internal {
@@ -168,12 +168,12 @@ void addDriverModeFlagIfNeeded(const ToolChain *toolchain,
     }
 }
 
-CppTools::RawProjectPart makeRawProjectPart(const Utils::FilePath &projectFile,
-                                            Kit *kit,
-                                            CppTools::KitInfo &kitInfo,
-                                            const QString &workingDir,
-                                            const Utils::FilePath &fileName,
-                                            QStringList flags)
+RawProjectPart makeRawProjectPart(const Utils::FilePath &projectFile,
+                                  Kit *kit,
+                                  ProjectExplorer::KitInfo &kitInfo,
+                                  const QString &workingDir,
+                                  const Utils::FilePath &fileName,
+                                  QStringList flags)
 {
     HeaderPaths headerPaths;
     Macros macros;
@@ -188,7 +188,7 @@ CppTools::RawProjectPart makeRawProjectPart(const Utils::FilePath &projectFile,
                   fileKind,
                   kitInfo.sysRootPath);
 
-    CppTools::RawProjectPart rpp;
+    RawProjectPart rpp;
     rpp.setProjectFileLocation(projectFile.toString());
     rpp.setBuildSystemTarget(workingDir);
     rpp.setDisplayName(fileName.fileName());
@@ -202,7 +202,6 @@ CppTools::RawProjectPart makeRawProjectPart(const Utils::FilePath &projectFile,
             kitInfo.cToolChain = toolchainFromFlags(kit,
                                                     originalFlags,
                                                     ProjectExplorer::Constants::C_LANGUAGE_ID);
-            ToolChainKitAspect::setToolChain(kit, kitInfo.cToolChain);
         }
         addDriverModeFlagIfNeeded(kitInfo.cToolChain, flags, originalFlags);
         rpp.setFlagsForC({kitInfo.cToolChain, flags});
@@ -211,7 +210,6 @@ CppTools::RawProjectPart makeRawProjectPart(const Utils::FilePath &projectFile,
             kitInfo.cxxToolChain = toolchainFromFlags(kit,
                                                       originalFlags,
                                                       ProjectExplorer::Constants::CXX_LANGUAGE_ID);
-            ToolChainKitAspect::setToolChain(kit, kitInfo.cxxToolChain);
         }
         addDriverModeFlagIfNeeded(kitInfo.cxxToolChain, flags, originalFlags);
         rpp.setFlagsForCxx({kitInfo.cxxToolChain, flags});
@@ -286,13 +284,13 @@ void addChild(FolderNode *root, const Utils::FilePath &fileName)
 
 void createTree(std::unique_ptr<ProjectNode> &root,
                 const Utils::FilePath &rootPath,
-                const CppTools::RawProjectParts &rpps,
+                const RawProjectParts &rpps,
                 const QList<FileNode *> &scannedFiles = QList<FileNode *>())
 {
     root->setAbsoluteFilePathAndLine(rootPath, -1);
     std::unique_ptr<FolderNode> secondRoot;
 
-    for (const CppTools::RawProjectPart &rpp : rpps) {
+    for (const RawProjectPart &rpp : rpps) {
         for (const QString &filePath : rpp.files) {
             Utils::FilePath fileName = Utils::FilePath::fromString(filePath);
             if (!fileName.isChildOf(rootPath)) {
@@ -336,14 +334,52 @@ void createTree(std::unique_ptr<ProjectNode> &root,
 
 } // anonymous namespace
 
-void CompilationDatabaseProject::buildTreeAndProjectParts()
+CompilationDatabaseBuildSystem::CompilationDatabaseBuildSystem(Target *target)
+    : BuildSystem(target)
+    , m_cppCodeModelUpdater(std::make_unique<CppTools::CppProjectUpdater>())
+    , m_parseDelay(new QTimer(this))
+    , m_deployFileWatcher(new FileSystemWatcher(this))
 {
-    CppTools::KitInfo kitInfo(this);
+    connect(target->project(), &CompilationDatabaseProject::rootProjectDirectoryChanged,
+            this, [this] {
+        m_projectFileHash.clear();
+        m_parseDelay->start();
+    });
+
+    connect(m_parseDelay, &QTimer::timeout, this, &CompilationDatabaseBuildSystem::reparseProject);
+
+    m_parseDelay->setSingleShot(true);
+    m_parseDelay->setInterval(1000);
+    m_parseDelay->start();
+
+    connect(project(), &Project::projectFileIsDirty, this, &CompilationDatabaseBuildSystem::reparseProject);
+
+    connect(m_deployFileWatcher, &FileSystemWatcher::fileChanged,
+            this, &CompilationDatabaseBuildSystem::updateDeploymentData);
+    connect(target->project(), &Project::activeTargetChanged,
+            this, &CompilationDatabaseBuildSystem::updateDeploymentData);
+}
+
+CompilationDatabaseBuildSystem::~CompilationDatabaseBuildSystem()
+{
+    m_parserWatcher.cancel();
+    m_parserWatcher.waitForFinished();
+}
+
+void CompilationDatabaseBuildSystem::triggerParsing()
+{
+    reparseProject();
+}
+
+void CompilationDatabaseBuildSystem::buildTreeAndProjectParts()
+{
+    Kit *kit = target()->kit();
+    ProjectExplorer::KitInfo kitInfo(kit);
     QTC_ASSERT(kitInfo.isValid(), return);
     // Reset toolchains to pick them based on the database entries.
     kitInfo.cToolChain = nullptr;
     kitInfo.cxxToolChain = nullptr;
-    CppTools::RawProjectParts rpps;
+    RawProjectParts rpps;
 
     QTC_ASSERT(m_parser, return);
     const DbContents dbContents = m_parser->dbContents();
@@ -356,12 +392,12 @@ void CompilationDatabaseProject::buildTreeAndProjectParts()
 
         prevEntry = &entry;
 
-        CppTools::RawProjectPart rpp = makeRawProjectPart(projectFilePath(),
-                                                          m_kit.get(),
-                                                          kitInfo,
-                                                          entry.workingDir,
-                                                          entry.fileName,
-                                                          entry.flags);
+        RawProjectPart rpp = makeRawProjectPart(projectFilePath(),
+                                                kit,
+                                                kitInfo,
+                                                entry.workingDir,
+                                                entry.fileName,
+                                                entry.flags);
 
         rpps.append(rpp);
     }
@@ -373,14 +409,14 @@ void CompilationDatabaseProject::buildTreeAndProjectParts()
         for (const QString &extra : dbContents.extras)
             extraFiles.append(baseDir.pathAppended(extra).toString());
 
-        CppTools::RawProjectPart rppExtra;
+        RawProjectPart rppExtra;
         rppExtra.setFiles(extraFiles);
         rpps.append(rppExtra);
     }
 
 
     auto root = std::make_unique<ProjectNode>(projectDirectory());
-    createTree(root, rootProjectDirectory(), rpps, m_parser->scannedFiles());
+    createTree(root, project()->rootProjectDirectory(), rpps, m_parser->scannedFiles());
 
     root->addNode(std::make_unique<FileNode>(projectFilePath(), FileType::Project));
 
@@ -390,39 +426,19 @@ void CompilationDatabaseProject::buildTreeAndProjectParts()
 
     setRootProjectNode(std::move(root));
 
-    m_cppCodeModelUpdater->update({this, kitInfo, rpps});
+    m_cppCodeModelUpdater->update({project(), kitInfo, activeParseEnvironment(), rpps});
+    updateDeploymentData();
 }
 
 CompilationDatabaseProject::CompilationDatabaseProject(const Utils::FilePath &projectFile)
     : Project(Constants::COMPILATIONDATABASEMIMETYPE, projectFile)
-    , m_cppCodeModelUpdater(std::make_unique<CppTools::CppProjectUpdater>())
-    , m_parseDelay(new QTimer(this))
 {
     setId(Constants::COMPILATIONDATABASEPROJECT_ID);
     setProjectLanguages(Core::Context(ProjectExplorer::Constants::CXX_LANGUAGE_ID));
     setDisplayName(projectDirectory().fileName());
-    setRequiredKitPredicate([](const Kit *) { return false; });
-    setPreferredKitPredicate([](const Kit *) { return false; });
-
-    m_kit.reset(KitManager::defaultKit()->clone());
-    connect(this, &CompilationDatabaseProject::parsingFinished, this, [this]() {
-        if (!m_hasTarget) {
-            addTarget(createTarget(m_kit.get()));
-            m_hasTarget = true;
-        }
-    });
-
-    connect(this, &CompilationDatabaseProject::rootProjectDirectoryChanged,
-            m_parseDelay, QOverload<>::of(&QTimer::start));
-
-    m_fileSystemWatcher.addFile(projectFile.toString(), Utils::FileSystemWatcher::WatchModifiedDate);
-    m_fileSystemWatcher.addFile(projectFile.toString() + Constants::COMPILATIONDATABASEPROJECT_FILES_SUFFIX,
-                                Utils::FileSystemWatcher::WatchModifiedDate);
-    connect(&m_fileSystemWatcher, &Utils::FileSystemWatcher::fileChanged,
-            m_parseDelay, QOverload<>::of(&QTimer::start));
-    connect(m_parseDelay, &QTimer::timeout, this, &CompilationDatabaseProject::reparseProject);
-    m_parseDelay->setSingleShot(true);
-    m_parseDelay->setInterval(1000);
+    setBuildSystemCreator([](Target *t) { return new CompilationDatabaseBuildSystem(t); });
+    setExtraProjectFiles(
+        {projectFile.stringAppended(Constants::COMPILATIONDATABASEPROJECT_FILES_SUFFIX)});
 }
 
 Utils::FilePath CompilationDatabaseProject::rootPathFromSettings() const
@@ -430,49 +446,55 @@ Utils::FilePath CompilationDatabaseProject::rootPathFromSettings() const
 #ifdef WITH_TESTS
     return Utils::FilePath::fromString(projectDirectory().fileName());
 #else
-    return Utils::FileName::fromString(
+    return Utils::FilePath::fromString(
         namedSettings(ProjectExplorer::Constants::PROJECT_ROOT_PATH_KEY).toString());
 #endif
 }
 
-Project::RestoreResult CompilationDatabaseProject::fromMap(const QVariantMap &map,
-                                                           QString *errorMessage)
+void CompilationDatabaseProject::configureAsExampleProject()
 {
-    Project::RestoreResult result = Project::fromMap(map, errorMessage);
-    if (result == Project::RestoreResult::Ok) {
-        const Utils::FilePath rootPath = rootPathFromSettings();
-        if (rootPath.isEmpty())
-            changeRootProjectDirectory(); // This triggers reparse itself.
-        else
-            reparseProject();
-    }
-
-    return result;
+    if (KitManager::defaultKit())
+        addTargetForKit(KitManager::defaultKit());
 }
 
-void CompilationDatabaseProject::reparseProject()
+void CompilationDatabaseBuildSystem::reparseProject()
 {
     if (m_parser) {
         QTC_CHECK(isParsing());
         m_parser->stop();
-        emitParsingFinished(false);
     }
-    m_parser = new CompilationDbParser(displayName(), projectFilePath(), rootPathFromSettings(),
-                                       m_mimeBinaryCache, this);
-    connect(m_parser, &CompilationDbParser::finished, this, [this](bool success) {
-        if (success)
+    const FilePath rootPath = static_cast<CompilationDatabaseProject *>(project())->rootPathFromSettings();
+    m_parser = new CompilationDbParser(project()->displayName(),
+                                       projectFilePath(),
+                                       rootPath,
+                                       m_mimeBinaryCache,
+                                       guardParsingRun(),
+                                       this);
+    connect(m_parser, &CompilationDbParser::finished, this, [this](ParseResult result) {
+        m_projectFileHash = m_parser->projectFileHash();
+        if (result == ParseResult::Success)
             buildTreeAndProjectParts();
         m_parser = nullptr;
-        emitParsingFinished(success);
     });
-    emitParsingStarted();
+    m_parser->setPreviousProjectFileHash(m_projectFileHash);
     m_parser->start();
 }
 
-CompilationDatabaseProject::~CompilationDatabaseProject()
+void CompilationDatabaseBuildSystem::updateDeploymentData()
 {
-    m_parserWatcher.cancel();
-    m_parserWatcher.waitForFinished();
+    const Utils::FilePath deploymentFilePath = projectDirectory()
+            .pathAppended("QtCreatorDeployment.txt");
+    DeploymentData deploymentData;
+    deploymentData.addFilesFromDeploymentFile(deploymentFilePath.toString(),
+                                              projectDirectory().toString());
+    setDeploymentData(deploymentData);
+    if (m_deployFileWatcher->files() != QStringList(deploymentFilePath.toString())) {
+        m_deployFileWatcher->removeFiles(m_deployFileWatcher->files());
+        m_deployFileWatcher->addFile(deploymentFilePath.toString(),
+                                     FileSystemWatcher::WatchModifiedDate);
+    }
+
+    emitBuildSystemUpdated();
 }
 
 static TextEditor::TextDocument *createCompilationDatabaseDocument()
@@ -486,7 +508,7 @@ static TextEditor::TextDocument *createCompilationDatabaseDocument()
 CompilationDatabaseEditorFactory::CompilationDatabaseEditorFactory()
 {
     setId(Constants::COMPILATIONDATABASEPROJECT_ID);
-    setDisplayName("Compilation Database");
+    setDisplayName(QCoreApplication::translate("OpenWith::Editors", "Compilation Database"));
     addMimeType(Constants::COMPILATIONDATABASEMIMETYPE);
 
     setEditorCreator([]() { return new TextEditor::BaseTextEditor; });
@@ -497,29 +519,15 @@ CompilationDatabaseEditorFactory::CompilationDatabaseEditorFactory()
     setCodeFoldingSupported(true);
 }
 
-CompilationDatabaseBuildConfiguration::CompilationDatabaseBuildConfiguration(
-    ProjectExplorer::Target *target, Core::Id id)
-    : ProjectExplorer::BuildConfiguration(target, id)
+class CompilationDatabaseBuildConfiguration : public BuildConfiguration
 {
-    target->setApplicationTargets({BuildTargetInfo()});
-}
+public:
+    CompilationDatabaseBuildConfiguration(Target *target, Core::Id id)
+        : BuildConfiguration(target, id)
+    {
+    }
+};
 
-void CompilationDatabaseBuildConfiguration::initialize(const ProjectExplorer::BuildInfo &info)
-{
-    ProjectExplorer::BuildConfiguration::initialize(info);
-    BuildStepList *buildSteps = stepList(ProjectExplorer::Constants::BUILDSTEPS_BUILD);
-    buildSteps->appendStep(new ProjectExplorer::ProcessStep(buildSteps));
-}
-
-ProjectExplorer::NamedWidget *CompilationDatabaseBuildConfiguration::createConfigWidget()
-{
-    return new ProjectExplorer::NamedWidget();
-}
-
-ProjectExplorer::BuildConfiguration::BuildType CompilationDatabaseBuildConfiguration::buildType() const
-{
-    return ProjectExplorer::BuildConfiguration::Release;
-}
 
 CompilationDatabaseBuildConfigurationFactory::CompilationDatabaseBuildConfigurationFactory()
 {
@@ -528,30 +536,16 @@ CompilationDatabaseBuildConfigurationFactory::CompilationDatabaseBuildConfigurat
 
     setSupportedProjectType(Constants::COMPILATIONDATABASEPROJECT_ID);
     setSupportedProjectMimeTypeName(Constants::COMPILATIONDATABASEMIMETYPE);
-}
 
-static QList<ProjectExplorer::BuildInfo> defaultBuildInfos(
-    const ProjectExplorer::BuildConfigurationFactory *factory, const QString &name)
-{
-    ProjectExplorer::BuildInfo info(factory);
-    info.typeName = name;
-    info.displayName = name;
-    info.buildType = BuildConfiguration::Release;
-    QList<ProjectExplorer::BuildInfo> buildInfos;
-    buildInfos << info;
-    return buildInfos;
-}
-
-QList<ProjectExplorer::BuildInfo> CompilationDatabaseBuildConfigurationFactory::availableBuilds(
-    const ProjectExplorer::Target * /*parent*/) const
-{
-    return defaultBuildInfos(this, tr("Release"));
-}
-
-QList<ProjectExplorer::BuildInfo> CompilationDatabaseBuildConfigurationFactory::availableSetups(
-    const ProjectExplorer::Kit * /*k*/, const QString & /*projectPath*/) const
-{
-    return defaultBuildInfos(this, tr("Release"));
+    setBuildGenerator([](const Kit *, const FilePath &projectPath, bool) {
+        const QString name = BuildConfiguration::tr("Release");
+        ProjectExplorer::BuildInfo info;
+        info.typeName = name;
+        info.displayName = name;
+        info.buildType = BuildConfiguration::Release;
+        info.buildDirectory = projectPath.parentDir();
+        return QList<BuildInfo>{info};
+    });
 }
 
 } // namespace Internal

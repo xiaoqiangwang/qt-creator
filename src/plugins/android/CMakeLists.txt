@@ -18,7 +18,6 @@ add_qtc_plugin(Android
     androiddevicedialog.cpp androiddevicedialog.h androiddevicedialog.ui
     androiderrormessage.cpp androiderrormessage.h
     androidextralibrarylistmodel.cpp androidextralibrarylistmodel.h
-    androidgdbserverkitinformation.cpp androidgdbserverkitinformation.h
     androidglobal.h
     androidmanager.cpp androidmanager.h
     androidmanifestdocument.cpp androidmanifestdocument.h
@@ -34,11 +33,11 @@ add_qtc_plugin(Android
     androidruncontrol.cpp androidruncontrol.h
     androidrunner.cpp androidrunner.h
     androidrunnerworker.cpp androidrunnerworker.h
+    androidsdkdownloader.cpp androidsdkdownloader.h
     androidsdkmanager.cpp androidsdkmanager.h
     androidsdkmanagerwidget.cpp androidsdkmanagerwidget.h androidsdkmanagerwidget.ui
     androidsdkmodel.cpp androidsdkmodel.h
     androidsdkpackage.cpp androidsdkpackage.h
-    androidsettingspage.cpp androidsettingspage.h
     androidsettingswidget.cpp androidsettingswidget.h androidsettingswidget.ui
     androidsignaloperation.cpp androidsignaloperation.h
     androidtoolchain.cpp androidtoolchain.h

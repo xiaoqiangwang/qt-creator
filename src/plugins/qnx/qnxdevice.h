@@ -32,7 +32,7 @@
 namespace Qnx {
 namespace Internal {
 
-class QnxDevice : public RemoteLinux::LinuxDevice
+class QnxDevice final : public RemoteLinux::LinuxDevice
 {
     Q_DECLARE_TR_FUNCTIONS(Qnx::Internal::QnxDevice)
 
@@ -48,9 +48,6 @@ public:
 
     ProjectExplorer::DeviceTester *createDeviceTester() const override;
     ProjectExplorer::DeviceProcess *createProcess(QObject *parent) const override;
-
-    QString displayType() const override;
-    Utils::OsType osType() const override;
 
     int qnxVersion() const;
 
@@ -69,10 +66,8 @@ private:
     mutable int m_versionNumber = 0;
 };
 
-class QnxDeviceFactory : public ProjectExplorer::IDeviceFactory
+class QnxDeviceFactory final : public ProjectExplorer::IDeviceFactory
 {
-    Q_OBJECT
-
 public:
     QnxDeviceFactory();
 

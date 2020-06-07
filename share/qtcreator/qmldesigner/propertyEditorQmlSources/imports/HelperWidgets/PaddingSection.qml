@@ -26,7 +26,6 @@
 import QtQuick 2.1
 import HelperWidgets 2.0
 import QtQuick.Layouts 1.0
-import QtQuick.Controls 1.0 as Controls
 
 Section {
     caption: qsTr("Padding")
@@ -47,6 +46,7 @@ Section {
             SpinBox {
                 maximumValue: 10000
                 minimumValue: -10000
+                realDragRange: 5000
                 decimals: 0
                 backendValue: backendValues.topPadding
                 Layout.fillWidth: true
@@ -64,6 +64,7 @@ Section {
             SpinBox {
                 maximumValue: 10000
                 minimumValue: -10000
+                realDragRange: 5000
                 decimals: 0
                 backendValue: backendValues.bottomPadding
                 Layout.fillWidth: true
@@ -82,6 +83,7 @@ Section {
             SpinBox {
                 maximumValue: 10000
                 minimumValue: -10000
+                realDragRange: 5000
                 decimals: 0
                 backendValue: backendValues.leftPadding
                 Layout.fillWidth: true
@@ -99,6 +101,7 @@ Section {
             SpinBox {
                 maximumValue: 10000
                 minimumValue: -10000
+                realDragRange: 5000
                 decimals: 0
                 backendValue: backendValues.rightPadding
                 Layout.fillWidth: true
@@ -113,6 +116,7 @@ Section {
             SpinBox {
                 maximumValue: 10000
                 minimumValue: -10000
+                realDragRange: 5000
                 decimals: 0
                 backendValue: backendValues.padding
                 Layout.fillWidth: true

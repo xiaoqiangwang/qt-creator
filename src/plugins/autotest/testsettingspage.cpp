@@ -43,9 +43,9 @@ TestSettingsWidget::TestSettingsWidget(QWidget *parent)
 {
     m_ui.setupUi(this);
 
-    m_ui.frameworksWarnIcon->setVisible(false);
-    m_ui.frameworksWarnIcon->setPixmap(Utils::Icons::WARNING.pixmap());
     m_ui.frameworksWarn->setVisible(false);
+    m_ui.frameworksWarn->setElideMode(Qt::ElideNone);
+    m_ui.frameworksWarn->setType(Utils::InfoLabel::Warning);
     m_ui.frameworksWarn->setText(tr("No active test frameworks."));
     m_ui.frameworksWarn->setToolTip(tr("You will not be able to use the AutoTest plugin without "
                                        "having at least one active test framework."));
@@ -69,6 +69,7 @@ void TestSettingsWidget::setSettings(const TestSettings &settings)
     m_ui.openResultsOnStartCB->setChecked(settings.popupOnStart);
     m_ui.openResultsOnFinishCB->setChecked(settings.popupOnFinish);
     m_ui.openResultsOnFailCB->setChecked(settings.popupOnFail);
+    m_ui.runAfterBuildCB->setCurrentIndex(int(settings.runAfterBuild));
     populateFrameworksListWidget(settings.frameworks);
 }
 
@@ -85,6 +86,7 @@ TestSettings TestSettingsWidget::settings() const
     result.popupOnStart = m_ui.openResultsOnStartCB->isChecked();
     result.popupOnFinish = m_ui.openResultsOnFinishCB->isChecked();
     result.popupOnFail = m_ui.openResultsOnFailCB->isChecked();
+    result.runAfterBuild = RunAfterBuildMode(m_ui.runAfterBuildCB->currentIndex());
     frameworkSettings(result);
     return result;
 }
@@ -131,13 +133,11 @@ void TestSettingsWidget::onFrameworkItemChanged()
         for (int row = 0, count = model->rowCount(); row < count; ++row) {
             if (model->index(row, 0).data(Qt::CheckStateRole) == Qt::Checked) {
                 m_ui.frameworksWarn->setVisible(false);
-                m_ui.frameworksWarnIcon->setVisible(false);
                 return;
             }
         }
     }
     m_ui.frameworksWarn->setVisible(true);
-    m_ui.frameworksWarnIcon->setVisible(true);
 }
 
 TestSettingsPage::TestSettingsPage(const QSharedPointer<TestSettings> &settings)
@@ -147,8 +147,7 @@ TestSettingsPage::TestSettingsPage(const QSharedPointer<TestSettings> &settings)
     setDisplayName(tr("General"));
     setCategory(Constants::AUTOTEST_SETTINGS_CATEGORY);
     setDisplayCategory(QCoreApplication::translate("AutoTest", Constants::AUTOTEST_SETTINGS_TR));
-    setCategoryIcon(Utils::Icon({{":/autotest/images/settingscategory_autotest.png",
-                    Utils::Theme::PanelTextColorDark}}, Utils::Icon::Tint));
+    setCategoryIconPath(":/autotest/images/settingscategory_autotest.png");
 }
 
 QWidget *TestSettingsPage::widget()
@@ -165,7 +164,6 @@ void TestSettingsPage::apply()
     if (!m_widget) // page was not shown at all
         return;
     const TestSettings newSettings = m_widget->settings();
-    bool frameworkSyncNecessary = newSettings.frameworks != m_settings->frameworks;
     const QList<Core::Id> changedIds = Utils::filtered(newSettings.frameworksGrouping.keys(),
                                                        [newSettings, this] (const Core::Id &id) {
         return newSettings.frameworksGrouping[id] != m_settings->frameworksGrouping[id];
@@ -174,9 +172,8 @@ void TestSettingsPage::apply()
     m_settings->toSettings(Core::ICore::settings());
     TestFrameworkManager *frameworkManager = TestFrameworkManager::instance();
     frameworkManager->activateFrameworksFromSettings(m_settings);
-    if (frameworkSyncNecessary)
-        TestTreeModel::instance()->syncTestFrameworks();
-    else if (!changedIds.isEmpty())
+    TestTreeModel::instance()->synchronizeTestFrameworks();
+    if (!changedIds.isEmpty())
         TestTreeModel::instance()->rebuild(changedIds);
 }
 

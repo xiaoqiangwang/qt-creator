@@ -25,16 +25,16 @@
 
 #include "clangtoolsunittests.h"
 
-#include "clangtidyclazytool.h"
+#include "clangtool.h"
 #include "clangtoolsdiagnostic.h"
 #include "clangtoolssettings.h"
 #include "clangtoolsutils.h"
 
 #include <coreplugin/icore.h>
-#include <cpptools/cppcodemodelsettings.h>
+#include <cpptools/clangdiagnosticconfig.h>
 #include <cpptools/cppmodelmanager.h>
-#include <cpptools/cpptoolstestcase.h>
 #include <cpptools/cpptoolsreuse.h>
+#include <cpptools/cpptoolstestcase.h>
 #include <projectexplorer/kitinformation.h>
 #include <projectexplorer/kitmanager.h>
 #include <projectexplorer/projectexplorer.h>
@@ -48,6 +48,7 @@
 #include <QTimer>
 #include <QtTest>
 
+using namespace CppTools;
 using namespace ProjectExplorer;
 using namespace Utils;
 
@@ -61,15 +62,15 @@ void ClangToolsUnitTests::initTestCase()
     const QList<Kit *> allKits = KitManager::kits();
     if (allKits.count() != 1)
         QSKIP("This test requires exactly one kit to be present");
-    const ToolChain * const toolchain = ToolChainKitAspect::toolChain(allKits.first(),
-                                                                           Constants::CXX_LANGUAGE_ID);
+    const ToolChain *const toolchain = ToolChainKitAspect::toolChain(allKits.first(),
+                                                                     Constants::CXX_LANGUAGE_ID);
     if (!toolchain)
         QSKIP("This test requires that there is a kit with a toolchain.");
 
     if (Core::ICore::clangExecutable(CLANG_BINDIR).isEmpty())
         QSKIP("No clang suitable for analyzing found");
 
-    m_tmpDir = new CppTools::Tests::TemporaryCopiedDir(QLatin1String(":/unit-tests"));
+    m_tmpDir = new Tests::TemporaryCopiedDir(":/clangtools/unit-tests");
     QVERIFY(m_tmpDir->isValid());
 }
 
@@ -78,16 +79,17 @@ void ClangToolsUnitTests::cleanupTestCase()
     delete m_tmpDir;
 }
 
-static CppTools::ClangDiagnosticConfig configFor(const QString &tidyChecks,
+static ClangDiagnosticConfig configFor(const QString &tidyChecks,
                                                  const QString &clazyChecks)
 {
-    CppTools::ClangDiagnosticConfig config;
+    ClangDiagnosticConfig config;
     config.setId("Test.MyTestConfig");
     config.setDisplayName("Test");
     config.setIsReadOnly(true);
     config.setClangOptions(QStringList{QStringLiteral("-Wno-everything")});
-    config.setClangTidyMode(CppTools::ClangDiagnosticConfig::TidyMode::ChecksPrefixList);
-    config.setClangTidyChecks("-*," + tidyChecks);
+    config.setClangTidyMode(ClangDiagnosticConfig::TidyMode::UseCustomChecks);
+    const QString theTidyChecks = tidyChecks.isEmpty() ? tidyChecks : "-*," + tidyChecks;
+    config.setClangTidyChecks(theTidyChecks);
     config.setClazyChecks(clazyChecks);
     return config;
 }
@@ -96,47 +98,35 @@ void ClangToolsUnitTests::testProject()
 {
     QFETCH(QString, projectFilePath);
     QFETCH(int, expectedDiagCount);
-    QFETCH(CppTools::ClangDiagnosticConfig, diagnosticConfig);
+    QFETCH(ClangDiagnosticConfig, diagnosticConfig);
     if (projectFilePath.contains("mingw")) {
-        const ToolChain * const toolchain
-                = ToolChainKitAspect::toolChain(KitManager::kits().constFirst(),
-                                                Constants::CXX_LANGUAGE_ID);
+        const ToolChain *const toolchain
+            = ToolChainKitAspect::toolChain(KitManager::kits().constFirst(),
+                                            Constants::CXX_LANGUAGE_ID);
         if (toolchain->typeId() != ProjectExplorer::Constants::MINGW_TOOLCHAIN_TYPEID)
             QSKIP("This test is mingw specific, does not run for other toolchains");
     }
 
-    CppTools::Tests::ProjectOpenerAndCloser projectManager;
-    const CppTools::ProjectInfo projectInfo = projectManager.open(projectFilePath, true);
-    QVERIFY(projectInfo.isValid());
-    ClangTool *tool = ClangTidyClazyTool::instance();
+    // Open project
+    Tests::ProjectOpenerAndCloser projectManager;
+    const ProjectInfo projectInfo = projectManager.open(projectFilePath, true);
+    const bool isProjectOpen = projectInfo.isValid();
+    QVERIFY(isProjectOpen);
 
-    // Change configs
-    QSharedPointer<CppTools::CppCodeModelSettings> cppToolsSettings = CppTools::codeModelSettings();
-    ClangToolsSettings *clangToolsSettings = ClangToolsSettings::instance();
-    const CppTools::ClangDiagnosticConfigs originalConfigs = cppToolsSettings
-                                                                 ->clangCustomDiagnosticConfigs();
-    const Core::Id originalId = clangToolsSettings->diagnosticConfigId();
+    // Run tool
+    ClangTool *tool = ClangTool::instance();
+    tool->startTool(ClangTool::FileSelection::AllFiles,
+                    ClangToolsSettings::instance()->runSettings(),
+                    diagnosticConfig);
+    QSignalSpy waitForFinishedTool(tool, &ClangTool::finished);
+    QVERIFY(waitForFinishedTool.wait(30000));
 
-    CppTools::ClangDiagnosticConfigs modifiedConfigs = originalConfigs;
-    modifiedConfigs.push_back(diagnosticConfig);
-
-    ExecuteOnDestruction executeOnDestruction([=]() {
-        // Restore configs
-        cppToolsSettings->setClangCustomDiagnosticConfigs(originalConfigs);
-        clangToolsSettings->setDiagnosticConfigId(originalId);
-        clangToolsSettings->writeSettings();
-    });
-
-    cppToolsSettings->setClangCustomDiagnosticConfigs(modifiedConfigs);
-    clangToolsSettings->setDiagnosticConfigId(diagnosticConfig.id());
-    clangToolsSettings->writeSettings();
-
-    tool->startTool(false);
-    QSignalSpy waiter(tool, SIGNAL(finished(bool)));
-    QVERIFY(waiter.wait(30000));
-
-    const QList<QVariant> arguments = waiter.takeFirst();
-    QVERIFY(arguments.first().toBool());
+    // Check for errors
+    const QString errorText = waitForFinishedTool.takeFirst().first().toString();
+    const bool finishedSuccessfully = errorText.isEmpty();
+    if (!finishedSuccessfully)
+        qWarning("Error: %s", qPrintable(errorText));
+    QVERIFY(finishedSuccessfully);
     QCOMPARE(tool->diagnostics().count(), expectedDiagCount);
 }
 
@@ -144,10 +134,10 @@ void ClangToolsUnitTests::testProject_data()
 {
     QTest::addColumn<QString>("projectFilePath");
     QTest::addColumn<int>("expectedDiagCount");
-    QTest::addColumn<CppTools::ClangDiagnosticConfig>("diagnosticConfig");
+    QTest::addColumn<ClangDiagnosticConfig>("diagnosticConfig");
 
     // Test simple C++ project.
-    CppTools::ClangDiagnosticConfig config = configFor("modernize-use-nullptr", QString());
+    ClangDiagnosticConfig config = configFor("modernize-use-nullptr", QString());
     addTestRow("simple/simple.qbs", 1, config);
     addTestRow("simple/simple.pro", 1, config);
 
@@ -176,12 +166,12 @@ void ClangToolsUnitTests::testProject_data()
     // Test that tidy and clazy diagnostics are emitted for the same project.
     addTestRow("clangtidy_clazy/clangtidy_clazy.pro",
                1 /*tidy*/ + 1 /*clazy*/,
-               configFor("misc-unconventional-assign-operator", "base-class-event"));
+               configFor("misc-unconventional-assign-operator", "qgetenv"));
 }
 
 void ClangToolsUnitTests::addTestRow(const QByteArray &relativeFilePath,
                                      int expectedDiagCount,
-                                     const CppTools::ClangDiagnosticConfig &diagnosticConfig)
+                                     const ClangDiagnosticConfig &diagnosticConfig)
 {
     const QString absoluteFilePath = m_tmpDir->absolutePath(relativeFilePath);
     const QString fileName = QFileInfo(absoluteFilePath).fileName();

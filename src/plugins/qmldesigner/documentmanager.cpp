@@ -96,9 +96,9 @@ static inline void applyProperties(ModelNode &node, const QHash<PropertyName, QV
             node.setAuxiliaryData(propertyName, QVariant());
     }
 
-    QHashIterator<PropertyName, QVariant> propertyIterator(propertyHash);
-    while (propertyIterator.hasNext()) {
-        propertyIterator.next();
+    for (auto propertyIterator = propertyHash.cbegin(), end = propertyHash.cend();
+              propertyIterator != end;
+              ++propertyIterator) {
         const PropertyName propertyName = propertyIterator.key();
         if (propertyName == "width" || propertyName == "height") {
             node.setAuxiliaryData(propertyIterator.key(), propertyIterator.value());
@@ -398,19 +398,20 @@ void DocumentManager::findPathToIsoProFile(bool *iconResourceFileAlreadyExists, 
         qCDebug(documentManagerLog) << "Checking" << node->displayName() << "(" << node << ")";
 
         if (node->isVirtualFolderType() && node->displayName() == "Resources") {
-            auto virtualFolderNode = dynamic_cast<ProjectExplorer::VirtualFolderNode*>(node);
+            ProjectExplorer::FolderNode *virtualFolderNode = node->asFolderNode();
+            if (QTC_GUARD(virtualFolderNode)) {
+                for (int subFolderIndex = 0; subFolderIndex < virtualFolderNode->folderNodes().size() && !iconQrcFileNode; ++subFolderIndex) {
+                    ProjectExplorer::FolderNode *subFolderNode = virtualFolderNode->folderNodes().at(subFolderIndex);
 
-            for (int subFolderIndex = 0; subFolderIndex < virtualFolderNode->folderNodes().size() && !iconQrcFileNode; ++subFolderIndex) {
-                ProjectExplorer::FolderNode *subFolderNode = virtualFolderNode->folderNodes().at(subFolderIndex);
+                    qCDebug(documentManagerLog) << "Checking if" << subFolderNode->displayName() << "("
+                        << subFolderNode << ") is" << isoIconsQrcFile;
 
-                qCDebug(documentManagerLog) << "Checking if" << subFolderNode->displayName() << "("
-                    << subFolderNode << ") is" << isoIconsQrcFile;
+                    if (subFolderNode->isFolderNodeType() && subFolderNode->displayName() == isoIconsQrcFile) {
+                        qCDebug(documentManagerLog) << "Found" << isoIconsQrcFile << "in" << virtualFolderNode->filePath();
 
-                if (subFolderNode->isFolderNodeType() && subFolderNode->displayName() == isoIconsQrcFile) {
-                    qCDebug(documentManagerLog) << "Found" << isoIconsQrcFile << "in" << virtualFolderNode->filePath();
-
-                    iconQrcFileNode = subFolderNode;
-                    *resourceFileProPath = iconQrcFileNode->parentProjectNode()->filePath().toString();
+                        iconQrcFileNode = subFolderNode;
+                        *resourceFileProPath = iconQrcFileNode->parentProjectNode()->filePath().toString();
+                    }
                 }
             }
         }
@@ -424,7 +425,8 @@ void DocumentManager::findPathToIsoProFile(bool *iconResourceFileAlreadyExists, 
 
     if (!iconQrcFileNode) {
         // The QRC file that we want doesn't exist or is not listed under RESOURCES in the .pro.
-        *resourceFilePath = project->projectDirectory().toString() + "/" + isoIconsQrcFile;
+        if (project)
+            *resourceFilePath = project->projectDirectory().toString() + "/" + isoIconsQrcFile;
 
         // We assume that the .pro containing the QML file is an acceptable place to add the .qrc file.
         ProjectExplorer::ProjectNode *projectNode = ProjectExplorer::ProjectTree::nodeForFile(qmlFileName)->parentProjectNode();

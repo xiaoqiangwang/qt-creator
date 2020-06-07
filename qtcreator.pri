@@ -107,7 +107,7 @@ osx {
 
     IDE_LIBRARY_PATH = $$IDE_OUTPUT_PATH/Frameworks
     IDE_PLUGIN_PATH  = $$IDE_OUTPUT_PATH/PlugIns
-    IDE_LIBEXEC_PATH = $$IDE_OUTPUT_PATH/Resources
+    IDE_LIBEXEC_PATH = $$IDE_OUTPUT_PATH/Resources/libexec
     IDE_DATA_PATH    = $$IDE_OUTPUT_PATH/Resources
     IDE_DOC_PATH     = $$IDE_DATA_PATH/doc
     IDE_BIN_PATH     = $$IDE_OUTPUT_PATH/MacOS
@@ -118,7 +118,7 @@ osx {
 
     INSTALL_LIBRARY_PATH = $$QTC_PREFIX/$${IDE_APP_TARGET}.app/Contents/Frameworks
     INSTALL_PLUGIN_PATH  = $$QTC_PREFIX/$${IDE_APP_TARGET}.app/Contents/PlugIns
-    INSTALL_LIBEXEC_PATH = $$QTC_PREFIX/$${IDE_APP_TARGET}.app/Contents/Resources
+    INSTALL_LIBEXEC_PATH = $$QTC_PREFIX/$${IDE_APP_TARGET}.app/Contents/Resources/libexec
     INSTALL_DATA_PATH    = $$QTC_PREFIX/$${IDE_APP_TARGET}.app/Contents/Resources
     INSTALL_DOC_PATH     = $$INSTALL_DATA_PATH/doc
     INSTALL_BIN_PATH     = $$QTC_PREFIX/$${IDE_APP_TARGET}.app/Contents/MacOS
@@ -209,6 +209,7 @@ exists($$IDE_LIBRARY_PATH): LIBS *= -L$$IDE_LIBRARY_PATH  # library path from ou
 
 DEFINES += \
     QT_CREATOR \
+    QT_NO_JAVA_STYLE_ITERATORS \
     QT_NO_CAST_TO_ASCII \
     QT_RESTRICTED_CAST_FROM_ASCII \
     QT_DISABLE_DEPRECATED_BEFORE=0x050900 \

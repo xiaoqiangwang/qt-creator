@@ -40,9 +40,6 @@
 #endif
 
 #ifdef Q_OS_WIN
-// Enable Win API of XP SP1 and later
-#undef _WIN32_WINNT
-#define _WIN32_WINNT 0x0502
 #include <windows.h>
 #include <utils/winutils.h>
 #include <tlhelp32.h>
@@ -165,7 +162,7 @@ static QList<DeviceProcessItem> getLocalProcessesUsingPs()
     psProcess.start(QLatin1String("ps"), args);
     if (psProcess.waitForStarted()) {
         QByteArray output;
-        if (Utils::SynchronousProcess::readDataFromProcess(psProcess, 30000, &output, 0, false)) {
+        if (Utils::SynchronousProcess::readDataFromProcess(psProcess, 30000, &output, nullptr, false)) {
             // Split "457 /Users/foo.app arg1 arg2"
             const QStringList lines = QString::fromLocal8Bit(output).split(QLatin1Char('\n'));
             const int lineCount = lines.size();

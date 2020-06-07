@@ -37,7 +37,6 @@
 #include <QIcon>
 
 namespace Autotest {
-namespace Internal {
 
 TestTreeItem::TestTreeItem(const QString &name, const QString &filePath, Type type)
     : m_name(name),
@@ -245,6 +244,8 @@ TestConfiguration *TestTreeItem::asConfiguration(TestRunMode mode) const
     case TestRunMode::Debug:
     case TestRunMode::DebugWithoutDeploy:
         return debugConfiguration();
+    default:
+        break;
     }
     return nullptr;
 }
@@ -316,7 +317,7 @@ QSet<QString> TestTreeItem::internalTargets() const
     QSet<QString> targets;
     for (const CppTools::ProjectPart::Ptr &part : projectParts) {
         targets.insert(part->buildSystemTarget);
-        if (part->buildTargetType != CppTools::ProjectPart::Executable)
+        if (part->buildTargetType != ProjectExplorer::BuildTargetType::Executable)
             targets.unite(TestTreeItem::dependingInternalTargets(cppMM, m_filePath));
     }
     return targets;
@@ -368,7 +369,7 @@ QSet<QString> TestTreeItem::dependingInternalTargets(CppTools::CppModelManager *
     bool wasHeader;
     const QString correspondingFile
             = CppTools::correspondingHeaderOrSource(file, &wasHeader, CppTools::CacheUsage::ReadOnly);
-    const Utils::FilePathList dependingFiles = snapshot.filesDependingOn(
+    const Utils::FilePaths dependingFiles = snapshot.filesDependingOn(
                 wasHeader ? file : correspondingFile);
     for (const Utils::FilePath &fn : dependingFiles) {
         for (const CppTools::ProjectPart::Ptr &part : cppMM->projectPart(fn))
@@ -377,5 +378,4 @@ QSet<QString> TestTreeItem::dependingInternalTargets(CppTools::CppModelManager *
     return result;
 }
 
-} // namespace Internal
 } // namespace Autotest

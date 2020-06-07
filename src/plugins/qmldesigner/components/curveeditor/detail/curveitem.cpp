@@ -30,7 +30,6 @@
 
 #include <QEasingCurve>
 #include <QPainter>
-#include <QPainterPath>
 
 #include <algorithm>
 #include <cmath>
@@ -39,41 +38,31 @@
 namespace DesignTools {
 
 CurveItem::CurveItem(QGraphicsItem *parent)
-    : QGraphicsObject(parent)
+    : CurveEditorItem(parent)
     , m_id(0)
     , m_style()
     , m_type(ValueType::Undefined)
     , m_component(PropertyTreeItem::Component::Generic)
     , m_transform()
     , m_keyframes()
-    , m_underMouse(false)
     , m_itemDirty(false)
 {}
 
 CurveItem::CurveItem(unsigned int id, const AnimationCurve &curve, QGraphicsItem *parent)
-    : QGraphicsObject(parent)
+    : CurveEditorItem(parent)
     , m_id(id)
     , m_style()
     , m_type(ValueType::Undefined)
     , m_component(PropertyTreeItem::Component::Generic)
     , m_transform()
     , m_keyframes()
-    , m_underMouse(false)
     , m_itemDirty(false)
 {
-    setAcceptHoverEvents(true);
-
     setFlag(QGraphicsItem::ItemIsMovable, false);
-
     setCurve(curve);
 }
 
 CurveItem::~CurveItem() {}
-
-bool CurveItem::isUnderMouse() const
-{
-    return m_underMouse;
-}
 
 int CurveItem::type() const
 {
@@ -128,9 +117,11 @@ void CurveItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidg
             if (segment.interpolation() == Keyframe::Interpolation::Easing) {
                 pen.setColor(m_style.easingCurveColor);
             } else {
-                if (m_underMouse)
-                    pen.setColor(Qt::red);
-                else if (hasSelection())
+                if (locked())
+                    pen.setColor(m_style.lockedColor);
+                else if (isUnderMouse())
+                    pen.setColor(m_style.hoverColor);
+                else if (hasSelectedKeyframe())
                     pen.setColor(m_style.selectionColor);
                 else
                     pen.setColor(m_style.color);
@@ -142,12 +133,38 @@ void CurveItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidg
     }
 }
 
+void CurveItem::lockedCallback()
+{
+    for (auto frame : m_keyframes)
+        frame->setLocked(locked());
+
+    setHandleVisibility(!locked());
+}
+
 bool CurveItem::isDirty() const
 {
     return m_itemDirty;
 }
 
-bool CurveItem::hasSelection() const
+bool CurveItem::hasActiveKeyframe() const
+{
+    for (auto *frame : m_keyframes) {
+        if (frame->activated())
+            return true;
+    }
+    return false;
+}
+
+bool CurveItem::hasActiveHandle() const
+{
+    for (auto *frame : m_keyframes) {
+        if (frame->hasActiveHandle())
+            return true;
+    }
+    return false;
+}
+
+bool CurveItem::hasSelectedKeyframe() const
 {
     for (auto *frame : m_keyframes) {
         if (frame->selected())
@@ -204,7 +221,7 @@ std::vector<AnimationCurve> CurveItem::curves() const
 
     std::vector<Keyframe> tmp;
 
-    for (size_t i = 0; i < m_keyframes.size(); ++i) {
+    for (int i = 0; i < m_keyframes.size(); ++i) {
         KeyframeItem *item = m_keyframes[i];
 
         Keyframe current = item->keyframe();
@@ -234,6 +251,33 @@ std::vector<AnimationCurve> CurveItem::curves() const
     return out;
 }
 
+QVector<KeyframeItem *> CurveItem::keyframes() const
+{
+    return m_keyframes;
+}
+
+QVector<KeyframeItem *> CurveItem::selectedKeyframes() const
+{
+    QVector<KeyframeItem *> out;
+    for (auto *frame : m_keyframes) {
+        if (frame->selected())
+            out.push_back(frame);
+    }
+    return out;
+}
+
+QVector<HandleItem *> CurveItem::handles() const
+{
+    QVector<HandleItem *> out;
+    for (auto *frame : m_keyframes) {
+        if (auto *left = frame->leftHandle())
+            out.push_back(left);
+        if (auto *right = frame->rightHandle())
+            out.push_back(right);
+    }
+    return out;
+}
+
 void CurveItem::restore()
 {
     if (m_keyframes.empty())
@@ -245,17 +289,24 @@ void CurveItem::restore()
     std::sort(m_keyframes.begin(), m_keyframes.end(), byTime);
 
     KeyframeItem *prevItem = m_keyframes[0];
-    for (size_t i = 1; i < m_keyframes.size(); ++i) {
+
+    if (prevItem->hasLeftHandle())
+        prevItem->setLeftHandle(QPointF());
+
+    for (int i = 1; i < m_keyframes.size(); ++i) {
         KeyframeItem *currItem = m_keyframes[i];
 
-        Keyframe prev = prevItem->keyframe();
-        Keyframe curr = currItem->keyframe();
-        CurveSegment segment(prev, curr);
+        bool left = prevItem->hasRightHandle();
+        bool right = currItem->hasLeftHandle();
+        if (left != right) {
+            if (left)
+                prevItem->setRightHandle(QPointF());
 
-        prevItem->setRightHandle(segment.left().rightHandle());
+            if (right)
+                currItem->setLeftHandle(QPointF());
+        }
+        CurveSegment segment(prevItem->keyframe(), currItem->keyframe());
         currItem->setInterpolation(segment.interpolation());
-        currItem->setLeftHandle(segment.right().leftHandle());
-
         prevItem = currItem;
     }
 }
@@ -287,9 +338,12 @@ void CurveItem::setCurve(const AnimationCurve &curve)
 
     for (auto frame : curve.keyframes()) {
         auto *item = new KeyframeItem(frame, this);
+        item->setLocked(locked());
         item->setComponentTransform(m_transform);
         m_keyframes.push_back(item);
         QObject::connect(item, &KeyframeItem::redrawCurve, this, &CurveItem::emitCurveChanged);
+        QObject::connect(item, &KeyframeItem::keyframeMoved, this, &CurveItem::keyframeMoved);
+        QObject::connect(item, &KeyframeItem::handleMoved, this, &CurveItem::handleMoved);
     }
 
     emitCurveChanged();
@@ -319,7 +373,7 @@ void CurveItem::setInterpolation(Keyframe::Interpolation interpolation)
         return;
 
     KeyframeItem *prevItem = m_keyframes[0];
-    for (size_t i = 1; i < m_keyframes.size(); ++i) {
+    for (int i = 1; i < m_keyframes.size(); ++i) {
         KeyframeItem *currItem = m_keyframes[i];
         if (currItem->selected()) {
             Keyframe prev = prevItem->keyframe();
@@ -337,20 +391,24 @@ void CurveItem::setInterpolation(Keyframe::Interpolation interpolation)
     emit curveChanged(id(), curve());
 }
 
-void CurveItem::connect(GraphicsScene *scene)
+void CurveItem::toggleUnified()
 {
+    if (m_keyframes.empty())
+        return;
+
     for (auto *frame : m_keyframes) {
-        QObject::connect(frame, &KeyframeItem::keyframeMoved, scene, &GraphicsScene::keyframeMoved);
-        QObject::connect(frame, &KeyframeItem::handleMoved, scene, &GraphicsScene::handleMoved);
+        if (frame->selected())
+            frame->toggleUnified();
     }
+    emit curveChanged(id(), curve());
 }
 
-void CurveItem::setIsUnderMouse(bool under)
+void CurveItem::connect(GraphicsScene *scene)
 {
-    if (under != m_underMouse) {
-        m_underMouse = under;
-        update();
-    }
+    QObject::connect(this, &CurveItem::curveChanged, scene, &GraphicsScene::curveChanged);
+
+    QObject::connect(this, &CurveItem::keyframeMoved, scene, &GraphicsScene::keyframeMoved);
+    QObject::connect(this, &CurveItem::handleMoved, scene, &GraphicsScene::handleMoved);
 }
 
 void CurveItem::insertKeyframeByTime(double time)
@@ -373,6 +431,8 @@ void CurveItem::deleteSelectedKeyframes()
     auto isNullptr = [](KeyframeItem *frame) { return frame == nullptr; };
     auto iter = std::remove_if(m_keyframes.begin(), m_keyframes.end(), isNullptr);
     m_keyframes.erase(iter, m_keyframes.end());
+    restore();
+
     emitCurveChanged();
 }
 

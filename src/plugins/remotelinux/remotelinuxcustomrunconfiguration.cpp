@@ -33,8 +33,6 @@
 #include <projectexplorer/runcontrol.h>
 #include <projectexplorer/target.h>
 
-#include <qtsupport/qtoutputformatter.h>
-
 #include <utils/hostosinfo.h>
 
 using namespace ProjectExplorer;
@@ -68,30 +66,6 @@ RemoteLinuxCustomRunConfiguration::RemoteLinuxCustomRunConfiguration(Target *tar
         addAspect<X11ForwardingAspect>();
 
     setDefaultDisplayName(runConfigDefaultDisplayName());
-    setOutputFormatter<QtSupport::QtOutputFormatter>();
-}
-
-bool RemoteLinuxCustomRunConfiguration::isConfigured() const
-{
-    return !aspect<ExecutableAspect>()->executable().isEmpty();
-}
-
-RunConfiguration::ConfigurationState
-RemoteLinuxCustomRunConfiguration::ensureConfigured(QString *errorMessage)
-{
-    if (!isConfigured()) {
-        if (errorMessage) {
-            *errorMessage = tr("The remote executable must be set "
-                               "in order to run a custom remote run configuration.");
-        }
-        return UnConfigured;
-    }
-    return Configured;
-}
-
-Core::Id RemoteLinuxCustomRunConfiguration::runConfigId()
-{
-    return "RemoteLinux.CustomRunConfig";
 }
 
 QString RemoteLinuxCustomRunConfiguration::runConfigDefaultDisplayName()
@@ -110,13 +84,22 @@ Runnable RemoteLinuxCustomRunConfiguration::runnable() const
     return r;
 }
 
+Tasks RemoteLinuxCustomRunConfiguration::checkForIssues() const
+{
+    Tasks tasks;
+    if (aspect<ExecutableAspect>()->executable().isEmpty()) {
+        tasks << createConfigurationIssue(tr("The remote executable must be set in order to run "
+                                             "a custom remote run configuration."));
+    }
+    return tasks;
+}
+
 // RemoteLinuxCustomRunConfigurationFactory
 
 RemoteLinuxCustomRunConfigurationFactory::RemoteLinuxCustomRunConfigurationFactory()
     : FixedRunConfigurationFactory(RemoteLinuxCustomRunConfiguration::tr("Custom Executable"), true)
 {
-    registerRunConfiguration<RemoteLinuxCustomRunConfiguration>
-            (RemoteLinuxCustomRunConfiguration::runConfigId());
+    registerRunConfiguration<RemoteLinuxCustomRunConfiguration>("RemoteLinux.CustomRunConfig");
     addSupportedTargetDeviceType(RemoteLinux::Constants::GenericLinuxOsType);
 }
 

@@ -102,13 +102,12 @@ static Macros dumpC51PredefinedMacros(const FilePath &compiler, const QStringLis
     cpp.setEnvironment(env);
     cpp.setTimeoutS(10);
 
-    QStringList arguments;
-    arguments.push_back(fakeIn.fileName());
+    const CommandLine cmd(compiler, {fakeIn.fileName()});
 
-    const SynchronousProcessResponse response = cpp.runBlocking(compiler.toString(), arguments);
+    const SynchronousProcessResponse response = cpp.runBlocking(cmd);
     if (response.result != SynchronousProcessResponse::Finished
             || response.exitCode != 0) {
-        qWarning() << response.exitMessage(compiler.toString(), 10);
+        qWarning() << response.exitMessage(cmd.toUserOutput(), 10);
         return {};
     }
 
@@ -131,11 +130,9 @@ static Macros dumpArmPredefinedMacros(const FilePath &compiler, const QStringLis
     cpp.setEnvironment(env);
     cpp.setTimeoutS(10);
 
-    QStringList arguments;
-    arguments.push_back("-E");
-    arguments.push_back("--list-macros");
+    const CommandLine cmd(compiler, {"-E", "--list-macros"});
 
-    const SynchronousProcessResponse response = cpp.runBlocking(compiler.toString(), arguments);
+    const SynchronousProcessResponse response = cpp.runBlocking(cmd);
     if (response.result != SynchronousProcessResponse::Finished
             || response.exitCode != 0) {
         qWarning() << response.exitMessage(compiler.toString(), 10);
@@ -241,11 +238,8 @@ static QString buildDisplayName(Abi::Architecture arch, Core::Id language,
 
 KeilToolchain::KeilToolchain() :
     ToolChain(Constants::KEIL_TOOLCHAIN_TYPEID)
-{ }
-
-QString KeilToolchain::typeDisplayName() const
 {
-    return Internal::KeilToolchainFactory::tr("KEIL");
+    setTypeDisplayName(Internal::KeilToolchainFactory::tr("KEIL"));
 }
 
 void KeilToolchain::setTargetAbi(const Abi &abi)
@@ -300,11 +294,12 @@ Utils::LanguageExtensions KeilToolchain::languageExtensions(const QStringList &)
 
 WarningFlags KeilToolchain::warningFlags(const QStringList &cxxflags) const
 {
-    Q_UNUSED(cxxflags);
+    Q_UNUSED(cxxflags)
     return WarningFlags::Default;
 }
 
-ToolChain::BuiltInHeaderPathsRunner KeilToolchain::createBuiltInHeaderPathsRunner() const
+ToolChain::BuiltInHeaderPathsRunner KeilToolchain::createBuiltInHeaderPathsRunner(
+        const Environment &) const
 {
     const Utils::FilePath compilerCommand = m_compilerCommand;
 
@@ -323,9 +318,10 @@ ToolChain::BuiltInHeaderPathsRunner KeilToolchain::createBuiltInHeaderPathsRunne
 }
 
 HeaderPaths KeilToolchain::builtInHeaderPaths(const QStringList &cxxFlags,
-                                              const FilePath &fileName) const
+                                              const FilePath &fileName,
+                                              const Environment &env) const
 {
-    return createBuiltInHeaderPathsRunner()(cxxFlags, fileName.toString(), "");
+    return createBuiltInHeaderPathsRunner(env)(cxxFlags, fileName.toString(), "");
 }
 
 void KeilToolchain::addToEnvironment(Environment &env) const
@@ -405,48 +401,89 @@ KeilToolchainFactory::KeilToolchainFactory()
     setUserCreatable(true);
 }
 
+// Parse the 'tools.ini' file to fetch a toolchain version.
+// Note: We can't use QSettings here!
+static QString extractVersion(const QString &toolsFile, const QString &section)
+{
+    QFile f(toolsFile);
+    if (!f.open(QIODevice::ReadOnly))
+        return {};
+    QTextStream in(&f);
+    enum State { Enter, Lookup, Exit } state = Enter;
+    while (!in.atEnd()) {
+        const QString line = in.readLine().trimmed();
+        // Search for section.
+        const int firstBracket = line.indexOf('[');
+        const int lastBracket = line.lastIndexOf(']');
+        const bool hasSection = (firstBracket == 0 && lastBracket != -1
+                && (lastBracket + 1) == line.size());
+        switch (state) {
+        case Enter:
+            if (hasSection) {
+                const auto content = line.midRef(firstBracket + 1,
+                                                 lastBracket - firstBracket - 1);
+                if (content == section)
+                    state = Lookup;
+            }
+            break;
+        case Lookup: {
+            if (hasSection)
+                return {}; // Next section found.
+            const int versionIndex = line.indexOf("VERSION=");
+            if (versionIndex < 0)
+                continue;
+            QString version = line.mid(8);
+            if (version.startsWith('V'))
+                version.remove(0, 1);
+            return version;
+        }
+            break;
+        default:
+            return {};
+        }
+    }
+    return {};
+}
+
 QList<ToolChain *> KeilToolchainFactory::autoDetect(const QList<ToolChain *> &alreadyKnown)
 {
 #ifdef Q_OS_WIN64
-    static const char kRegistryNode[] = "HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Keil\\Products";
+    static const char kRegistryNode[] = "HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Microsoft\\" \
+                                        "Windows\\CurrentVersion\\Uninstall\\Keil µVision4";
 #else
-    static const char kRegistryNode[] = "HKEY_LOCAL_MACHINE\\SOFTWARE\\Keil\\Products";
+    static const char kRegistryNode[] = "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\" \
+                                        "Windows\\CurrentVersion\\Uninstall\\Keil µVision4";
 #endif
-
-    struct Entry {
-        QString productKey;
-        QString subExePath;
-    };
-
-    // Dictionary for know toolchains.
-    static const std::array<Entry, 2> knowToolchains = {{
-        {QString("MDK"), QString("\\ARMCC\\bin\\armcc.exe")},
-        {QString("C51"), QString("\\BIN\\c51.exe")},
-    }};
 
     Candidates candidates;
 
     QSettings registry(kRegistryNode, QSettings::NativeFormat);
     const auto productGroups = registry.childGroups();
     for (const QString &productKey : productGroups) {
-        const Entry entry = Utils::findOrDefault(knowToolchains,
-                                                 [productKey](const Entry &entry) {
-            return entry.productKey == productKey; });
-
-        if (entry.productKey.isEmpty())
+        if (!productKey.startsWith("App"))
             continue;
-
         registry.beginGroup(productKey);
-        QString compilerPath = registry.value("Path").toString();
-        if (!compilerPath.isEmpty()) {
-            // Build full compiler path.
-            compilerPath += entry.subExePath;
-            const FilePath fn = FilePath::fromString(compilerPath);
-            if (compilerExists(fn)) {
-                QString version = registry.value("Version").toString();
-                if (version.startsWith('V'))
-                    version.remove(0, 1);
-                candidates.push_back({fn, version});
+        const FilePath productPath(FilePath::fromString(registry.value("ProductDir")
+                                                        .toString()));
+        // Fetch the toolchain executable path.
+        FilePath compilerPath;
+        if (productPath.endsWith("ARM"))
+            compilerPath = productPath.pathAppended("\\ARMCC\\bin\\armcc.exe");
+        else if (productPath.endsWith("C51"))
+            compilerPath = productPath.pathAppended("\\BIN\\c51.exe");
+
+        if (compilerPath.exists()) {
+            // Fetch the toolchain version.
+            const QDir rootDir(registry.value("Directory").toString());
+            const QString toolsFilePath = rootDir.absoluteFilePath("tools.ini");
+            for (auto index = 1; index <= 2; ++index) {
+                const QString section = registry.value(
+                            QStringLiteral("Section %1").arg(index)).toString();
+                const QString version = extractVersion(toolsFilePath, section);
+                if (!version.isEmpty()) {
+                    candidates.push_back({compilerPath, version});
+                    break;
+                }
             }
         }
         registry.endGroup();

@@ -27,8 +27,7 @@
 #include "baremetaldevice.h"
 #include "baremetaldeviceconfigurationwidget.h"
 
-#include "gdbserverprovider.h"
-#include "gdbserverproviderchooser.h"
+#include "debugserverproviderchooser.h"
 
 #include <utils/qtcassert.h>
 
@@ -40,8 +39,8 @@ namespace Internal {
 // BareMetalDeviceConfigurationWidget
 
 BareMetalDeviceConfigurationWidget::BareMetalDeviceConfigurationWidget(
-        const ProjectExplorer::IDevice::Ptr &deviceConfig, QWidget *parent)
-    : IDeviceWidget(deviceConfig, parent)
+        const ProjectExplorer::IDevice::Ptr &deviceConfig)
+    : IDeviceWidget(deviceConfig)
 {
     const auto dev = qSharedPointerCast<const BareMetalDevice>(device());
     QTC_ASSERT(dev, return);
@@ -49,25 +48,25 @@ BareMetalDeviceConfigurationWidget::BareMetalDeviceConfigurationWidget(
     const auto formLayout = new QFormLayout(this);
     formLayout->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
 
-    m_gdbServerProviderChooser = new GdbServerProviderChooser(true, this);
-    m_gdbServerProviderChooser->populate();
-    m_gdbServerProviderChooser->setCurrentProviderId(dev->gdbServerProviderId());
-    formLayout->addRow(tr("GDB server provider:"), m_gdbServerProviderChooser);
+    m_debugServerProviderChooser = new DebugServerProviderChooser(true, this);
+    m_debugServerProviderChooser->populate();
+    m_debugServerProviderChooser->setCurrentProviderId(dev->debugServerProviderId());
+    formLayout->addRow(tr("Debug server provider:"), m_debugServerProviderChooser);
 
-    connect(m_gdbServerProviderChooser, &GdbServerProviderChooser::providerChanged,
-            this, &BareMetalDeviceConfigurationWidget::gdbServerProviderChanged);
+    connect(m_debugServerProviderChooser, &DebugServerProviderChooser::providerChanged,
+            this, &BareMetalDeviceConfigurationWidget::debugServerProviderChanged);
 }
 
-void BareMetalDeviceConfigurationWidget::gdbServerProviderChanged()
+void BareMetalDeviceConfigurationWidget::debugServerProviderChanged()
 {
     const auto dev = qSharedPointerCast<BareMetalDevice>(device());
     QTC_ASSERT(dev, return);
-    dev->setGdbServerProviderId(m_gdbServerProviderChooser->currentProviderId());
+    dev->setDebugServerProviderId(m_debugServerProviderChooser->currentProviderId());
 }
 
 void BareMetalDeviceConfigurationWidget::updateDeviceFromUi()
 {
-    gdbServerProviderChanged();
+    debugServerProviderChanged();
 }
 
 } // namespace Internal

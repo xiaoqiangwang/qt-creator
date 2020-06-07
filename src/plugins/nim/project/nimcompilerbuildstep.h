@@ -39,7 +39,7 @@ class NimCompilerBuildStep : public ProjectExplorer::AbstractProcessStep
 public:
     enum DefaultBuildOptions { Empty = 0, Debug, Release};
 
-    NimCompilerBuildStep(ProjectExplorer::BuildStepList *parentList);
+    NimCompilerBuildStep(ProjectExplorer::BuildStepList *parentList, Core::Id id);
 
     bool init() override;
     ProjectExplorer::BuildStepConfigWidget *createConfigWidget() override;
@@ -72,7 +72,6 @@ private:
     void updateProcessParameters();
     void updateCommand();
     void updateWorkingDirectory();
-    void updateArguments();
     void updateEnvironment();
 
     void updateTargetNimFile();

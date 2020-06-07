@@ -81,11 +81,13 @@ std::ostream &operator<<(std::ostream &out, const HeaderPath &headerPath);
 namespace Utils {
 class LineColumn;
 class SmallStringView;
+struct Link;
 
 std::ostream &operator<<(std::ostream &out, const LineColumn &lineColumn);
 std::ostream &operator<<(std::ostream &out, const Utils::Language &language);
 std::ostream &operator<<(std::ostream &out, const Utils::LanguageVersion &languageVersion);
 std::ostream &operator<<(std::ostream &out, const Utils::LanguageExtension &languageExtension);
+std::ostream &operator<<(std::ostream &out, const Link &link);
 
 template <typename Type>
 std::ostream &operator<<(std::ostream &out, const Utils::optional<Type> &optional)
@@ -106,7 +108,7 @@ void PrintTo(Utils::SmallStringView text, ::std::ostream *os);
 void PrintTo(const Utils::SmallString &text, ::std::ostream *os);
 void PrintTo(const Utils::PathString &text, ::std::ostream *os);
 
-} // namespace ProjectExplorer
+} // namespace Utils
 
 namespace ClangBackEnd {
 class SourceLocationEntry;
@@ -324,6 +326,20 @@ namespace CppTools {
 class Usage;
 
 std::ostream &operator<<(std::ostream &out, const Usage &usage);
+} // namespace CppTools
+
+namespace Debugger {
+class DiagnosticLocation;
+std::ostream &operator<<(std::ostream &out, const DiagnosticLocation &loc);
+} // namespace Debugger
+
+namespace ClangTools {
+namespace Internal {
+class ExplainingStep;
+class Diagnostic;
+std::ostream &operator<<(std::ostream &out, const ExplainingStep &step);
+std::ostream &operator<<(std::ostream &out, const Diagnostic &diag);
+} // namespace Internal
 } // namespace CppTools
 
 void setFilePathCache(ClangBackEnd::FilePathCaching *filePathCache);

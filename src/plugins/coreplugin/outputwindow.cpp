@@ -33,6 +33,9 @@
 #include <utils/synchronousprocess.h>
 
 #include <QAction>
+#include <QCursor>
+#include <QMimeData>
+#include <QPointer>
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QTextBlock>
@@ -46,7 +49,7 @@ namespace Internal {
 class OutputWindowPrivate
 {
 public:
-    OutputWindowPrivate(QTextDocument *document)
+    explicit OutputWindowPrivate(QTextDocument *document)
         : cursor(document)
     {
     }
@@ -58,10 +61,11 @@ public:
     }
 
     IContext *outputWindowContext = nullptr;
-    Utils::OutputFormatter *formatter = nullptr;
+    QPointer<Utils::OutputFormatter> formatter;
     QString settingsKey;
 
     bool enforceNewline = false;
+    bool prependCarriageReturn = false;
     bool scrollToBottom = true;
     bool linksActive = true;
     bool zoomEnabled = false;
@@ -155,7 +159,7 @@ OutputWindow::~OutputWindow()
     delete d;
 }
 
-void OutputWindow::mousePressEvent(QMouseEvent * e)
+void OutputWindow::mousePressEvent(QMouseEvent *e)
 {
     d->mouseButtonPressed = e->button();
     QPlainTextEdit::mousePressEvent(e);
@@ -280,12 +284,17 @@ void OutputWindow::setWheelZoomEnabled(bool enabled)
     d->zoomEnabled = enabled;
 }
 
-void OutputWindow::updateFilterProperties(const QString &filterText,
-                                          Qt::CaseSensitivity caseSensitivity, bool isRegexp)
+void OutputWindow::updateFilterProperties(
+        const QString &filterText,
+        Qt::CaseSensitivity caseSensitivity,
+        bool isRegexp,
+        bool isInverted
+        )
 {
     FilterModeFlags flags;
     flags.setFlag(FilterModeFlag::CaseSensitive, caseSensitivity == Qt::CaseSensitive)
-            .setFlag(FilterModeFlag::RegExp, isRegexp);
+            .setFlag(FilterModeFlag::RegExp, isRegexp)
+            .setFlag(FilterModeFlag::Inverted, isInverted);
     if (d->filterMode == flags && d->filterText == filterText)
         return;
     d->lastFilteredBlockNumber = -1;
@@ -324,6 +333,7 @@ void OutputWindow::filterNewContent()
     if (!lastBlock.isValid())
         lastBlock = document()->begin();
 
+    const bool invert = d->filterMode.testFlag(FilterModeFlag::Inverted);
     if (d->filterMode.testFlag(OutputWindow::FilterModeFlag::RegExp)) {
         QRegularExpression regExp(d->filterText);
         if (!d->filterMode.testFlag(OutputWindow::FilterModeFlag::CaseSensitive))
@@ -331,16 +341,17 @@ void OutputWindow::filterNewContent()
 
         for (; lastBlock != document()->end(); lastBlock = lastBlock.next())
             lastBlock.setVisible(d->filterText.isEmpty()
-                                 || regExp.match(lastBlock.text()).hasMatch());
+                                 || regExp.match(lastBlock.text()).hasMatch() != invert);
     } else {
         if (d->filterMode.testFlag(OutputWindow::FilterModeFlag::CaseSensitive)) {
             for (; lastBlock != document()->end(); lastBlock = lastBlock.next())
                 lastBlock.setVisible(d->filterText.isEmpty()
-                                     || lastBlock.text().contains(d->filterText));
+                                     || lastBlock.text().contains(d->filterText) != invert);
         } else {
-            for (; lastBlock != document()->end(); lastBlock = lastBlock.next())
-                lastBlock.setVisible(d->filterText.isEmpty()
-                                     || lastBlock.text().toLower().contains(d->filterText.toLower()));
+            for (; lastBlock != document()->end(); lastBlock = lastBlock.next()) {
+                lastBlock.setVisible(d->filterText.isEmpty() || lastBlock.text().toLower()
+                                     .contains(d->filterText.toLower()) != invert);
+            }
         }
     }
 
@@ -358,11 +369,11 @@ QString OutputWindow::doNewlineEnforcement(const QString &out)
     d->scrollToBottom = true;
     QString s = out;
     if (d->enforceNewline) {
-        s.prepend(QLatin1Char('\n'));
+        s.prepend('\n');
         d->enforceNewline = false;
     }
 
-    if (s.endsWith(QLatin1Char('\n'))) {
+    if (s.endsWith('\n')) {
         d->enforceNewline = true; // make appendOutputInline put in a newline next time
         s.chop(1);
     }
@@ -383,7 +394,16 @@ int OutputWindow::maxCharCount() const
 
 void OutputWindow::appendMessage(const QString &output, OutputFormat format)
 {
-    QString out = SynchronousProcess::normalizeNewlines(output);
+    QString out = output;
+    if (d->prependCarriageReturn) {
+        d->prependCarriageReturn = false;
+        out.prepend('\r');
+    }
+    out = SynchronousProcess::normalizeNewlines(out);
+    if (out.endsWith('\r')) {
+        d->prependCarriageReturn = true;
+        out.chop(1);
+    }
 
     if (out.size() > d->maxCharCount) {
         // Current line alone exceeds limit, we need to cut it.
@@ -419,29 +439,30 @@ void OutputWindow::appendMessage(const QString &output, OutputFormat format)
         if (sameLine) {
             d->scrollToBottom = true;
 
-            int newline = -1;
             bool enforceNewline = d->enforceNewline;
             d->enforceNewline = false;
 
             if (enforceNewline) {
                 out.prepend('\n');
             } else {
-                newline = out.indexOf(QLatin1Char('\n'));
+                const int newline = out.indexOf('\n');
                 moveCursor(QTextCursor::End);
-                if (newline != -1 && d->formatter)
-                    d->formatter->appendMessage(out.left(newline), format);// doesn't enforce new paragraph like appendPlainText
+                if (newline != -1) {
+                    if (d->formatter)
+                        d->formatter->appendMessage(out.left(newline), format);// doesn't enforce new paragraph like appendPlainText
+                    out = out.mid(newline);
+                }
             }
 
-            QString s = out.mid(newline+1);
-            if (s.isEmpty()) {
+            if (out.isEmpty()) {
                 d->enforceNewline = true;
             } else {
-                if (s.endsWith(QLatin1Char('\n'))) {
+                if (out.endsWith('\n')) {
                     d->enforceNewline = true;
-                    s.chop(1);
+                    out.chop(1);
                 }
                 if (d->formatter)
-                    d->formatter->appendMessage(s, format);
+                    d->formatter->appendMessage(out, format);
             }
         } else {
             if (d->formatter)
@@ -479,7 +500,7 @@ void OutputWindow::appendText(const QString &textIn, const QTextCharFormat &form
         tmp.setFontWeight(QFont::Bold);
         d->cursor.insertText(doNewlineEnforcement(tr("Additional output omitted. You can increase "
                                                      "the limit in the \"Build & Run\" settings.")
-                                                  + QLatin1Char('\n')), tmp);
+                                                  + '\n'), tmp);
     }
 
     d->cursor.endEditBlock();
@@ -492,9 +513,37 @@ bool OutputWindow::isScrollbarAtBottom() const
     return verticalScrollBar()->value() == verticalScrollBar()->maximum();
 }
 
+QMimeData *OutputWindow::createMimeDataFromSelection() const
+{
+    const auto mimeData = new QMimeData;
+    QString content;
+    const int selStart = textCursor().selectionStart();
+    const int selEnd = textCursor().selectionEnd();
+    const QTextBlock firstBlock = document()->findBlock(selStart);
+    const QTextBlock lastBlock = document()->findBlock(selEnd);
+    for (QTextBlock curBlock = firstBlock; curBlock != lastBlock; curBlock = curBlock.next()) {
+        if (!curBlock.isVisible())
+            continue;
+        if (curBlock == firstBlock)
+            content += curBlock.text().mid(selStart - firstBlock.position());
+        else
+            content += curBlock.text();
+        content += '\n';
+    }
+    if (lastBlock.isValid() && lastBlock.isVisible()) {
+        if (firstBlock == lastBlock)
+            content = textCursor().selectedText();
+        else
+            content += lastBlock.text().mid(0, selEnd - lastBlock.position());
+    }
+    mimeData->setText(content);
+    return mimeData;
+}
+
 void OutputWindow::clear()
 {
     d->enforceNewline = false;
+    d->prependCarriageReturn = false;
     QPlainTextEdit::clear();
     if (d->formatter)
         d->formatter->clear();

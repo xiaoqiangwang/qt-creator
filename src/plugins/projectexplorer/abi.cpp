@@ -161,6 +161,8 @@ static Abi::Architecture architectureFromQt()
         return Abi::ShArchitecture;
     if (arch.startsWith("avr")) // Not in Qt documentation!
         return Abi::AvrArchitecture;
+    if (arch.startsWith("asmjs"))
+        return Abi::AsmJsArchitecture;
 
     return Abi::UnknownArchitecture;
 }
@@ -207,7 +209,6 @@ static Abi macAbiForCpu(quint32 type) {
     case 0x01000000 +  7: // CPU_TYPE_X86_64
         return Abi(Abi::X86Architecture, Abi::DarwinOS, Abi::GenericFlavor, Abi::MachOFormat, 64);
     case 18: // CPU_TYPE_POWERPC
-        return Abi(Abi::PowerPCArchitecture, Abi::DarwinOS, Abi::GenericFlavor, Abi::MachOFormat, 32);
     case 0x01000000 + 18: // CPU_TYPE_POWERPC64
         return Abi(Abi::PowerPCArchitecture, Abi::DarwinOS, Abi::GenericFlavor, Abi::MachOFormat, 32);
     case 12: // CPU_TYPE_ARM
@@ -411,6 +412,11 @@ static Abis abiOf(const QByteArray &data)
             result.append(macAbiForCpu(type));
             pos += 20;
         }
+    } else if (getUint8(data, 0) == 'B' && getUint8(data, 1) == 'C'
+                && getUint8(data, 2) == 0xc0 && getUint8(data, 3) == 0xde) {
+        // https://llvm.org/docs/BitCodeFormat.html#llvm-ir-magic-number
+        result.append(Abi(Abi::AsmJsArchitecture, Abi::UnknownOS, Abi::UnknownFlavor,
+                          Abi::EmscriptenFormat, 32));
     } else if (data.size() >= 64){
         // Windows PE: values are LE (except for a few exceptions which we will not use here).
 
@@ -436,8 +442,8 @@ static Abis abiOf(const QByteArray &data)
 // --------------------------------------------------------------------------
 
 Abi::Abi(const Architecture &a, const OS &o,
-         const OSFlavor &of, const BinaryFormat &f, unsigned char w) :
-    m_architecture(a), m_os(o), m_osFlavor(of), m_binaryFormat(f), m_wordWidth(w)
+         const OSFlavor &of, const BinaryFormat &f, unsigned char w, const QString &p) :
+    m_architecture(a), m_os(o), m_osFlavor(of), m_binaryFormat(f), m_wordWidth(w), m_param(p)
 {
     QTC_ASSERT(osSupportsFlavor(o, of), m_osFlavor = UnknownFlavor);
 }
@@ -458,7 +464,7 @@ Abi Abi::abiFromTargetTriplet(const QString &triple)
     int unknownCount = 0;
 
     for (const QStringRef &p : parts) {
-        if (p == "unknown" || p == "pc" || p == "none"
+        if (p == "unknown" || p == "pc"
                 || p == "gnu" || p == "uclibc"
                 || p == "86_64" || p == "redhat"
                 || p == "w64") {
@@ -485,6 +491,18 @@ Abi Abi::abiFromTargetTriplet(const QString &triple)
             flavor = GenericFlavor;
             format = ElfFormat;
             width = 16;
+        } else if (p == "msp430") {
+            arch = Msp430Architecture;
+            os = BareMetalOS;
+            flavor = GenericFlavor;
+            format = ElfFormat;
+            width = 16;
+        } else if (p == "rl78") {
+            arch = Rl78Architecture;
+            os = BareMetalOS;
+            flavor = GenericFlavor;
+            format = ElfFormat;
+            width = 16;
         } else if (p.startsWith("mips")) {
             arch = MipsArchitecture;
             width = p.contains("64") ? 64 : 32;
@@ -502,9 +520,7 @@ Abi Abi::abiFromTargetTriplet(const QString &triple)
             if (flavor == UnknownFlavor)
                 flavor = GenericFlavor;
             format = ElfFormat;
-        } else if (p == "android") {
-            flavor = AndroidLinuxFlavor;
-        } else if (p == "androideabi") {
+        } else if (p == "android" || p == "androideabi") {
             flavor = AndroidLinuxFlavor;
         } else if (p.startsWith("freebsd")) {
             os = BsdOS;
@@ -543,6 +559,15 @@ Abi Abi::abiFromTargetTriplet(const QString &triple)
             os = QnxOS;
             flavor = GenericFlavor;
             format = ElfFormat;
+        } else if (p.startsWith("emscripten")) {
+            format = EmscriptenFormat;
+            width = 32;
+        } else if (p.startsWith("asmjs")) {
+            arch = AsmJsArchitecture;
+        } else if (p == "none") {
+            os = BareMetalOS;
+            flavor = GenericFlavor;
+            format = ElfFormat;
         } else {
             ++unknownCount;
         }
@@ -577,6 +602,13 @@ QString Abi::toString() const
     const QStringList dn = {toString(m_architecture), toString(m_os), toString(m_osFlavor),
                             toString(m_binaryFormat), toString(m_wordWidth)};
     return dn.join('-');
+}
+
+QString Abi::param() const
+{
+    if (m_param.isEmpty())
+        return toString();
+    return m_param;
 }
 
 bool Abi::operator != (const Abi &other) const
@@ -634,6 +666,14 @@ bool Abi::isCompatibleWith(const Abi &other) const
     return isCompat;
 }
 
+bool Abi::isFullyCompatibleWith(const Abi &other) const
+{
+    return *this == other
+            || (wordWidth() == other.wordWidth()
+                && architecture() == other.architecture()
+                && compatibleMSVCFlavors(osFlavor(), other.osFlavor()));
+}
+
 bool Abi::isValid() const
 {
     return m_architecture != UnknownArchitecture
@@ -673,6 +713,14 @@ QString Abi::toString(const Architecture &a)
         return QLatin1String("itanium");
     case ShArchitecture:
         return QLatin1String("sh");
+    case AsmJsArchitecture:
+        return QLatin1String("asmjs");
+    case Stm8Architecture:
+        return QLatin1String("stm8");
+    case Msp430Architecture:
+        return QLatin1String("msp430");
+    case Rl78Architecture:
+        return QLatin1String("rl78");
     case UnknownArchitecture:
         Q_FALLTHROUGH();
     default:
@@ -730,6 +778,8 @@ QString Abi::toString(const BinaryFormat &bf)
         return QLatin1String("ubrof");
     case OmfFormat:
         return QLatin1String("omf");
+    case EmscriptenFormat:
+        return QLatin1String("emscripten");
     case UnknownFormat:
         Q_FALLTHROUGH();
     default:
@@ -748,7 +798,7 @@ Abi Abi::fromString(const QString &abiString)
 {
     Abi::Architecture architecture = UnknownArchitecture;
     const QVector<QStringRef> abiParts = abiString.splitRef('-');
-    if (abiParts.count() >= 1) {
+    if (!abiParts.isEmpty()) {
         architecture = architectureFromString(abiParts.at(0));
         if (abiParts.at(0) != toString(architecture))
             return Abi();
@@ -765,21 +815,21 @@ Abi Abi::fromString(const QString &abiString)
     if (abiParts.count() >= 3) {
         flavor = osFlavorFromString(abiParts.at(2), os);
         if (abiParts.at(2) != toString(flavor))
-            return Abi(architecture, os, UnknownFlavor, UnknownFormat, 0);;
+            return Abi(architecture, os, UnknownFlavor, UnknownFormat, 0);
     }
 
     Abi::BinaryFormat format = UnknownFormat;
     if (abiParts.count() >= 4) {
         format = binaryFormatFromString(abiParts.at(3));
         if (abiParts.at(3) != toString(format))
-            return Abi(architecture, os, flavor, UnknownFormat, 0);;
+            return Abi(architecture, os, flavor, UnknownFormat, 0);
     }
 
     unsigned char wordWidth = 0;
     if (abiParts.count() >= 5) {
         wordWidth = wordWidthFromString(abiParts.at(4));
         if (abiParts.at(4) != toString(wordWidth))
-            return Abi(architecture, os, flavor, format, 0);;
+            return Abi(architecture, os, flavor, format, 0);
     }
 
     return Abi(architecture, os, flavor, format, wordWidth);
@@ -807,8 +857,16 @@ Abi::Architecture Abi::architectureFromString(const QStringRef &a)
         return ItaniumArchitecture;
     if (a == "sh")
         return ShArchitecture;
+    if (a == "stm8")
+        return Stm8Architecture;
+    if (a == "msp430")
+        return Msp430Architecture;
+    if (a == "rl78")
+        return Rl78Architecture;
     else if (a == "xtensa")
         return XtensaArchitecture;
+    if (a == "asmjs")
+        return AsmJsArchitecture;
 
     return UnknownArchitecture;
 }
@@ -861,6 +919,8 @@ Abi::BinaryFormat Abi::binaryFormatFromString(const QStringRef &bf)
         return OmfFormat;
     if (bf == "qml_rt")
         return RuntimeQmlFormat;
+    if (bf == "emscripten")
+        return EmscriptenFormat;
     return UnknownFormat;
 }
 
@@ -1146,6 +1206,9 @@ void ProjectExplorer::ProjectExplorerPlugin::testAbiOfBinary_data()
     QTest::newRow("static QtCore: linux 64bit")
             << QString::fromLatin1("%1/static/linux-64bit-release.a").arg(prefix)
             << (QStringList() << QString::fromLatin1("x86-linux-generic-elf-64bit"));
+    QTest::newRow("static QtCore: asmjs emscripten 32bit")
+            << QString::fromLatin1("%1/static/asmjs-emscripten.a").arg(prefix)
+            << (QStringList() << QString::fromLatin1("asmjs-unknown-unknown-emscripten-32bit"));
 
     QTest::newRow("static stdc++: mac fat")
             << QString::fromLatin1("%1/static/mac-fat.a").arg(prefix)
@@ -1346,6 +1409,10 @@ void ProjectExplorer::ProjectExplorerPlugin::testAbiFromTargetTriplet_data()
     QTest::newRow("avr") << int(Abi::AvrArchitecture)
                          << int(Abi::BareMetalOS) << int(Abi::GenericFlavor)
                          << int(Abi::ElfFormat) << 16;
+
+    QTest::newRow("asmjs-unknown-emscripten") << int(Abi::AsmJsArchitecture)
+                                              << int(Abi::UnknownOS) << int(Abi::UnknownFlavor)
+                                              << int(Abi::EmscriptenFormat) << 32;
 }
 
 void ProjectExplorer::ProjectExplorerPlugin::testAbiFromTargetTriplet()

@@ -24,7 +24,6 @@
 ****************************************************************************/
 
 import QtQuick 2.1
-import QtQuick.Controls.Styles 1.1
 import StudioControls 1.0 as StudioControls
 import StudioTheme 1.0 as StudioTheme
 
@@ -46,11 +45,30 @@ Item {
     width: 96
     implicitHeight: spinBox.height
 
+    onFocusChanged: transaction.end();
+
     StudioControls.RealSpinBox {
         id: spinBox
 
-        onDragStarted: hideCursor();
-        onDragEnded: restoreCursor();
+        onDragStarted: {
+            hideCursor();
+            transaction.start();
+        }
+
+        onDragEnded: {
+            restoreCursor();
+            transaction.end();
+        }
+
+        onRealValueModified: {
+            if (transaction.active())
+                commitValue();
+        }
+
+        function commitValue() {
+            if (spinBox.backendValue.value !== spinBox.realValue)
+                spinBox.backendValue.value = spinBox.realValue;
+        }
 
         property variant backendValue
         property bool hasSlider: wrapper.sliderIndicatorVisible
@@ -66,6 +84,8 @@ Item {
         actionIndicator.icon.text: extFuncLogic.glyph
         actionIndicator.onClicked: extFuncLogic.show()
 
+        actionIndicator.forceVisible: extFuncLogic.menuVisible
+
         ColorLogic {
             id: colorLogic
             backendValue: spinBox.backendValue
@@ -77,9 +97,6 @@ Item {
 
         labelColor: spinBox.edit ? StudioTheme.Values.themeTextColor : colorLogic.textColor
 
-        onCompressedRealValueModified: {
-            if (spinBox.backendValue.value !== spinBox.realValue)
-                spinBox.backendValue.value = spinBox.realValue;
-        }
+        onCompressedRealValueModified: commitValue()
     }
 }

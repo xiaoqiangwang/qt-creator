@@ -1,6 +1,6 @@
 import qbs
 
-Application {
+CppApplication {
 @if "%{UseVirtualKeyboard}" == "true"
     Depends { name: "Qt"; submodules: ["quick", "virtualkeyboard"] }
 @else
@@ -29,6 +29,9 @@ Application {
         "%{MainCppFileName}",
         "main.qml",
         "qml.qrc",
+@if %{HasTranslation}
+        "%{TsFileName}",
+@endif
     ]
 
     Group {     // Properties for the produced executable

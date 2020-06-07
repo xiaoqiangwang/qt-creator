@@ -66,8 +66,6 @@
 #include <QMessageBox>
 #include <QMenu>
 
-#include <QtPlugin>
-
 using namespace ProjectExplorer;
 
 namespace ClangFormat {
@@ -107,8 +105,8 @@ static void replaceCppCodeStyle()
 
 bool ClangFormatPlugin::initialize(const QStringList &arguments, QString *errorString)
 {
-    Q_UNUSED(arguments);
-    Q_UNUSED(errorString);
+    Q_UNUSED(arguments)
+    Q_UNUSED(errorString)
 #ifdef KEEP_LINE_BREAKS_FOR_NON_EMPTY_LINES_BACKPORTED
     replaceCppCodeStyle();
 
@@ -136,7 +134,7 @@ bool ClangFormatPlugin::initialize(const QStringList &arguments, QString *errorS
                     const QString fileName = openClangFormatConfigAction->data().toString();
                     if (!fileName.isEmpty()) {
                         const QString clangFormatConfigPath = configForFile(
-                            Utils::FileName::fromString(fileName));
+                            Utils::FilePath::fromString(fileName));
                         Core::EditorManager::openEditor(clangFormatConfigPath);
                     }
                 });

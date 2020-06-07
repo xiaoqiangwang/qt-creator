@@ -129,7 +129,7 @@ void QtProjectImporter::persistTemporaryQt(Kit *k, const QVariantList &vl)
 } // namespace QtSupport
 
 #include "qtsupportplugin.h"
-#include "desktopqtversion.h"
+#include "qtversions.h"
 
 #include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/buildinfo.h>
@@ -181,7 +181,7 @@ protected:
     QList<void *> examineDirectory(const Utils::FilePath &importPath) const override;
     bool matchKit(void *directoryData, const Kit *k) const override;
     Kit *createKit(void *directoryData) const override;
-    const QList<BuildInfo> buildInfoListForKit(const Kit *k, void *directoryData) const override;
+    const QList<BuildInfo> buildInfoList(void *directoryData) const override;
     void deleteDirectoryData(void *directoryData) const override;
 
 private:
@@ -241,9 +241,9 @@ Kit *TestQtProjectImporter::createKit(void *directoryData) const
     });
 }
 
-const QList<BuildInfo> TestQtProjectImporter::buildInfoListForKit(const Kit *k, void *directoryData) const
+const QList<BuildInfo> TestQtProjectImporter::buildInfoList(void *directoryData) const
 {
-    Q_UNUSED(directoryData);
+    Q_UNUSED(directoryData)
     assert(m_testData.contains(directoryData));
     assert(!m_deletedTestData.contains(directoryData));
     assert(static_cast<const DirectoryData *>(directoryData)->importPath == m_path);
@@ -252,7 +252,6 @@ const QList<BuildInfo> TestQtProjectImporter::buildInfoListForKit(const Kit *k, 
     info.displayName = "Test Build info";
     info.typeName = "Debug";
     info.buildDirectory = m_path;
-    info.kitId = k->id();
     info.buildType = BuildConfiguration::Debug;
     return {info};
 }

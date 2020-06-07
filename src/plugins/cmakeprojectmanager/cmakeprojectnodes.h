@@ -44,7 +44,6 @@ public:
     CMakeListsNode(const Utils::FilePath &cmakeListPath);
 
     bool showInSimpleTree() const final;
-    bool supportsAction(ProjectExplorer::ProjectAction action, const Node *node) const override;
     Utils::optional<Utils::FilePath> visibleAfterAddFileAction() const override;
 };
 
@@ -54,16 +53,12 @@ public:
     CMakeProjectNode(const Utils::FilePath &directory);
 
     QString tooltip() const final;
-
-    bool addFiles(const QStringList &filePaths, QStringList *notAdded) override;
 };
 
 class CMakeTargetNode : public ProjectExplorer::ProjectNode
 {
 public:
     CMakeTargetNode(const Utils::FilePath &directory, const QString &target);
-
-    static QString generateId(const Utils::FilePath &directory, const QString &target);
 
     void setTargetInformation(const QList<Utils::FilePath> &artifacts, const QString &type);
 
@@ -72,9 +67,9 @@ public:
     Utils::FilePath buildDirectory() const;
     void setBuildDirectory(const Utils::FilePath &directory);
 
-    bool supportsAction(ProjectExplorer::ProjectAction action, const Node *node) const override;
-    bool addFiles(const QStringList &filePaths, QStringList *notAdded) override;
     Utils::optional<Utils::FilePath> visibleAfterAddFileAction() const override;
+
+    void build() override;
 
     QVariant data(Core::Id role) const override;
     void setConfig(const CMakeConfig &config);

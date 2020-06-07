@@ -434,7 +434,7 @@ public:
     {
         //return column == 1 ? Qt::ItemIsSelectable|Qt::ItemIsEnabled|Qt::ItemIsEditable
         //                   : Qt::ItemIsSelectable|Qt::ItemIsEnabled;
-        Q_UNUSED(column);
+        Q_UNUSED(column)
         return Qt::ItemIsSelectable|Qt::ItemIsEnabled;
     }
 
@@ -756,7 +756,7 @@ bool RegisterHandler::contextMenuEvent(const ItemViewEvent &ev)
     addFormatAction(tr("Octal"), OctalFormat);
     addFormatAction(tr("Binary"), BinaryFormat);
 
-    menu->addSeparator();
+    Internal::addHideColumnActions(menu, ev.view());
     menu->addAction(action(SettingsDialog));
     menu->popup(ev.globalPos());
     return true;

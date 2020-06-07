@@ -16,7 +16,6 @@ add_qtc_plugin(CppTools
     clangdiagnosticconfigsmodel.cpp clangdiagnosticconfigsmodel.h
     clangdiagnosticconfigsselectionwidget.cpp clangdiagnosticconfigsselectionwidget.h
     clangdiagnosticconfigswidget.cpp clangdiagnosticconfigswidget.h clangdiagnosticconfigswidget.ui
-    clazychecks.ui
     compileroptionsbuilder.cpp compileroptionsbuilder.h
     cppbuiltinmodelmanagersupport.cpp cppbuiltinmodelmanagersupport.h
     cppcanonicalsymbol.cpp cppcanonicalsymbol.h
@@ -48,7 +47,6 @@ add_qtc_plugin(CppTools
     cpphoverhandler.cpp cpphoverhandler.h
     cppincludesfilter.cpp cppincludesfilter.h
     cppindexingsupport.cpp cppindexingsupport.h
-    cppkitinfo.cpp cppkitinfo.h
     cpplocalsymbols.cpp cpplocalsymbols.h
     cpplocatordata.cpp cpplocatordata.h
     cpplocatorfilter.cpp cpplocatorfilter.h
@@ -62,8 +60,8 @@ add_qtc_plugin(CppTools
     cppprojectinfogenerator.cpp cppprojectinfogenerator.h
     cppprojectpartchooser.cpp cppprojectpartchooser.h
     cppprojectupdater.cpp cppprojectupdater.h
+    cppprojectupdaterinterface.h
     cppqtstyleindenter.cpp cppqtstyleindenter.h
-    cpprawprojectpart.cpp cpprawprojectpart.h
     cpprefactoringchanges.cpp cpprefactoringchanges.h
     cpprefactoringengine.cpp cpprefactoringengine.h
     cppselectionchanger.cpp cppselectionchanger.h
@@ -71,9 +69,6 @@ add_qtc_plugin(CppTools
     cppsemanticinfoupdater.cpp cppsemanticinfoupdater.h
     cppsourceprocessor.cpp cppsourceprocessor.h
     cppsymbolinfo.h
-    cpptools.qrc
-    cpptools_clangtidychecks.h
-    cpptools_clazychecks.h
     cpptools_global.h
     cpptools_utils.h
     cpptoolsbridge.cpp cpptoolsbridge.h
@@ -106,7 +101,6 @@ add_qtc_plugin(CppTools
     stringtable.cpp stringtable.h
     symbolfinder.cpp symbolfinder.h
     symbolsfindfilter.cpp symbolsfindfilter.h
-    tidychecks.ui
     typehierarchybuilder.cpp typehierarchybuilder.h
     usages.h
     wrappablelineedit.cpp wrappablelineedit.h

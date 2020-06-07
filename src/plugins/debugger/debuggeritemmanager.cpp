@@ -92,6 +92,7 @@ public:
     void readDebuggers(const FilePath &fileName, bool isSystem);
     void autoDetectCdbDebuggers();
     void autoDetectGdbOrLldbDebuggers();
+    void autoDetectUvscDebuggers();
     QString uniqueDisplayName(const QString &base);
 
     PersistentSettingsWriter m_writer;
@@ -350,8 +351,9 @@ DebuggerItem DebuggerItemConfigWidget::item() const
     item.setCommand(m_binaryChooser->fileName());
     item.setWorkingDirectory(m_workingDirectoryChooser->fileName());
     item.setAutoDetected(m_autodetected);
-    ProjectExplorer::Abis abiList;
-    foreach (const QString &a, m_abis->text().split(QRegExp("[^A-Za-z0-9-_]+"))) {
+    Abis abiList;
+    const QStringList abis = m_abis->text().split(QRegExp("[^A-Za-z0-9-_]+"));
+    for (const QString &a : abis) {
         if (a.isNull())
             continue;
         abiList << Abi::fromString(a);
@@ -443,7 +445,7 @@ void DebuggerItemConfigWidget::binaryPathHasChanged()
 // DebuggerConfigWidget
 // --------------------------------------------------------------------------
 
-class DebuggerConfigWidget : public QWidget
+class DebuggerConfigWidget : public IOptionsPageWidget
 {
     Q_DECLARE_TR_FUNCTIONS(Debugger::DebuggerOptionsPage)
 public:
@@ -503,6 +505,17 @@ public:
         m_itemConfigWidget = new DebuggerItemConfigWidget;
         m_container->setWidget(m_itemConfigWidget);
         updateButtons();
+    }
+
+    void apply() final
+    {
+        m_itemConfigWidget->store();
+        d->m_model->apply();
+    }
+
+    void finish() final
+    {
+        d->m_model->cancel();
     }
 
     void cloneDebugger();
@@ -584,47 +597,17 @@ class DebuggerOptionsPage : public Core::IOptionsPage
     Q_DECLARE_TR_FUNCTIONS(Debugger::DebuggerOptionsPage)
 
 public:
-    DebuggerOptionsPage();
-
-    QWidget *widget() final;
-    void apply() final;
-    void finish() final;
-
-private:
-    QPointer<DebuggerConfigWidget> m_configWidget;
+    DebuggerOptionsPage() {
+        setId(ProjectExplorer::Constants::DEBUGGER_SETTINGS_PAGE_ID);
+        setDisplayName(tr("Debuggers"));
+        setCategory(ProjectExplorer::Constants::KITS_SETTINGS_CATEGORY);
+        setWidgetCreator([] { return new DebuggerConfigWidget; });
+    }
 };
-
-DebuggerOptionsPage::DebuggerOptionsPage()
-{
-    setId(ProjectExplorer::Constants::DEBUGGER_SETTINGS_PAGE_ID);
-    setDisplayName(tr("Debuggers"));
-    setCategory(ProjectExplorer::Constants::KITS_SETTINGS_CATEGORY);
-}
-
-QWidget *DebuggerOptionsPage::widget()
-{
-    if (!m_configWidget)
-        m_configWidget = new DebuggerConfigWidget;
-    return m_configWidget;
-}
-
-void DebuggerOptionsPage::apply()
-{
-    QTC_ASSERT(m_configWidget, return);
-    m_configWidget->m_itemConfigWidget->store();
-    d->m_model->apply();
-}
-
-void DebuggerOptionsPage::finish()
-{
-    delete m_configWidget;
-    m_configWidget = nullptr;
-    d->m_model->cancel();
-}
 
 void DebuggerItemManagerPrivate::autoDetectCdbDebuggers()
 {
-    FilePathList cdbs;
+    FilePaths cdbs;
 
     const QStringList programDirs = {
         QString::fromLocal8Bit(qgetenv("ProgramFiles")),
@@ -696,10 +679,43 @@ void DebuggerItemManagerPrivate::autoDetectCdbDebuggers()
     }
 }
 
+static Utils::FilePaths searchGdbPathsFromRegistry()
+{
+    if (!HostOsInfo::isWindowsHost())
+        return {};
+
+    // Registry token for the "GNU Tools for ARM Embedded Processors".
+    static const char kRegistryToken[] = "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\" \
+                                         "Windows\\CurrentVersion\\Uninstall\\";
+
+    Utils::FilePaths searchPaths;
+
+    QSettings registry(kRegistryToken, QSettings::NativeFormat);
+    const auto productGroups = registry.childGroups();
+    for (const QString &productKey : productGroups) {
+        if (!productKey.startsWith("GNU Tools for ARM Embedded Processors"))
+            continue;
+        registry.beginGroup(productKey);
+        QString uninstallFilePath = registry.value("UninstallString").toString();
+        if (uninstallFilePath.startsWith(QLatin1Char('"')))
+            uninstallFilePath.remove(0, 1);
+        if (uninstallFilePath.endsWith(QLatin1Char('"')))
+            uninstallFilePath.remove(uninstallFilePath.size() - 1, 1);
+        registry.endGroup();
+
+        const QString toolkitRootPath = QFileInfo(uninstallFilePath).path();
+        const QString toolchainPath = toolkitRootPath + QLatin1String("/bin");
+        searchPaths.push_back(FilePath::fromString(toolchainPath));
+    }
+
+    return searchPaths;
+}
+
 void DebuggerItemManagerPrivate::autoDetectGdbOrLldbDebuggers()
 {
     const QStringList filters = {"gdb-i686-pc-mingw32", "gdb-i686-pc-mingw32.exe", "gdb",
-                                 "gdb.exe", "lldb", "lldb.exe", "lldb-[1-9]*"};
+                                 "gdb.exe", "lldb", "lldb.exe", "lldb-[1-9]*",
+                                 "arm-none-eabi-gdb-py.exe"};
 
 //    DebuggerItem result;
 //    result.setAutoDetected(true);
@@ -709,7 +725,7 @@ void DebuggerItemManagerPrivate::autoDetectGdbOrLldbDebuggers()
     Environment env = Environment::systemEnvironment();
     if (tc) {
         tc->addToEnvironment(env); // Find MinGW gdb in toolchain environment.
-        QString path = tc->suggestedDebugger().toString();
+        QString path = tc->suggestedDebugger().toString(); // Won't compile
         if (!path.isEmpty()) {
             const QFileInfo fi(path);
             if (!fi.isAbsolute())
@@ -721,13 +737,12 @@ void DebuggerItemManagerPrivate::autoDetectGdbOrLldbDebuggers()
     }
     */
 
-    FilePathList suspects;
+    FilePaths suspects;
 
     if (HostOsInfo::isMacHost()) {
         SynchronousProcess lldbInfo;
         lldbInfo.setTimeoutS(2);
-        SynchronousProcessResponse response
-                = lldbInfo.runBlocking("xcrun", {"--find", "lldb"});
+        SynchronousProcessResponse response = lldbInfo.runBlocking({"xcrun", {"--find", "lldb"}});
         if (response.result == Utils::SynchronousProcessResponse::Finished) {
             QString lPath = response.allOutput().trimmed();
             if (!lPath.isEmpty()) {
@@ -738,18 +753,20 @@ void DebuggerItemManagerPrivate::autoDetectGdbOrLldbDebuggers()
         }
     }
 
-    Utils::FilePathList path = Environment::systemEnvironment().path();
-    path = Utils::filteredUnique(path);
+    FilePaths path = Utils::filteredUnique(
+                Environment::systemEnvironment().path() + searchGdbPathsFromRegistry());
+
     QDir dir;
     dir.setNameFilters(filters);
     dir.setFilter(QDir::Files | QDir::Executable);
-    foreach (const Utils::FilePath &base, path) {
+    for (const FilePath &base : path) {
         dir.setPath(base.toFileInfo().absoluteFilePath());
-        foreach (const QString &entry, dir.entryList())
+        const QStringList entries = dir.entryList();
+        for (const QString &entry : entries)
             suspects.append(FilePath::fromString(dir.absoluteFilePath(entry)));
     }
 
-    foreach (const FilePath &command, suspects) {
+    for (const FilePath &command : qAsConst(suspects)) {
         const auto commandMatches = [command](const DebuggerTreeItem *titem) {
             return titem->m_item.command() == command;
         };
@@ -768,6 +785,47 @@ void DebuggerItemManagerPrivate::autoDetectGdbOrLldbDebuggers()
         item.setUnexpandedDisplayName(tr("System %1 at %2")
             .arg(item.engineTypeName()).arg(command.toUserOutput()));
         item.setAutoDetected(true);
+        m_model->addDebugger(item);
+    }
+}
+
+void DebuggerItemManagerPrivate::autoDetectUvscDebuggers()
+{
+    if (!HostOsInfo::isWindowsHost())
+        return;
+
+    // Registry token for the "KEIL uVision" instance.
+    static const char kRegistryToken[] = "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\" \
+                                         "Windows\\CurrentVersion\\Uninstall\\Keil \u00B5Vision4";
+
+    QSettings registry(QLatin1String(kRegistryToken), QSettings::NativeFormat);
+    const auto productGroups = registry.childGroups();
+    for (const QString &productKey : productGroups) {
+        if (!productKey.startsWith("App"))
+            continue;
+        registry.beginGroup(productKey);
+        const QDir rootPath(registry.value("Directory").toString());
+        registry.endGroup();
+        const FilePath uVision = FilePath::fromString(
+                    rootPath.absoluteFilePath("UV4/UV4.exe"));
+        if (!uVision.exists())
+            continue;
+        if (DebuggerItemManager::findByCommand(uVision))
+            continue;
+
+        QString errorMsg;
+        const QString uVisionVersion = winGetDLLVersion(
+                    WinDLLFileVersion, uVision.toString(), &errorMsg);
+
+        DebuggerItem item;
+        item.createId();
+        item.setAutoDetected(true);
+        item.setCommand(uVision);
+        item.setVersion(uVisionVersion);
+        item.setEngineType(UvscEngineType);
+        item.setUnexpandedDisplayName(
+                    uniqueDisplayName(tr("Auto-detected uVision at %1")
+                                      .arg(uVision.toUserOutput())));
         m_model->addDebugger(item);
     }
 }
@@ -878,6 +936,7 @@ void DebuggerItemManagerPrivate::restoreDebuggers()
     // Auto detect current.
     autoDetectCdbDebuggers();
     autoDetectGdbOrLldbDebuggers();
+    autoDetectUvscDebuggers();
 }
 
 void DebuggerItemManagerPrivate::saveDebuggers()

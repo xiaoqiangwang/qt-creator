@@ -86,8 +86,6 @@ ClangFormat::ClangFormat()
 
     connect(&m_settings, &ClangFormatSettings::supportedMimeTypesChanged,
             [this] { updateActions(Core::EditorManager::currentEditor()); });
-
-    new ClangFormatOptionsPage(&m_settings, this);
 }
 
 QString ClangFormat::id() const
@@ -167,7 +165,7 @@ void ClangFormat::disableFormattingSelectedText()
 Command ClangFormat::command() const
 {
     Command command;
-    command.setExecutable(m_settings.command());
+    command.setExecutable(m_settings.command().toString());
     command.setProcessing(Command::PipeProcessing);
 
     if (m_settings.usePredefinedStyle()) {

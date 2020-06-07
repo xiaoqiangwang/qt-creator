@@ -63,6 +63,7 @@ OptionsParser::OptionsParser(const QStringList &args,
     if (m_foundAppOptions)
         m_foundAppOptions->clear();
     m_pmPrivate->arguments.clear();
+    m_pmPrivate->argumentsForRestart.clear();
 }
 
 bool OptionsParser::parse()
@@ -169,7 +170,7 @@ bool OptionsParser::checkForLoadOption()
         return false;
     if (nextToken(RequiredToken)) {
         if (m_currentArg == QLatin1String("all")) {
-            foreach (PluginSpec *spec, m_pmPrivate->pluginSpecs)
+            for (PluginSpec *spec : qAsConst(m_pmPrivate->pluginSpecs))
                 spec->d->setForceEnabled(true);
             m_isDependencyRefreshNeeded = true;
         } else {
@@ -185,6 +186,7 @@ bool OptionsParser::checkForLoadOption()
                 m_isDependencyRefreshNeeded = true;
             }
         }
+        m_pmPrivate->argumentsForRestart << QLatin1String(LOAD_OPTION) << m_currentArg;
     }
     return true;
 }
@@ -195,7 +197,7 @@ bool OptionsParser::checkForNoLoadOption()
         return false;
     if (nextToken(RequiredToken)) {
         if (m_currentArg == QLatin1String("all")) {
-            foreach (PluginSpec *spec, m_pmPrivate->pluginSpecs)
+            for (PluginSpec *spec : qAsConst(m_pmPrivate->pluginSpecs))
                 spec->d->setForceDisabled(true);
             m_isDependencyRefreshNeeded = true;
         } else {
@@ -208,11 +210,12 @@ bool OptionsParser::checkForNoLoadOption()
             } else {
                 spec->d->setForceDisabled(true);
                 // recursively disable all plugins that require this plugin
-                foreach (PluginSpec *dependantSpec, PluginManager::pluginsRequiringPlugin(spec))
+                for (PluginSpec *dependantSpec : PluginManager::pluginsRequiringPlugin(spec))
                     dependantSpec->d->setForceDisabled(true);
                 m_isDependencyRefreshNeeded = true;
             }
         }
+        m_pmPrivate->argumentsForRestart << QLatin1String(NO_LOAD_OPTION) << m_currentArg;
     }
     return true;
 }
@@ -247,8 +250,11 @@ bool OptionsParser::checkForPluginOption()
     if (!spec)
         return false;
     spec->addArgument(m_currentArg);
-    if (requiresParameter && nextToken(RequiredToken))
+    m_pmPrivate->argumentsForRestart << m_currentArg;
+    if (requiresParameter && nextToken(RequiredToken)) {
         spec->addArgument(m_currentArg);
+        m_pmPrivate->argumentsForRestart << m_currentArg;
+    }
     return true;
 }
 

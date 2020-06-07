@@ -84,11 +84,8 @@ static const char warningExampleKeyC[] = "ProjectExplorer.CustomToolChain.Warnin
 CustomToolChain::CustomToolChain() :
     ToolChain(Constants::CUSTOM_TOOLCHAIN_TYPEID),
     m_outputParserId(GccParser::id())
-{ }
-
-QString CustomToolChain::typeDisplayName() const
 {
-    return Internal::CustomToolChainFactory::tr("Custom");
+    setTypeDisplayName(Internal::CustomToolChainFactory::tr("Custom"));
 }
 
 Abi CustomToolChain::targetAbi() const
@@ -141,7 +138,7 @@ Utils::LanguageExtensions CustomToolChain::languageExtensions(const QStringList 
 
 WarningFlags CustomToolChain::warningFlags(const QStringList &cxxflags) const
 {
-    Q_UNUSED(cxxflags);
+    Q_UNUSED(cxxflags)
     return WarningFlags::Default;
 }
 
@@ -158,7 +155,8 @@ void CustomToolChain::setPredefinedMacros(const Macros &macros)
     toolChainUpdated();
 }
 
-ToolChain::BuiltInHeaderPathsRunner CustomToolChain::createBuiltInHeaderPathsRunner() const
+ToolChain::BuiltInHeaderPathsRunner CustomToolChain::createBuiltInHeaderPathsRunner(
+        const Environment &) const
 {
     const HeaderPaths builtInHeaderPaths = m_builtInHeaderPaths;
 
@@ -176,9 +174,10 @@ ToolChain::BuiltInHeaderPathsRunner CustomToolChain::createBuiltInHeaderPathsRun
 }
 
 HeaderPaths CustomToolChain::builtInHeaderPaths(const QStringList &cxxFlags,
-                                               const FilePath &fileName) const
+                                                const FilePath &fileName,
+                                                const Environment &env) const
 {
-    return createBuiltInHeaderPathsRunner()(cxxFlags, fileName.toString(), "");
+    return createBuiltInHeaderPathsRunner(env)(cxxFlags, fileName.toString(), "");
 }
 
 void CustomToolChain::addToEnvironment(Environment &env) const

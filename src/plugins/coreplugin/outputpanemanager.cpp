@@ -115,6 +115,7 @@ IOutputPane::~IOutputPane()
     const int i = Utils::indexOf(g_outputPanes, Utils::equal(&OutputPaneData::pane, this));
     QTC_ASSERT(i >= 0, return);
     delete g_outputPanes.at(i).button;
+    g_outputPanes.removeAt(i);
 
     delete m_zoomInButton;
     delete m_zoomOutButton;
@@ -153,6 +154,15 @@ void IOutputPane::setupFilterUi(const QString &historyKey)
     connect(m_filterActionCaseSensitive, &QAction::toggled, this, &IOutputPane::setCaseSensitive);
     Core::ActionManager::registerAction(m_filterActionCaseSensitive,
                                         filterCaseSensitivityActionId());
+
+    m_invertFilterAction = new QAction(this);
+    m_invertFilterAction->setCheckable(true);
+    m_invertFilterAction->setText(tr("Show Non-matching Lines"));
+    connect(m_invertFilterAction, &QAction::toggled, this, [this] {
+        m_invertFilter = m_invertFilterAction->isChecked();
+        updateFilter();
+    });
+    Core::ActionManager::registerAction(m_invertFilterAction, filterInvertedActionId());
 
     m_filterOutputLineEdit->setPlaceholderText(tr("Filter output..."));
     m_filterOutputLineEdit->setButtonVisible(FancyLineEdit::Left, true);
@@ -212,7 +222,7 @@ void IOutputPane::updateFilter()
 void IOutputPane::filterOutputButtonClicked()
 {
     auto popup = new Core::OptionsPopup(m_filterOutputLineEdit,
-    {filterRegexpActionId(), filterCaseSensitivityActionId()});
+    {filterRegexpActionId(), filterCaseSensitivityActionId(), filterInvertedActionId()});
     popup->show();
 }
 
@@ -230,6 +240,11 @@ Id IOutputPane::filterRegexpActionId() const
 Id IOutputPane::filterCaseSensitivityActionId() const
 {
     return Id("OutputFilter.CaseSensitive").withSuffix(metaObject()->className());
+}
+
+Id IOutputPane::filterInvertedActionId() const
+{
+    return Id("OutputFilter.Invert").withSuffix(metaObject()->className());
 }
 
 void IOutputPane::setCaseSensitive(bool caseSensitive)
@@ -346,10 +361,10 @@ OutputPaneManager::OutputPaneManager(QWidget *parent) :
 
     auto mainlayout = new QVBoxLayout;
     mainlayout->setSpacing(0);
-    mainlayout->setMargin(0);
+    mainlayout->setContentsMargins(0, 0, 0, 0);
     m_toolBar = new StyledBar;
     auto toolLayout = new QHBoxLayout(m_toolBar);
-    toolLayout->setMargin(0);
+    toolLayout->setContentsMargins(0, 0, 0, 0);
     toolLayout->setSpacing(0);
     toolLayout->addWidget(m_titleLabel);
     toolLayout->addWidget(new StyledSeparator);
@@ -451,7 +466,7 @@ OutputPaneManager::OutputPaneManager(QWidget *parent) :
 
         QWidget *toolButtonsContainer = new QWidget(m_opToolBarWidgets);
         auto toolButtonsLayout = new QHBoxLayout;
-        toolButtonsLayout->setMargin(0);
+        toolButtonsLayout->setContentsMargins(0, 0, 0, 0);
         toolButtonsLayout->setSpacing(0);
         foreach (QWidget *toolButton, outPane->toolBarWidgets())
             toolButtonsLayout->addWidget(toolButton);
@@ -512,7 +527,8 @@ void OutputPaneManager::shortcutTriggered(int idx)
     // then just give it focus.
     int current = currentIndex();
     if (OutputPanePlaceHolder::isCurrentVisible() && current == idx) {
-        if (!outputPane->hasFocus() && outputPane->canFocus()) {
+        if ((!m_outputWidgetPane->isActiveWindow() || !outputPane->hasFocus())
+            && outputPane->canFocus()) {
             outputPane->setFocus();
             ICore::raiseWindow(m_outputWidgetPane);
         } else {
@@ -596,6 +612,7 @@ void OutputPaneManager::slotHide()
 {
     OutputPanePlaceHolder *ph = OutputPanePlaceHolder::getCurrent();
     if (ph) {
+        emit ph->visibilityChangeRequested(false);
         ph->setVisible(false);
         int idx = currentIndex();
         QTC_ASSERT(idx >= 0, return);
@@ -638,6 +655,7 @@ void OutputPaneManager::showPage(int idx, int flags)
     if (onlyFlash) {
         g_outputPanes.at(idx).button->flash();
     } else {
+        emit ph->visibilityChangeRequested(true);
         // make the page visible
         ph->setVisible(true);
 

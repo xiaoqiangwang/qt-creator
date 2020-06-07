@@ -1,12 +1,44 @@
+if(QT_CREATOR_API_DEFINED)
+  return()
+endif()
+set(QT_CREATOR_API_DEFINED TRUE)
+
+if (CMAKE_VERSION VERSION_LESS 3.16)
+  set(BUILD_WITH_PCH OFF)
+endif()
+
 include(FeatureSummary)
+
+#
+# Default Qt compilation defines
+#
+
+list(APPEND DEFAULT_DEFINES
+  QT_CREATOR
+  QT_NO_JAVA_STYLE_ITERATORS
+  QT_NO_CAST_TO_ASCII QT_RESTRICTED_CAST_FROM_ASCII
+  QT_DISABLE_DEPRECATED_BEFORE=0x050900
+  QT_USE_FAST_OPERATOR_PLUS
+  QT_USE_FAST_CONCATENATION
+)
+
+if (WIN32)
+  list(APPEND DEFAULT_DEFINES UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
+
+  if (NOT BUILD_WITH_PCH)
+    # Windows 8 0x0602
+    list(APPEND DEFAULT_DEFINES
+      WINVER=0x0602 _WIN32_WINNT=0x0602
+      WIN32_LEAN_AND_MEAN)
+  endif()
+endif()
 
 #
 # Setup path handling
 #
 
-set(_IDE_APP_PATH "bin")
-
 if (APPLE)
+  set(_IDE_APP_PATH ".")
   set(_IDE_APP_TARGET "${IDE_DISPLAY_NAME}")
 
   set(_IDE_OUTPUT_PATH "${_IDE_APP_PATH}/${_IDE_APP_TARGET}.app/Contents")
@@ -14,11 +46,15 @@ if (APPLE)
   set(_IDE_PLUGIN_PATH "${_IDE_OUTPUT_PATH}/PlugIns")
   set(_IDE_LIBRARY_BASE_PATH "Frameworks")
   set(_IDE_LIBRARY_PATH "${_IDE_OUTPUT_PATH}/Frameworks")
-  set(_IDE_LIBEXEC_PATH "${_IDE_OUTPUT_PATH}/Resources")
+  set(_IDE_LIBEXEC_PATH "${_IDE_OUTPUT_PATH}/Resources/libexec")
   set(_IDE_DATA_PATH "${_IDE_OUTPUT_PATH}/Resources")
   set(_IDE_DOC_PATH "${_IDE_OUTPUT_PATH}/Resources/doc")
   set(_IDE_BIN_PATH "${_IDE_OUTPUT_PATH}/MacOS")
+
+  set(QT_DEST_PLUGIN_PATH "${_IDE_PLUGIN_PATH}")
+  set(QT_DEST_QML_PATH "${_IDE_DATA_PATH}/../Imports/qtquick2")
 else ()
+  set(_IDE_APP_PATH "bin")
   set(_IDE_APP_TARGET "${IDE_ID}")
 
   set(_IDE_LIBRARY_BASE_PATH "lib")
@@ -26,8 +62,12 @@ else ()
   set(_IDE_PLUGIN_PATH "lib/${IDE_ID}/plugins")
   if (WIN32)
     set(_IDE_LIBEXEC_PATH "bin")
+    set(QT_DEST_PLUGIN_PATH "bin/plugins")
+    set(QT_DEST_QML_PATH "bin/qml")
   else ()
-    set(_IDE_LIBEXEC_PATH "libexec/${IDE_ID}/bin")
+    set(_IDE_LIBEXEC_PATH "libexec/${IDE_ID}")
+    set(QT_DEST_PLUGIN_PATH  "lib/Qt/plugins")
+    set(QT_DEST_QML_PATH "lib/Qt/qml")
   endif ()
   set(_IDE_DATA_PATH "share/${IDE_ID}")
   set(_IDE_DOC_PATH "share/doc/${IDE_ID}")
@@ -57,6 +97,8 @@ list(APPEND DEFAULT_DEFINES
 )
 
 file(RELATIVE_PATH _PLUGIN_TO_LIB "/${IDE_PLUGIN_PATH}" "/${IDE_LIBRARY_PATH}")
+file(RELATIVE_PATH _PLUGIN_TO_QT "/${IDE_PLUGIN_PATH}" "/${IDE_LIBRARY_BASE_PATH}/Qt/lib")
+file(RELATIVE_PATH _LIB_TO_QT "/${IDE_LIBRARY_PATH}" "/${IDE_LIBRARY_BASE_PATH}/Qt/lib")
 
 if (APPLE)
   set(_RPATH_BASE "@executable_path")
@@ -68,18 +110,37 @@ elseif (WIN32)
   set(_PLUGIN_RPATH "")
 else()
   set(_RPATH_BASE "\$ORIGIN")
-  set(_LIB_RPATH "\$ORIGIN")
-  set(_PLUGIN_RPATH "\$ORIGIN;\$ORIGIN/${_PLUGIN_TO_LIB}")
+  set(_LIB_RPATH "\$ORIGIN;\$ORIGIN/${_LIB_TO_QT}")
+  set(_PLUGIN_RPATH "\$ORIGIN;\$ORIGIN/${_PLUGIN_TO_LIB};\$ORIGIN/${_PLUGIN_TO_QT}")
 endif ()
 
 set(__QTC_PLUGINS "" CACHE INTERNAL "*** Internal ***")
+set(__QTC_INSTALLED_PLUGINS "" CACHE INTERNAL "*** Internal ***")
 set(__QTC_LIBRARIES "" CACHE INTERNAL "*** Internal ***")
+set(__QTC_INSTALLED_LIBRARIES "" CACHE INTERNAL "*** Internal ***")
 set(__QTC_EXECUTABLES "" CACHE INTERNAL "*** Internal ***")
+set(__QTC_INSTALLED_EXECUTABLES "" CACHE INTERNAL "*** Internal ***")
 set(__QTC_TESTS "" CACHE INTERNAL "*** Internal ***")
 
 #
 # Internal functions
 #
+
+function(append_extra_translations target_name)
+  if(NOT ARGN)
+    return()
+  endif()
+
+  if(TARGET "${target_name}")
+    get_target_property(_input "${target_name}" QT_EXTRA_TRANSLATIONS)
+    if (_input)
+      set(_output "${_input}" "${ARGN}")
+    else()
+      set(_output "${ARGN}")
+    endif()
+    set_target_properties("${target_name}" PROPERTIES QT_EXTRA_TRANSLATIONS "${_output}")
+  endif()
+endfunction()
 
 function(update_cached_list name value)
   set(_tmp_list "${${name}}")
@@ -138,8 +199,12 @@ function(separate_object_libraries libraries REGULAR_LIBS OBJECT_LIBS OBJECT_LIB
 endfunction(separate_object_libraries)
 
 function(set_explicit_moc target_name file)
+  unset(file_dependencies)
+  if (file MATCHES "^.*plugin.h$")
+    set(file_dependencies DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/${target_name}.json")
+  endif()
   set_property(SOURCE "${file}" PROPERTY SKIP_AUTOMOC ON)
-  qt5_wrap_cpp(file_moc "${file}")
+  qt5_wrap_cpp(file_moc "${file}" ${file_dependencies})
   target_sources(${target_name} PRIVATE "${file_moc}")
 endfunction()
 
@@ -168,11 +233,22 @@ function(set_public_includes target includes)
     if (NOT IS_ABSOLUTE ${inc_dir})
       set(inc_dir "${CMAKE_CURRENT_SOURCE_DIR}/${inc_dir}")
     endif()
-    target_include_directories(${target} PUBLIC $<BUILD_INTERFACE:${inc_dir}>)
+    file(RELATIVE_PATH include_dir_relative_path ${PROJECT_SOURCE_DIR} ${inc_dir})
+    target_include_directories(${target} PUBLIC
+      $<BUILD_INTERFACE:${inc_dir}>
+      $<INSTALL_INTERFACE:include/${include_dir_relative_path}>
+    )
   endforeach()
 endfunction()
 
-function(fix_test_environment test_name)
+function(finalize_test_setup test_name)
+  # Never translate tests:
+  set_tests_properties(${name}
+    PROPERTIES
+      QT_SKIP_TRANSLATION ON
+      TIMEOUT 5
+  )
+
   if (WIN32)
     list(APPEND env_path $ENV{PATH})
     list(APPEND env_path ${CMAKE_BINARY_DIR}/${IDE_PLUGIN_PATH})
@@ -180,6 +256,10 @@ function(fix_test_environment test_name)
     list(APPEND env_path $<TARGET_FILE_DIR:Qt5::Test>)
     if (TARGET libclang)
         list(APPEND env_path $<TARGET_FILE_DIR:libclang>)
+    endif()
+
+    if (TARGET elfutils::elf)
+        list(APPEND env_path $<TARGET_FILE_DIR:elfutils::elf>)
     endif()
 
     string(REPLACE "/" "\\" env_path "${env_path}")
@@ -250,13 +330,35 @@ function(qtc_plugin_enabled varName name)
   endif()
 endfunction()
 
+function(qtc_library_enabled varName name)
+  if (NOT (name IN_LIST __QTC_LIBRARIES))
+    message(FATAL_ERROR "extend_qtc_library: Unknown library target \"${name}\"")
+  endif()
+  if (TARGET ${name})
+    set(${varName} ON PARENT_SCOPE)
+  else()
+    set(${varName} OFF PARENT_SCOPE)
+  endif()
+endfunction()
+
 function(enable_pch target)
   if (BUILD_WITH_PCH)
-    get_target_property(target_sources ${target} SOURCES)
-    list(LENGTH target_sources target_sources_number)
-    if (${target_sources_number} GREATER "3")
-      set(PCH_FILE "${PROJECT_SOURCE_DIR}/src/shared/qtcreator_pch.h")
+    # Skip PCH for targets that do not use the expected visibility settings:
+    get_target_property(visibility_property "${target}" CXX_VISIBILITY_PRESET)
+    get_target_property(inlines_property "${target}" VISIBILITY_INLINES_HIDDEN)
 
+    if (NOT visibility_property STREQUAL "hidden" OR NOT inlines_property)
+      return()
+    endif()
+
+    # Skip PCH for targets that do not have QT_NO_CAST_TO_ASCII
+    get_target_property(target_defines "${target}" COMPILE_DEFINITIONS)
+    if (NOT "QT_NO_CAST_TO_ASCII" IN_LIST target_defines)
+      return()
+    endif()
+
+    get_target_property(target_type ${target} TYPE)
+    if (NOT ${target_type} STREQUAL "OBJECT_LIBRARY")
       function(_recursively_collect_dependencies input_target)
         get_target_property(input_type ${input_target} TYPE)
         if (${input_type} STREQUAL "INTERFACE_LIBRARY")
@@ -273,15 +375,44 @@ function(enable_pch target)
       endfunction()
       _recursively_collect_dependencies(${target})
 
-      if ("Qt5::Widgets" IN_LIST dependencies)
-        set(PCH_FILE "${PROJECT_SOURCE_DIR}/src/shared/qtcreator_gui_pch.h")
+      function(_add_pch_target pch_target pch_file pch_dependency)
+        if (EXISTS ${pch_file})
+          add_library(${pch_target} STATIC
+            ${CMAKE_CURRENT_BINARY_DIR}/empty_pch.cpp
+            ${CMAKE_CURRENT_BINARY_DIR}/empty_pch.c)
+          target_compile_definitions(${pch_target} PRIVATE ${DEFAULT_DEFINES})
+          set_target_properties(${pch_target} PROPERTIES
+            PRECOMPILE_HEADERS ${pch_file}
+            CXX_VISIBILITY_PRESET hidden
+            VISIBILITY_INLINES_HIDDEN ON)
+          target_link_libraries(${pch_target} PRIVATE ${pch_dependency})
+        endif()
+      endfunction()
+
+      if (NOT TARGET QtCreatorPchGui AND NOT TARGET QtCreatorPchConsole)
+        file(GENERATE
+          OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/empty_pch.c
+          CONTENT "/*empty file*/")
+        file(GENERATE
+          OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/empty_pch.cpp
+          CONTENT "/*empty file*/")
+        _add_pch_target(QtCreatorPchGui
+          "${PROJECT_SOURCE_DIR}/src/shared/qtcreator_gui_pch.h" Qt5::Widgets)
+        _add_pch_target(QtCreatorPchConsole
+          "${PROJECT_SOURCE_DIR}/src/shared/qtcreator_pch.h" Qt5::Core)
       endif()
 
-      if (EXISTS ${PCH_FILE})
-        set_target_properties(${target} PROPERTIES PRECOMPILE_HEADERS ${PCH_FILE})
+      unset(PCH_TARGET)
+      if ("Qt5::Widgets" IN_LIST dependencies)
+        set(PCH_TARGET QtCreatorPchGui)
+      elseif ("Qt5::Core" IN_LIST dependencies)
+        set(PCH_TARGET QtCreatorPchConsole)
       endif()
-    elseif(WITH_DEBUG_CMAKE)
-      message(STATUS "Skipped PCH for ${target}")
+
+      if (TARGET "${PCH_TARGET}")
+        set_target_properties(${target} PROPERTIES
+          PRECOMPILE_HEADERS_REUSE_FROM ${PCH_TARGET})
+      endif()
     endif()
   endif()
 endfunction()
@@ -294,20 +425,49 @@ function(qtc_output_binary_dir varName)
   endif()
 endfunction()
 
+function(condition_info varName condition)
+  if (NOT ${condition})
+    set(${varName} "" PARENT_SCOPE)
+  else()
+    string(REPLACE ";" " " _contents "${${condition}}")
+    set(${varName} "with CONDITION ${_contents}" PARENT_SCOPE)
+  endif()
+endfunction()
+
 #
 # Public API functions
 #
 
 function(add_qtc_library name)
-  cmake_parse_arguments(_arg "STATIC;OBJECT" ""
-    "DEFINES;DEPENDS;INCLUDES;PUBLIC_DEFINES;PUBLIC_DEPENDS;PUBLIC_INCLUDES;SOURCES;EXPLICIT_MOC;SKIP_AUTOMOC;PROPERTIES" ${ARGN}
+  cmake_parse_arguments(_arg "STATIC;OBJECT;SKIP_TRANSLATION;BUILD_BY_DEFAULT;ALLOW_ASCII_CASTS;UNVERSIONED"
+    "DESTINATION;COMPONENT"
+    "DEFINES;DEPENDS;EXTRA_TRANSLATIONS;INCLUDES;PUBLIC_DEFINES;PUBLIC_DEPENDS;PUBLIC_INCLUDES;SOURCES;EXPLICIT_MOC;SKIP_AUTOMOC;PROPERTIES" ${ARGN}
   )
+
+  set(default_defines_copy ${DEFAULT_DEFINES})
+  if (_arg_ALLOW_ASCII_CASTS)
+    list(REMOVE_ITEM default_defines_copy QT_NO_CAST_TO_ASCII QT_RESTRICTED_CAST_FROM_ASCII)
+  endif()
 
   if (${_arg_UNPARSED_ARGUMENTS})
     message(FATAL_ERROR "add_qtc_library had unparsed arguments")
   endif()
 
   update_cached_list(__QTC_LIBRARIES "${name}")
+
+  # special libraries can be turned off
+  if (_arg_BUILD_BY_DEFAULT)
+    string(TOUPPER "BUILD_LIBRARY_${name}" _build_library_var)
+    set(_build_library_default "ON")
+    if (DEFINED ENV{QTC_${_build_library_var}})
+      set(_build_library_default "$ENV{QTC_${_build_library_var}}")
+    endif()
+    set(${_build_library_var} "${_build_library_default}" CACHE BOOL "Build library ${name}.")
+
+    if (NOT ${_build_library_var})
+      return()
+    endif()
+  endif()
 
   compare_sources_with_existing_disk_files(${name} "${_arg_SOURCES}")
 
@@ -319,12 +479,17 @@ function(add_qtc_library name)
     set(library_type OBJECT)
   endif()
 
+  set(_exclude_from_all EXCLUDE_FROM_ALL)
+  if (_arg_BUILD_BY_DEFAULT)
+    unset(_exclude_from_all)
+  endif()
+
   # Do not just build libraries...
-  add_library(${name} ${library_type} EXCLUDE_FROM_ALL ${_arg_SOURCES})
+  add_library(${name} ${library_type} ${_exclude_from_all} ${_arg_SOURCES})
   add_library(${IDE_CASED_ID}::${name} ALIAS ${name})
   set_public_headers(${name} "${_arg_SOURCES}")
 
-  if (${name} MATCHES "^[^0-9]+")
+  if (${name} MATCHES "^[^0-9-]+$")
     string(TOUPPER "${name}_LIBRARY" EXPORT_SYMBOL)
   endif()
 
@@ -335,22 +500,22 @@ function(add_qtc_library name)
   file(RELATIVE_PATH include_dir_relative_path ${PROJECT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
 
   target_include_directories(${name}
-    PRIVATE ${_arg_INCLUDES}
-    PUBLIC
+    PRIVATE
+      ${_arg_INCLUDES}
       "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
+    PUBLIC
       "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>"
-      "$<INSTALL_INTERFACE:include/${include_dir_relative_path}>"
       "$<INSTALL_INTERFACE:include/${include_dir_relative_path}/..>"
   )
   set_public_includes(${name} "${_arg_PUBLIC_INCLUDES}")
 
   target_compile_definitions(${name}
-    PRIVATE ${EXPORT_SYMBOL} ${DEFAULT_DEFINES} ${_arg_DEFINES} ${TEST_DEFINES}
+    PRIVATE ${EXPORT_SYMBOL} ${default_defines_copy} ${_arg_DEFINES} ${TEST_DEFINES}
     PUBLIC ${_arg_PUBLIC_DEFINES}
   )
 
   add_qtc_depends(${name}
-    PRIVATE ${_arg_DEPENDS} ${_TEST_DEPENDS}
+    PRIVATE ${_arg_DEPENDS} ${IMPLICIT_DEPENDS}
     PUBLIC ${_arg_PUBLIC_DEPENDS}
   )
 
@@ -362,39 +527,88 @@ function(add_qtc_library name)
     set_property(SOURCE ${file} PROPERTY SKIP_AUTOMOC ON)
   endforeach()
 
+  set(skip_translation OFF)
+  if (_arg_SKIP_TRANSLATION)
+    set(skip_translation ON)
+  endif()
+
+  set(_DESTINATION "${IDE_BIN_PATH}")
+  if (_arg_DESTINATION)
+    set(_DESTINATION "${_arg_DESTINATION}")
+  endif()
+
   qtc_output_binary_dir(_output_binary_dir)
   set_target_properties(${name} PROPERTIES
     SOURCES_DIR "${CMAKE_CURRENT_SOURCE_DIR}"
     VERSION "${IDE_VERSION}"
+    SOVERSION "${PROJECT_VERSION_MAJOR}"
+    CXX_EXTENSIONS OFF
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON
     BUILD_RPATH "${_LIB_RPATH}"
     INSTALL_RPATH "${_LIB_RPATH}"
-    RUNTIME_OUTPUT_DIRECTORY "${_output_binary_dir}/${IDE_BIN_PATH}"
+    RUNTIME_OUTPUT_DIRECTORY "${_output_binary_dir}/${_DESTINATION}"
     LIBRARY_OUTPUT_DIRECTORY "${_output_binary_dir}/${IDE_LIBRARY_PATH}"
     ARCHIVE_OUTPUT_DIRECTORY "${_output_binary_dir}/${IDE_LIBRARY_PATH}"
     ${_arg_PROPERTIES}
   )
   enable_pch(${name})
 
+  if (WIN32 AND library_type STREQUAL "SHARED" AND NOT _arg_UNVERSIONED)
+    # Match qmake naming scheme e.g. Library4.dll
+    set_target_properties(${name} PROPERTIES
+      SUFFIX "${PROJECT_VERSION_MAJOR}${CMAKE_SHARED_LIBRARY_SUFFIX}"
+      PREFIX ""
+    )
+  endif()
+
   unset(NAMELINK_OPTION)
   if (library_type STREQUAL "SHARED")
     set(NAMELINK_OPTION NAMELINK_SKIP)
   endif()
 
+  unset(COMPONENT_OPTION)
+  if (_arg_COMPONENT)
+    set(COMPONENT_OPTION "COMPONENT" "${_arg_COMPONENT}")
+  endif()
+
   install(TARGETS ${name}
     EXPORT ${IDE_CASED_ID}
-    RUNTIME DESTINATION "${IDE_BIN_PATH}"
+    RUNTIME
+      DESTINATION "${_DESTINATION}"
+      ${COMPONENT_OPTION}
+      OPTIONAL
     LIBRARY
       DESTINATION "${IDE_LIBRARY_PATH}"
       ${NAMELINK_OPTION}
+      ${COMPONENT_OPTION}
+      OPTIONAL
     OBJECTS
       DESTINATION "${IDE_LIBRARY_PATH}"
       COMPONENT Devel EXCLUDE_FROM_ALL
     ARCHIVE
       DESTINATION "${IDE_LIBRARY_PATH}"
       COMPONENT Devel EXCLUDE_FROM_ALL
+      OPTIONAL
   )
+
+  if (library_type STREQUAL "SHARED")
+    set(target_prefix ${CMAKE_SHARED_LIBRARY_PREFIX})
+    if (WIN32)
+      set(target_suffix ${PROJECT_VERSION_MAJOR}${CMAKE_SHARED_LIBRARY_SUFFIX})
+      set(target_prefix "")
+    elseif(APPLE)
+      set(target_suffix .${PROJECT_VERSION_MAJOR}${CMAKE_SHARED_LIBRARY_SUFFIX})
+    else()
+      set(target_suffix ${CMAKE_SHARED_LIBRARY_SUFFIX}.${PROJECT_VERSION_MAJOR})
+    endif()
+    set(lib_dir "${IDE_LIBRARY_PATH}")
+    if (WIN32)
+      set(lib_dir "${_DESTINATION}")
+    endif()
+    update_cached_list(__QTC_INSTALLED_LIBRARIES
+      "${lib_dir}/${target_prefix}${name}${target_suffix}")
+  endif()
 
   if (NAMELINK_OPTION)
     install(TARGETS ${name}
@@ -402,15 +616,18 @@ function(add_qtc_library name)
         DESTINATION "${IDE_LIBRARY_PATH}"
         NAMELINK_ONLY
         COMPONENT Devel EXCLUDE_FROM_ALL
+      OPTIONAL
     )
   endif()
+
+  append_extra_translations("${name}" "${_arg_EXTRA_TRANSLATIONS}")
 endfunction(add_qtc_library)
 
 function(add_qtc_plugin target_name)
   cmake_parse_arguments(_arg
-    "EXPERIMENTAL;SKIP_DEBUG_CMAKE_FILE_CHECK;SKIP_INSTALL"
+    "EXPERIMENTAL;SKIP_DEBUG_CMAKE_FILE_CHECK;SKIP_INSTALL;INTERNAL_ONLY;SKIP_TRANSLATION"
     "VERSION;COMPAT_VERSION;PLUGIN_JSON_IN;PLUGIN_PATH;PLUGIN_NAME;OUTPUT_NAME"
-    "CONDITION;DEPENDS;PUBLIC_DEPENDS;DEFINES;PUBLIC_DEFINES;INCLUDES;PUBLIC_INCLUDES;PLUGIN_DEPENDS;PLUGIN_RECOMMENDS;SOURCES;EXPLICIT_MOC"
+    "CONDITION;DEPENDS;EXTRA_TRANSLATIONS;PUBLIC_DEPENDS;DEFINES;PUBLIC_DEFINES;INCLUDES;PUBLIC_INCLUDES;PLUGIN_DEPENDS;PLUGIN_RECOMMENDS;SOURCES;EXPLICIT_MOC"
     ${ARGN}
   )
 
@@ -425,12 +642,9 @@ function(add_qtc_plugin target_name)
     set(name ${_arg_PLUGIN_NAME})
   endif()
 
+  condition_info(_extra_text _arg_CONDITION)
   if (NOT _arg_CONDITION)
     set(_arg_CONDITION ON)
-    set(_extra_text "")
-  else()
-    string(REPLACE ";" " " _contents "${_arg_CONDITION}")
-    set(_extra_text "with CONDITION ${_contents}")
   endif()
 
   string(TOUPPER "BUILD_PLUGIN_${target_name}" _build_plugin_var)
@@ -438,7 +652,11 @@ function(add_qtc_plugin target_name)
   if (DEFINED ENV{QTC_${_build_plugin_var}})
     set(_build_plugin_default "$ENV{QTC_${_build_plugin_var}}")
   endif()
-  set(${_build_plugin_var} "${_build_plugin_default}" CACHE BOOL "Build plugin ${name}.")
+  if (_arg_INTERNAL_ONLY)
+    set(${_build_plugin_var} "${_build_plugin_default}")
+  else()
+    set(${_build_plugin_var} "${_build_plugin_default}" CACHE BOOL "Build plugin ${name}.")
+  endif()
 
   if ((${_arg_CONDITION}) AND ${_build_plugin_var})
     set(_plugin_enabled ON)
@@ -446,7 +664,9 @@ function(add_qtc_plugin target_name)
     set(_plugin_enabled OFF)
   endif()
 
-  add_feature_info("Plugin ${name}" _plugin_enabled "${_extra_text}")
+  if (NOT _arg_INTERNAL_ONLY)
+    add_feature_info("Plugin ${name}" _plugin_enabled "${_extra_text}")
+  endif()
   if (NOT _plugin_enabled)
     return()
   endif()
@@ -507,6 +727,7 @@ function(add_qtc_plugin target_name)
     string(REPLACE "$$QTCREATOR_VERSION" "\${IDE_VERSION}" plugin_json_in ${plugin_json_in})
     string(REPLACE "$$QTCREATOR_COMPAT_VERSION" "\${IDE_VERSION_COMPAT}" plugin_json_in ${plugin_json_in})
     string(REPLACE "$$QTCREATOR_COPYRIGHT_YEAR" "\${IDE_COPYRIGHT_YEAR}" plugin_json_in ${plugin_json_in})
+    string(REPLACE "$$QTC_PLUGIN_REVISION" "\${QTC_PLUGIN_REVISION}" plugin_json_in ${plugin_json_in})
     string(REPLACE "$$dependencyList" "\${IDE_PLUGIN_DEPENDENCY_STRING}" plugin_json_in ${plugin_json_in})
     if(_arg_PLUGIN_JSON_IN)
         #e.g. UPDATEINFO_EXPERIMENTAL_STR=true
@@ -514,9 +735,10 @@ function(add_qtc_plugin target_name)
         string(REGEX REPLACE "^.*=" "" json_value ${_arg_PLUGIN_JSON_IN})
         string(REPLACE "$$${json_key}" "${json_value}" plugin_json_in ${plugin_json_in})
     endif()
-    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${name}.json.cmakein" ${plugin_json_in})
-
-    configure_file("${CMAKE_CURRENT_BINARY_DIR}/${name}.json.cmakein" "${name}.json")
+    string(CONFIGURE "${plugin_json_in}" plugin_json)
+    file(GENERATE
+      OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${name}.json"
+      CONTENT "${plugin_json}")
   endif()
 
   add_library(${target_name} SHARED ${_arg_SOURCES})
@@ -537,10 +759,9 @@ function(add_qtc_plugin target_name)
       ${_arg_INCLUDES}
       "${CMAKE_CURRENT_BINARY_DIR}"
       "${CMAKE_BINARY_DIR}/src"
-    PUBLIC
       "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
+    PUBLIC
       "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>"
-      "$<INSTALL_INTERFACE:include/${include_dir_relative_path}>"
       "$<INSTALL_INTERFACE:include/${include_dir_relative_path}/..>"
   )
   set_public_includes(${target_name} "${_arg_PUBLIC_INCLUDES}")
@@ -551,7 +772,7 @@ function(add_qtc_plugin target_name)
   )
 
   add_qtc_depends(${target_name}
-    PRIVATE ${_arg_DEPENDS} ${_DEP_PLUGINS} ${_TEST_DEPENDS}
+    PRIVATE ${_arg_DEPENDS} ${_DEP_PLUGINS} ${IMPLICIT_DEPENDS}
     PUBLIC ${_arg_PUBLIC_DEPENDS}
   )
 
@@ -560,9 +781,15 @@ function(add_qtc_plugin target_name)
     set(plugin_dir "${_arg_PLUGIN_PATH}")
   endif()
 
+  set(skip_translation OFF)
+  if (_arg_SKIP_TRANSLATION)
+    set(skip_translation ON)
+  endif()
+
   qtc_output_binary_dir(_output_binary_dir)
   set_target_properties(${target_name} PROPERTIES
     SOURCES_DIR "${CMAKE_CURRENT_SOURCE_DIR}"
+    CXX_EXTENSIONS OFF
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON
     _arg_DEPENDS "${_arg_PLUGIN_DEPENDS}"
@@ -573,8 +800,18 @@ function(add_qtc_plugin target_name)
     ARCHIVE_OUTPUT_DIRECTORY "${_output_binary_dir}/${plugin_dir}"
     RUNTIME_OUTPUT_DIRECTORY "${_output_binary_dir}/${plugin_dir}"
     OUTPUT_NAME "${name}"
+    QT_SKIP_TRANSLATION "${skip_translation}"
     ${_arg_PROPERTIES}
   )
+
+  if (WIN32)
+    # Match qmake naming scheme e.g. Plugin4.dll
+    set_target_properties(${target_name} PROPERTIES
+      SUFFIX "${PROJECT_VERSION_MAJOR}${CMAKE_SHARED_LIBRARY_SUFFIX}"
+      PREFIX ""
+    )
+  endif()
+  append_extra_translations("${target_name}" "${_arg_EXTRA_TRANSLATIONS}")
   enable_pch(${target_name})
 
   foreach(file IN LISTS _arg_EXPLICIT_MOC)
@@ -584,19 +821,30 @@ function(add_qtc_plugin target_name)
   if (NOT _arg_SKIP_INSTALL)
     install(TARGETS ${target_name}
       EXPORT ${IDE_CASED_ID}
-      RUNTIME DESTINATION "${plugin_dir}"
-      LIBRARY DESTINATION "${plugin_dir}"
+      RUNTIME DESTINATION "${plugin_dir}" OPTIONAL
+      LIBRARY DESTINATION "${plugin_dir}" OPTIONAL
       ARCHIVE
         DESTINATION "${plugin_dir}"
         COMPONENT Devel EXCLUDE_FROM_ALL
+        OPTIONAL
     )
+    get_target_property(target_suffix ${target_name} SUFFIX)
+    get_target_property(target_prefix ${target_name} PREFIX)
+    if (target_suffix STREQUAL "target_suffix-NOTFOUND")
+      set(target_suffix ${CMAKE_SHARED_LIBRARY_SUFFIX})
+    endif()
+    if (target_prefix STREQUAL "target_prefix-NOTFOUND")
+      set(target_prefix ${CMAKE_SHARED_LIBRARY_PREFIX})
+    endif()
+    update_cached_list(__QTC_INSTALLED_PLUGINS
+      "${plugin_dir}/${target_prefix}${target_name}${target_suffix}")
   endif()
 endfunction()
 
 function(extend_qtc_target target_name)
   cmake_parse_arguments(_arg
     ""
-    "SOURCES_PREFIX"
+    "SOURCES_PREFIX;FEATURE_INFO"
     "CONDITION;DEPENDS;PUBLIC_DEPENDS;DEFINES;PUBLIC_DEFINES;INCLUDES;PUBLIC_INCLUDES;SOURCES;EXPLICIT_MOC"
     ${ARGN}
   )
@@ -605,10 +853,19 @@ function(extend_qtc_target target_name)
     message(FATAL_ERROR "extend_qtc_target had unparsed arguments")
   endif()
 
+  condition_info(_extra_text _arg_CONDITION)
   if (NOT _arg_CONDITION)
     set(_arg_CONDITION ON)
   endif()
-  if (NOT (${_arg_CONDITION}))
+  if (${_arg_CONDITION})
+    set(_feature_enabled ON)
+  else()
+    set(_feature_enabled OFF)
+  endif()
+  if (_arg_FEATURE_INFO)
+    add_feature_info(${_arg_FEATURE_INFO} _feature_enabled "${_extra_text}")
+  endif()
+  if (NOT _feature_enabled)
     return()
   endif()
 
@@ -632,7 +889,7 @@ function(extend_qtc_target target_name)
     if (NOT IS_ABSOLUTE ${_arg_SOURCES_PREFIX})
       set(_arg_SOURCES_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/${_arg_SOURCES_PREFIX}")
     endif()
-    target_include_directories(${target_name} PUBLIC $<BUILD_INTERFACE:${_arg_SOURCES_PREFIX}>)
+    target_include_directories(${target_name} PRIVATE $<BUILD_INTERFACE:${_arg_SOURCES_PREFIX}>)
 
     set(_arg_SOURCES ${prefixed_sources})
   endif()
@@ -663,11 +920,27 @@ function(extend_qtc_plugin target_name)
   extend_qtc_target(${target_name} ${ARGN})
 endfunction()
 
+function(extend_qtc_library target_name)
+  qtc_library_enabled(_library_enabled ${target_name})
+  if (NOT _library_enabled)
+    return()
+  endif()
+
+  extend_qtc_target(${target_name} ${ARGN})
+endfunction()
+
 function(add_qtc_executable name)
-  cmake_parse_arguments(_arg "SKIP_INSTALL" "DESTINATION" "DEFINES;DEPENDS;INCLUDES;SOURCES;PROPERTIES" ${ARGN})
+  cmake_parse_arguments(_arg "SKIP_INSTALL;SKIP_TRANSLATION;ALLOW_ASCII_CASTS"
+    "DESTINATION;COMPONENT"
+    "DEFINES;DEPENDS;EXTRA_TRANSLATIONS;INCLUDES;SOURCES;PROPERTIES" ${ARGN})
 
   if ($_arg_UNPARSED_ARGUMENTS)
     message(FATAL_ERROR "add_qtc_executable had unparsed arguments!")
+  endif()
+
+  set(default_defines_copy ${DEFAULT_DEFINES})
+  if (_arg_ALLOW_ASCII_CASTS)
+    list(REMOVE_ITEM default_defines_copy QT_NO_CAST_TO_ASCII QT_RESTRICTED_CAST_FROM_ASCII)
   endif()
 
   update_cached_list(__QTC_EXECUTABLES "${name}")
@@ -701,23 +974,108 @@ function(add_qtc_executable name)
     endif()
   endif()
 
-  file(RELATIVE_PATH _RELATIVE_LIB_PATH "/${_EXECUTABLE_PATH}" "/${IDE_LIBRARY_PATH}")
-
   add_executable("${name}" ${_arg_SOURCES})
   target_include_directories("${name}" PRIVATE "${CMAKE_BINARY_DIR}/src" ${_arg_INCLUDES})
-  target_compile_definitions("${name}" PRIVATE ${_arg_DEFINES} ${TEST_DEFINES} ${DEFAULT_DEFINES})
-  target_link_libraries("${name}" PRIVATE ${_arg_DEPENDS} ${_TEST_DEPENDS})
+  target_compile_definitions("${name}" PRIVATE ${default_defines_copy} ${TEST_DEFINES} ${_arg_DEFINES} )
+  target_link_libraries("${name}" PRIVATE ${_arg_DEPENDS} ${IMPLICIT_DEPENDS})
+
+  set(skip_translation OFF)
+  if (_arg_SKIP_TRANSLATION)
+    set(skip_translation ON)
+  endif()
+
+  file(RELATIVE_PATH relative_lib_path "/${_EXECUTABLE_PATH}" "/${IDE_LIBRARY_PATH}")
+
+  set(build_rpath "${_RPATH_BASE}/${relative_lib_path}")
+  set(install_rpath "${_RPATH_BASE}/${relative_lib_path}")
+  if (NOT WIN32 AND NOT APPLE)
+    file(RELATIVE_PATH relative_qt_path "/${_EXECUTABLE_PATH}" "/${IDE_LIBRARY_BASE_PATH}/Qt/lib")
+    file(RELATIVE_PATH relative_plugins_path "/${_EXECUTABLE_PATH}" "/${IDE_PLUGIN_PATH}")
+    set(install_rpath "${install_rpath};${_RPATH_BASE}/${relative_qt_path};${_RPATH_BASE}/${relative_plugins_path}")
+  endif()
+
   qtc_output_binary_dir(_output_binary_dir)
   set_target_properties("${name}" PROPERTIES
-    BUILD_RPATH "${_RPATH_BASE}/${_RELATIVE_LIB_PATH}"
-    INSTALL_RPATH "${_RPATH_BASE}/${_RELATIVE_LIB_PATH}"
+    BUILD_RPATH "${build_rpath}"
+    INSTALL_RPATH "${install_rpath}"
     RUNTIME_OUTPUT_DIRECTORY "${_output_binary_dir}/${_DESTINATION}"
+    QT_SKIP_TRANSLATION "${skip_translation}"
+    CXX_EXTENSIONS OFF
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
     ${_arg_PROPERTIES}
   )
+  append_extra_translations("${name}" "${_arg_EXTRA_TRANSLATIONS}")
   enable_pch(${name})
 
   if (NOT _arg_SKIP_INSTALL)
-    install(TARGETS ${name} DESTINATION "${_DESTINATION}")
+    unset(COMPONENT_OPTION)
+    if (_arg_COMPONENT)
+      set(COMPONENT_OPTION "COMPONENT" "${_arg_COMPONENT}")
+    endif()
+
+    install(TARGETS ${name}
+      DESTINATION "${_DESTINATION}"
+      ${COMPONENT_OPTION}
+      OPTIONAL
+    )
+    update_cached_list(__QTC_INSTALLED_EXECUTABLES
+      "${_DESTINATION}/${name}${CMAKE_EXECUTABLE_SUFFIX}")
+
+    install(CODE "
+      function(create_qt_conf location base_dir)
+        get_filename_component(install_prefix \"\${CMAKE_INSTALL_PREFIX}\" ABSOLUTE)
+        file(RELATIVE_PATH qt_conf_binaries
+          \"\${install_prefix}/\${location}\"
+          \"\${install_prefix}/\${base_dir}\"
+        )
+        if (NOT qt_conf_binaries)
+          set(qt_conf_binaries .)
+        endif()
+        file(RELATIVE_PATH qt_conf_plugins
+          \"\${install_prefix}/\${base_dir}\"
+          \"\${install_prefix}/${QT_DEST_PLUGIN_PATH}\"
+        )
+        file(RELATIVE_PATH qt_conf_qml
+          \"\${install_prefix}/\${base_dir}\"
+          \"\${install_prefix}/${QT_DEST_QML_PATH}\"
+        )
+        file(WRITE \"\${CMAKE_INSTALL_PREFIX}/\${location}/qt.conf\"
+          \"[Paths]\n\"
+          \"Plugins=\${qt_conf_plugins}\n\"
+          \"Qml2Imports=\${qt_conf_qml}\n\"
+        )
+        # For Apple for Qt Creator do not add a Prefix
+        if (NOT APPLE OR NOT qt_conf_binaries STREQUAL \"../\")
+          file(APPEND \"\${CMAKE_INSTALL_PREFIX}/\${location}/qt.conf\"
+            \"Prefix=\${qt_conf_binaries}\n\"
+          )
+        endif()
+        if (WIN32 OR APPLE)
+          file(RELATIVE_PATH qt_binaries
+            \"\${install_prefix}/\${base_dir}\"
+            \"\${install_prefix}/${IDE_BIN_PATH}\"
+          )
+          if (NOT qt_binaries)
+            set(qt_binaries .)
+          endif()
+          file(APPEND \"\${CMAKE_INSTALL_PREFIX}/\${location}/qt.conf\"
+            \"# Needed by QtCreator for qtdiag\n\"
+            \"Binaries=\${qt_binaries}\n\")
+        endif()
+      endfunction()
+      if(APPLE)
+        create_qt_conf(\"${_EXECUTABLE_PATH}\" \"${IDE_DATA_PATH}/..\")
+      elseif (WIN32)
+        create_qt_conf(\"${_EXECUTABLE_PATH}\" \"${IDE_APP_PATH}\")
+      else()
+        create_qt_conf(\"${_EXECUTABLE_PATH}\" \"${IDE_LIBRARY_BASE_PATH}/Qt\")
+      endif()
+      "
+      COMPONENT Dependencies
+      EXCLUDE_FROM_ALL
+     )
+
   endif()
 endfunction()
 
@@ -733,6 +1091,15 @@ endfunction()
 function(add_qtc_test name)
   cmake_parse_arguments(_arg "GTEST" "" "DEFINES;DEPENDS;INCLUDES;SOURCES" ${ARGN})
 
+  foreach(dependency ${_arg_DEPENDS})
+    if (NOT TARGET ${dependency} AND NOT _arg_GTEST)
+      if (WITH_DEBUG_CMAKE)
+        message(STATUS  "'${dependency}' is not a target")
+      endif()
+      return()
+    endif()
+  endforeach()
+
   if ($_arg_UNPARSED_ARGUMENTS)
     message(FATAL_ERROR "add_qtc_test had unparsed arguments!")
   endif()
@@ -745,7 +1112,7 @@ function(add_qtc_test name)
   add_executable(${name} ${_arg_SOURCES})
 
   add_qtc_depends(${name}
-    PRIVATE ${_arg_DEPENDS} ${_TEST_DEPENDS}
+    PRIVATE ${_arg_DEPENDS} ${IMPLICIT_DEPENDS}
   )
 
   target_include_directories(${name} PRIVATE "${CMAKE_BINARY_DIR}/src" ${_arg_INCLUDES})
@@ -759,16 +1126,32 @@ function(add_qtc_test name)
 
   if (NOT _arg_GTEST)
     add_test(NAME ${name} COMMAND ${name})
-    fix_test_environment(${name})
+    finalize_test_setup(${name})
   endif()
 endfunction()
 
 function(finalize_qtc_gtest test_name)
+  if (NOT TARGET ${test_name})
+    return()
+  endif()
   get_target_property(test_sources ${test_name} SOURCES)
   include(GoogleTest)
   gtest_add_tests(TARGET ${test_name} SOURCES ${test_sources} TEST_LIST test_list)
 
   foreach(test IN LISTS test_list)
-    fix_test_environment(${test})
+    finalize_test_setup(${test})
   endforeach()
+endfunction()
+
+# This is the CMake equivalent of "RESOURCES = $$files()" from qmake
+function(qtc_glob_resources)
+  cmake_parse_arguments(_arg "" "QRC_FILE;ROOT;GLOB" "" ${ARGN})
+
+  file(GLOB_RECURSE fileList RELATIVE "${_arg_ROOT}" "${_arg_ROOT}/${_arg_GLOB}")
+  set(qrcData "<RCC><qresource>\n")
+  foreach(file IN LISTS fileList)
+    string(APPEND qrcData "  <file alias=\"${file}\">${_arg_ROOT}/${file}</file>\n")
+  endforeach()
+  string(APPEND qrcData "</qresource></RCC>")
+  file(WRITE "${_arg_QRC_FILE}" "${qrcData}")
 endfunction()

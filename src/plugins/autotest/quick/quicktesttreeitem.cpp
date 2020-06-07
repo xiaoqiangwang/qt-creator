@@ -418,7 +418,7 @@ QSet<QString> QuickTestTreeItem::internalTargets() const
     const auto cppMM = CppTools::CppModelManager::instance();
     const auto projectInfo = cppMM->projectInfo(ProjectExplorer::SessionManager::startupProject());
     for (const CppTools::ProjectPart::Ptr &projectPart : projectInfo.projectParts()) {
-        if (projectPart->buildTargetType != CppTools::ProjectPart::Executable)
+        if (projectPart->buildTargetType != ProjectExplorer::BuildTargetType::Executable)
             continue;
         if (projectPart->projectFile == proFile()) {
             result.insert(projectPart->buildSystemTarget);
@@ -456,7 +456,7 @@ TestTreeItem *QuickTestTreeItem::findChildByFileNameAndType(const QString &fileP
 }
 
 TestTreeItem *QuickTestTreeItem::findChildByNameFileAndLine(const QString &name,
-                                                            const QString &filePath, unsigned line)
+                                                            const QString &filePath, int line)
 {
     return findFirstLevelChild([name, filePath, line](const TestTreeItem *other) {
         return other->filePath() == filePath && other->line() == line && other->name() == name;

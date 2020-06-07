@@ -33,19 +33,21 @@
 
 #include <coreplugin/variablechooser.h>
 
+#include <utils/fileutils.h>
 #include <utils/macroexpander.h>
 
 #include <QFormLayout>
 
+using namespace Utils;
+
 namespace ProjectExplorer {
 
-const char PROCESS_STEP_ID[] = "ProjectExplorer.ProcessStep";
 const char PROCESS_COMMAND_KEY[] = "ProjectExplorer.ProcessStep.Command";
 const char PROCESS_WORKINGDIRECTORY_KEY[] = "ProjectExplorer.ProcessStep.WorkingDirectory";
 const char PROCESS_ARGUMENTS_KEY[] = "ProjectExplorer.ProcessStep.Arguments";
 
-ProcessStep::ProcessStep(BuildStepList *bsl)
-    : AbstractProcessStep(bsl, PROCESS_STEP_ID)
+ProcessStep::ProcessStep(BuildStepList *bsl, Core::Id id)
+    : AbstractProcessStep(bsl, id)
 {
     //: Default ProcessStep display name
     setDefaultDisplayName(tr("Custom Process Step"));
@@ -68,6 +70,17 @@ ProcessStep::ProcessStep(BuildStepList *bsl)
     m_workingDirectory->setDisplayStyle(BaseStringAspect::PathChooserDisplay);
     m_workingDirectory->setLabelText(tr("Working directory:"));
     m_workingDirectory->setExpectedKind(Utils::PathChooser::Directory);
+
+    setSummaryUpdater([this] {
+        QString display = displayName();
+        if (display.isEmpty())
+            display = tr("Custom Process Step");
+        ProcessParameters param;
+        setupProcessParameters(&param);
+        return param.summary(display);
+    });
+
+    addMacroExpander();
 }
 
 bool ProcessStep::init()
@@ -81,8 +94,6 @@ void ProcessStep::setupProcessParameters(ProcessParameters *pp)
 {
     BuildConfiguration *bc = buildConfiguration();
 
-    QString command = m_command->value();
-    QString arguments = m_arguments->value();
     QString workingDirectory = m_workingDirectory->value();
     if (workingDirectory.isEmpty()) {
         if (bc)
@@ -94,36 +105,8 @@ void ProcessStep::setupProcessParameters(ProcessParameters *pp)
     pp->setMacroExpander(bc ? bc->macroExpander() : Utils::globalMacroExpander());
     pp->setEnvironment(bc ? bc->environment() : Utils::Environment::systemEnvironment());
     pp->setWorkingDirectory(Utils::FilePath::fromString(workingDirectory));
-    pp->setCommand(Utils::FilePath::fromString(command));
-    pp->setArguments(arguments);
+    pp->setCommandLine({m_command->filePath(), m_arguments->value(), CommandLine::Raw});
     pp->resolveAll();
-}
-
-BuildStepConfigWidget *ProcessStep::createConfigWidget()
-{
-    auto widget = AbstractProcessStep::createConfigWidget();
-
-    Core::VariableChooser::addSupportForChildWidgets(widget, macroExpander());
-
-    auto updateDetails = [this, widget] {
-        QString display = displayName();
-        if (display.isEmpty())
-            display = tr("Custom Process Step");
-        ProcessParameters param;
-        setupProcessParameters(&param);
-        widget->setSummaryText(param.summary(display));
-    };
-
-    updateDetails();
-
-    connect(m_command, &ProjectConfigurationAspect::changed,
-            widget, updateDetails);
-    connect(m_workingDirectory, &ProjectConfigurationAspect::changed,
-            widget, updateDetails);
-    connect(m_arguments, &ProjectConfigurationAspect::changed,
-            widget, updateDetails);
-
-    return widget;
 }
 
 //*******
@@ -132,7 +115,7 @@ BuildStepConfigWidget *ProcessStep::createConfigWidget()
 
 ProcessStepFactory::ProcessStepFactory()
 {
-    registerStep<ProcessStep>(PROCESS_STEP_ID);
+    registerStep<ProcessStep>("ProjectExplorer.ProcessStep");
     setDisplayName(ProcessStep::tr("Custom Process Step", "item in combobox"));
 }
 

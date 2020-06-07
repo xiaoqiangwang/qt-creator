@@ -29,8 +29,10 @@
 
 #include "qbsproject.h"
 
+#include <projectexplorer/buildaspects.h>
 #include <projectexplorer/buildconfiguration.h>
 #include <qtsupport/baseqtversion.h>
+#include <qtsupport/qtbuildaspects.h>
 
 namespace ProjectExplorer { class BuildStep; }
 
@@ -38,25 +40,41 @@ namespace QbsProjectManager {
 namespace Internal {
 
 class QbsBuildStep;
-class QbsProject;
 
-class QbsBuildConfiguration : public ProjectExplorer::BuildConfiguration
+class QbsBuildStepData
+{
+public:
+    QString command;
+    bool dryRun = false;
+    bool keepGoing = false;
+    bool forceProbeExecution = false;
+    bool showCommandLines = false;
+    bool noInstall = false;
+    bool noBuild = false;
+    bool cleanInstallRoot = false;
+    bool isInstallStep = false;
+    int jobCount = 0;
+    Utils::FilePath installRoot;
+};
+
+class QbsBuildConfiguration final : public ProjectExplorer::BuildConfiguration
 {
     Q_OBJECT
 
+    // used in DebuggerRunConfigurationAspect
+    Q_PROPERTY(bool linkQmlDebuggingLibrary
+               READ isQmlDebuggingEnabled
+               NOTIFY qbsConfigurationChanged)
+
     friend class ProjectExplorer::BuildConfigurationFactory;
     QbsBuildConfiguration(ProjectExplorer::Target *target, Core::Id id);
+    ~QbsBuildConfiguration() final;
 
 public:
-    void initialize(const ProjectExplorer::BuildInfo &info) override;
+    ProjectExplorer::BuildSystem *buildSystem() const final;
 
     QbsBuildStep *qbsStep() const;
     QVariantMap qbsConfiguration() const;
-
-    Internal::QbsProject *project() const override;
-
-    bool isEnabled() const override;
-    QString disabledReason() const override;
 
     BuildType buildType() const override;
 
@@ -70,35 +88,35 @@ public:
     QStringList products() const;
 
     QString configurationName() const;
+    QString equivalentCommandLine(const QbsBuildStepData &stepData) const;
 
-    QString equivalentCommandLine(const ProjectExplorer::BuildStep *buildStep) const;
+    bool isQmlDebuggingEnabled() const;
+    ProjectExplorer::TriState qmlDebuggingSetting() const;
+    ProjectExplorer::TriState qtQuickCompilerSetting() const;
+    ProjectExplorer::TriState separateDebugInfoSetting() const;
 
 signals:
     void qbsConfigurationChanged();
 
 private:
     bool fromMap(const QVariantMap &map) override;
+    void restrictNextBuild(const ProjectExplorer::RunConfiguration *rc) override;
+    void triggerReparseIfActive();
 
     QStringList m_changedFiles;
     QStringList m_activeFileTags;
     QStringList m_products;
-    ProjectExplorer::BaseStringAspect *m_configurationName;
+    ProjectExplorer::BaseStringAspect *m_configurationName = nullptr;
+    QbsBuildSystem *m_buildSystem = nullptr;
 };
 
-class QbsBuildConfigurationFactory : public ProjectExplorer::BuildConfigurationFactory
+class QbsBuildConfigurationFactory final : public ProjectExplorer::BuildConfigurationFactory
 {
-    Q_OBJECT
-
 public:
     QbsBuildConfigurationFactory();
 
-    QList<ProjectExplorer::BuildInfo> availableBuilds(const ProjectExplorer::Target *parent) const override;
-    QList<ProjectExplorer::BuildInfo> availableSetups(const ProjectExplorer::Kit *k,
-                                                      const QString &projectPath) const override;
-
 private:
-    ProjectExplorer::BuildInfo createBuildInfo(const ProjectExplorer::Kit *k,
-                                                ProjectExplorer::BuildConfiguration::BuildType type) const;
+    ProjectExplorer::BuildInfo createBuildInfo(ProjectExplorer::BuildConfiguration::BuildType type) const;
 };
 
 } // namespace Internal

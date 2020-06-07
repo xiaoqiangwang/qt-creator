@@ -62,8 +62,8 @@ public:
     template <typename T> static T *getObject()
     {
         QReadLocker lock(listLock());
-        QVector<QObject *> all = allObjects();
-        foreach (QObject *obj, all) {
+        const QVector<QObject *> all = allObjects();
+        for (QObject *obj : all) {
             if (T *result = qobject_cast<T *>(obj))
                 return result;
         }
@@ -72,8 +72,8 @@ public:
     template <typename T, typename Predicate> static T *getObject(Predicate predicate)
     {
         QReadLocker lock(listLock());
-        QVector<QObject *> all = allObjects();
-        foreach (QObject *obj, all) {
+        const QVector<QObject *> all = allObjects();
+        for (QObject *obj : all) {
             if (T *result = qobject_cast<T *>(obj))
                 if (predicate(result))
                     return result;
@@ -93,8 +93,10 @@ public:
     static const QVector<PluginSpec *> plugins();
     static QHash<QString, QVector<PluginSpec *>> pluginCollections();
     static bool hasError();
-    static QSet<PluginSpec *> pluginsRequiringPlugin(PluginSpec *spec);
-    static QSet<PluginSpec *> pluginsRequiredByPlugin(PluginSpec *spec);
+    static const QStringList allErrors();
+    static const QSet<PluginSpec *> pluginsRequiringPlugin(PluginSpec *spec);
+    static const QSet<PluginSpec *> pluginsRequiredByPlugin(PluginSpec *spec);
+    static void checkForProblematicPlugins();
 
     // Settings
     static void setSettings(QSettings *settings);
@@ -105,6 +107,7 @@ public:
 
     // command line arguments
     static QStringList arguments();
+    static QStringList argumentsForRestart();
     static bool parseOptions(const QStringList &args,
         const QMap<QString, bool> &appOptions,
         QMap<QString, QString> *foundAppOptions,

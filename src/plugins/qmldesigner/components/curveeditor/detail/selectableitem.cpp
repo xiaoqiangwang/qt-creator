@@ -28,8 +28,59 @@
 
 namespace DesignTools {
 
-SelectableItem::SelectableItem(QGraphicsItem *parent)
+CurveEditorItem::CurveEditorItem(QGraphicsItem *parent)
     : QGraphicsObject(parent)
+    , m_locked(false)
+    , m_pinned(false)
+    , m_underMouse(false)
+{
+    setAcceptHoverEvents(true);
+}
+
+void CurveEditorItem::lockedCallback() {}
+void CurveEditorItem::pinnedCallback() {}
+void CurveEditorItem::underMouseCallback() {}
+
+bool CurveEditorItem::locked() const
+{
+    return m_locked;
+}
+
+bool CurveEditorItem::pinned() const
+{
+    return m_pinned;
+}
+
+bool CurveEditorItem::isUnderMouse() const
+{
+    return m_underMouse;
+}
+
+void CurveEditorItem::setLocked(bool locked)
+{
+    m_locked = locked;
+    lockedCallback();
+    update();
+}
+
+void CurveEditorItem::setPinned(bool pinned)
+{
+    m_pinned = pinned;
+    pinnedCallback();
+    update();
+}
+
+void CurveEditorItem::setIsUnderMouse(bool under)
+{
+    if (under != m_underMouse) {
+        m_underMouse = under;
+        underMouseCallback();
+        update();
+    }
+}
+
+SelectableItem::SelectableItem(QGraphicsItem *parent)
+    : CurveEditorItem(parent)
     , m_active(false)
     , m_selected(false)
     , m_preSelected(SelectionMode::Undefined)
@@ -42,6 +93,13 @@ SelectableItem::SelectableItem(QGraphicsItem *parent)
 }
 
 SelectableItem::~SelectableItem() {}
+
+void SelectableItem::lockedCallback()
+{
+    m_preSelected = SelectionMode::Undefined;
+    m_selected = false;
+    selectionCallback();
+}
 
 bool SelectableItem::activated() const
 {
@@ -73,8 +131,16 @@ void SelectableItem::setActivated(bool active)
     m_active = active;
 }
 
+void SelectableItem::setSelected(bool selected)
+{
+    m_selected = selected;
+}
+
 void SelectableItem::setPreselected(SelectionMode mode)
 {
+    if (locked())
+        return;
+
     m_preSelected = mode;
     selectionCallback();
 }
@@ -85,16 +151,25 @@ void SelectableItem::applyPreselection()
     m_preSelected = SelectionMode::Undefined;
 }
 
+void SelectableItem::activationCallback() {}
+
 void SelectableItem::selectionCallback() {}
 
 void SelectableItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
+    if (locked())
+        return;
+
     m_active = true;
     QGraphicsObject::mousePressEvent(event);
+    activationCallback();
 }
 
 void SelectableItem::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 {
+    if (locked())
+        return;
+
     if (type() == KeyframeItem::Type && !selected())
         return;
 
@@ -103,8 +178,12 @@ void SelectableItem::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 
 void SelectableItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
+    if (locked())
+        return;
+
     m_active = false;
     QGraphicsObject::mouseReleaseEvent(event);
+    activationCallback();
 }
 
 } // End namespace DesignTools.

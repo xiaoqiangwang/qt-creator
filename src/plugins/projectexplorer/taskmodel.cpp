@@ -148,7 +148,8 @@ void TaskModel::updateTaskFileName(unsigned int id, const QString &fileName)
     QTC_ASSERT(i != -1, return);
     if (m_tasks.at(i).taskId == id) {
         m_tasks[i].file = Utils::FilePath::fromString(fileName);
-        emit dataChanged(index(i, 0), index(i, 0));
+        const QModelIndex itemIndex = index(i, 0);
+        emit dataChanged(itemIndex, itemIndex);
     }
 }
 
@@ -158,7 +159,8 @@ void TaskModel::updateTaskLineNumber(unsigned int id, int line)
     QTC_ASSERT(i != -1, return);
     if (m_tasks.at(i).taskId == id) {
         m_tasks[i].movedLine = line;
-        emit dataChanged(index(i, 0), index(i, 0));
+        const QModelIndex itemIndex = index(i, 0);
+        emit dataChanged(itemIndex, itemIndex);
     }
 }
 
@@ -351,16 +353,20 @@ int TaskFilterModel::issuesCount(int startRow, int endRow) const
     return count;
 }
 
-void TaskFilterModel::updateFilterProperties(const QString &filterText,
-                                             Qt::CaseSensitivity caseSensitivity, bool isRegexp)
+void TaskFilterModel::updateFilterProperties(
+        const QString &filterText,
+        Qt::CaseSensitivity caseSensitivity,
+        bool isRegexp,
+        bool isInverted)
 {
     if (filterText == m_filterText && m_filterCaseSensitivity == caseSensitivity
-            && m_filterStringIsRegexp == isRegexp) {
+            && m_filterStringIsRegexp == isRegexp && m_filterIsInverted == isInverted) {
         return;
     }
     m_filterText = filterText;
     m_filterCaseSensitivity = caseSensitivity;
     m_filterStringIsRegexp = isRegexp;
+    m_filterIsInverted = isInverted;
     if (m_filterStringIsRegexp) {
         m_filterRegexp.setPattern(m_filterText);
         m_filterRegexp.setPatternOptions(m_filterCaseSensitivity == Qt::CaseInsensitive
@@ -372,7 +378,7 @@ void TaskFilterModel::updateFilterProperties(const QString &filterText,
 
 bool TaskFilterModel::filterAcceptsRow(int source_row, const QModelIndex &source_parent) const
 {
-    Q_UNUSED(source_parent);
+    Q_UNUSED(source_parent)
     return filterAcceptsTask(taskModel()->tasks().at(source_row));
 }
 
@@ -399,7 +405,7 @@ bool TaskFilterModel::filterAcceptsTask(const Task &task) const
             return m_filterStringIsRegexp ? m_filterRegexp.isValid() && s.contains(m_filterRegexp)
                                           : s.contains(m_filterText, m_filterCaseSensitivity);
         };
-        if (!accepts(task.file.toString()) && !accepts(task.description))
+        if ((accepts(task.file.toString()) || accepts(task.description)) == m_filterIsInverted)
             accept = false;
     }
 

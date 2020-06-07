@@ -25,6 +25,9 @@
 
 #include "qmlpreviewruncontrol.h"
 
+#include <qmlprojectmanager/qmlproject.h>
+#include <qmlprojectmanager/qmlmainfileaspect.h>
+
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/session.h>
 #include <projectexplorer/target.h>
@@ -36,6 +39,7 @@
 #include <utils/port.h>
 #include <utils/qtcprocess.h>
 #include <utils/url.h>
+#include <utils/fileutils.h>
 
 namespace QmlPreview {
 
@@ -77,7 +81,7 @@ QmlPreviewRunner::QmlPreviewRunner(ProjectExplorer::RunControl *runControl,
         if (!runControl->isRunning())
             return;
 
-        connect(runControl, &ProjectExplorer::RunControl::stopped, runControl, [runControl]() {
+        this->connect(runControl, &ProjectExplorer::RunControl::stopped, runControl, [runControl]() {
             ProjectExplorer::ProjectExplorerPlugin::runRunConfiguration(
                         runControl->runConfiguration(),
                         ProjectExplorer::Constants::QML_PREVIEW_RUN_MODE, true);
@@ -117,18 +121,42 @@ LocalQmlPreviewSupport::LocalQmlPreviewSupport(ProjectExplorer::RunControl *runC
     const QUrl serverUrl = Utils::urlFromLocalSocket();
 
     QmlPreviewRunner *preview = qobject_cast<QmlPreviewRunner *>(
-                runControl->createWorker(ProjectExplorer::Constants::QML_PREVIEW_RUN_MODE));
+                runControl->createWorker(ProjectExplorer::Constants::QML_PREVIEW_RUNNER));
     preview->setServerUrl(serverUrl);
 
     addStopDependency(preview);
     addStartDependency(preview);
 
-    ProjectExplorer::Runnable run = runnable();
+    setStarter([this, runControl, serverUrl] {
+        ProjectExplorer::Runnable runnable = runControl->runnable();
+        QStringList qmlProjectRunConfigurationArguments = runnable.commandLine().splitArguments();
 
-    Utils::QtcProcess::addArg(&run.commandLineArguments,
-                              QmlDebug::qmlDebugLocalArguments(QmlDebug::QmlPreviewServices,
-                                                               serverUrl.path()));
-    setRunnable(run);
+        const auto currentTarget = runControl->target();
+        const auto *qmlBuildSystem = qobject_cast<QmlProjectManager::QmlBuildSystem *>(currentTarget->buildSystem());
+
+        if (const auto aspect = runControl->aspect<QmlProjectManager::QmlMainFileAspect>()) {
+            const QString mainScript = aspect->mainScript();
+            const QString currentFile = aspect->currentFile();
+
+            const QString mainScriptFromProject = qmlBuildSystem->targetFile(
+                Utils::FilePath::fromString(mainScript)).toString();
+
+            const QString currentFileFromProject = qmlBuildSystem->targetFile(
+                Utils::FilePath::fromString(currentFile)).toString();
+
+            if (!currentFile.isEmpty() && qmlProjectRunConfigurationArguments.last().contains(mainScriptFromProject)) {
+                qmlProjectRunConfigurationArguments.removeLast();
+                auto commandLine = Utils::CommandLine(runnable.commandLine().executable(), qmlProjectRunConfigurationArguments);
+                commandLine.addArg(currentFile);
+                runnable.setCommandLine(commandLine);
+            }
+        }
+
+        Utils::QtcProcess::addArg(&runnable.commandLineArguments,
+                                  QmlDebug::qmlDebugLocalArguments(QmlDebug::QmlPreviewServices,
+                                                                   serverUrl.path()));
+        doStart(runnable, {});
+    });
 }
 
 } // namespace QmlPreview

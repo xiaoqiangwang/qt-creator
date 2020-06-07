@@ -25,7 +25,11 @@
 
 #pragma once
 
+#include "languageclient_global.h"
+
 #include <coreplugin/dialogs/ioptionspage.h>
+
+#include <utils/fileutils.h>
 
 #include <QAbstractItemModel>
 #include <QLabel>
@@ -48,12 +52,10 @@ namespace ProjectExplorer { class Project; }
 
 namespace LanguageClient {
 
-constexpr char noLanguageFilter[] = "No Filter";
-
 class Client;
 class BaseClientInterface;
 
-struct LanguageFilter
+struct LANGUAGECLIENT_EXPORT LanguageFilter
 {
     QStringList mimeTypes;
     QStringList filePattern;
@@ -61,7 +63,7 @@ struct LanguageFilter
     bool isSupported(const Core::IDocument *document) const;
 };
 
-class BaseSettings
+class LANGUAGECLIENT_EXPORT BaseSettings
 {
 public:
     BaseSettings() = default;
@@ -102,7 +104,7 @@ private:
     bool canStart(QList<const Core::IDocument *> documents) const;
 };
 
-class StdIOSettings : public BaseSettings
+class LANGUAGECLIENT_EXPORT StdIOSettings : public BaseSettings
 {
 public:
     StdIOSettings() = default;
@@ -119,6 +121,7 @@ public:
     QVariantMap toMap() const override;
     void fromMap(const QVariantMap &map) override;
     QString arguments() const;
+    Utils::CommandLine command() const;
 
 protected:
     BaseClientInterface *createInterface() const override;
@@ -135,6 +138,8 @@ public:
     static void init();
     static QList<BaseSettings *> fromSettings(QSettings *settings);
     static QList<BaseSettings *> currentPageSettings();
+    static void addSettings(BaseSettings *settings);
+    static void enableSettings(const QString &id);
     static void toSettings(QSettings *settings, const QList<BaseSettings *> &languageClientSettings);
 };
 

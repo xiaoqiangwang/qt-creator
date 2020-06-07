@@ -38,6 +38,8 @@
 
 #include <memory>
 
+namespace Utils { class FilePath; }
+
 namespace QSsh {
 class SshRemoteProcess;
 
@@ -99,7 +101,7 @@ class QSSH_EXPORT SshConnection : public QObject
 public:
     enum State { Unconnected, Connecting, Connected, Disconnecting };
 
-    explicit SshConnection(const SshConnectionParameters &serverInfo, QObject *parent = 0);
+    explicit SshConnection(const SshConnectionParameters &serverInfo, QObject *parent = nullptr);
 
     void connectToHost();
     void disconnectFromHost();
@@ -107,7 +109,7 @@ public:
     QString errorString() const;
     SshConnectionParameters connectionParameters() const;
     SshConnectionInfo connectionInfo() const;
-    QStringList connectionOptions() const;
+    QStringList connectionOptions(const Utils::FilePath &binary) const;
     bool sharingEnabled() const;
     ~SshConnection();
 

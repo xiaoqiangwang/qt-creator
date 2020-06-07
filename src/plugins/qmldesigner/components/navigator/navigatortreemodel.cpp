@@ -25,6 +25,7 @@
 
 #include "navigatortreemodel.h"
 #include "navigatorview.h"
+#include "qmldesignerplugin.h"
 
 #include <bindingproperty.h>
 #include <designersettings.h>
@@ -49,6 +50,7 @@
 #include <QMessageBox>
 #include <QApplication>
 #include <QPointF>
+#include <QDir>
 
 #include <coreplugin/messagebox.h>
 
@@ -75,8 +77,10 @@ static QList<ModelNode> modelNodesFromMimeData(const QMimeData *mineData, Abstra
 bool fitsToTargetProperty(const NodeAbstractProperty &targetProperty,
                           const QList<ModelNode> &modelNodeList)
 {
+    bool const canBeContainer =
+        NodeHints::fromModelNode(targetProperty.parentModelNode()).canBeContainerFor(modelNodeList.first());
     return !(targetProperty.isNodeProperty() &&
-             modelNodeList.count() > 1);
+             modelNodeList.count() > 1) && canBeContainer;
 }
 
 static inline QString msgUnknownItem(const QString &t)
@@ -257,14 +261,15 @@ void static appendForcedNodes(const NodeListProperty &property, QList<ModelNode>
 
 QList<ModelNode> filteredList(const NodeListProperty &property, bool filter)
 {
-    if (!filter)
-        return property.toModelNodeList();
-
     QList<ModelNode> list;
 
-    list.append(Utils::filtered(property.toModelNodeList(), [] (const ModelNode &arg) {
-        return QmlItemNode::isValidQmlItemNode(arg) || NodeHints::fromModelNode(arg).visibleInNavigator();
-    }));
+    if (filter) {
+        list.append(Utils::filtered(property.toModelNodeList(), [] (const ModelNode &arg) {
+            return QmlItemNode::isValidQmlItemNode(arg) || NodeHints::fromModelNode(arg).visibleInNavigator();
+        }));
+    } else {
+        list = property.toModelNodeList();
+    }
 
     appendForcedNodes(property, list);
 
@@ -536,7 +541,7 @@ void NavigatorTreeModel::handleItemLibraryItemDrop(const QMimeData *mimeData, in
         }
 
         if (newQmlObjectNode.isValid())
-            m_view->selectModelNode(newQmlObjectNode.modelNode());
+            m_view->setSelectedModelNode(newQmlObjectNode.modelNode());
     }
 }
 
@@ -548,20 +553,48 @@ void NavigatorTreeModel::handleItemLibraryImageDrop(const QMimeData *mimeData, i
     NodeAbstractProperty targetProperty;
 
     bool foundTarget = findTargetProperty(rowModelIndex, this, &targetProperty, &targetRowNumber);
-
     if (foundTarget) {
-        const QString imageFileName = QString::fromUtf8(mimeData->data("application/vnd.bauhaus.libraryresource"));
-        const QmlItemNode newQmlItemNode = QmlItemNode::createQmlItemNodeFromImage(m_view, imageFileName, QPointF(), targetProperty);
+        ModelNode targetNode(modelNodeForIndex(rowModelIndex));
 
-        if (newQmlItemNode.isValid()) {
-            QList<ModelNode> newModelNodeList;
-            newModelNodeList.append(newQmlItemNode);
+        const QString imageSource = QString::fromUtf8(mimeData->data("application/vnd.bauhaus.libraryresource")); // absolute path
+        const QString imagePath = QmlDesignerPlugin::instance()->documentManager().currentFilePath().toFileInfo().dir().relativeFilePath(imageSource); // relative to .ui.qml file
 
-            moveNodesInteractive(targetProperty, newModelNodeList, targetRowNumber);
+        ModelNode newModelNode;
+
+        if (targetNode.isSubclassOf("QtQuick3D.DefaultMaterial")) {
+            // if dropping an image on a default material, create a texture instead of image
+            m_view->executeInTransaction("QmlItemNode::createQmlItemNode", [&] {
+                // create a texture item lib
+                ItemLibraryEntry itemLibraryEntry;
+                itemLibraryEntry.setName("Texture");
+                itemLibraryEntry.setType("QtQuick3D.Texture", 1, 0);
+
+                // set texture source
+                PropertyName prop = "source";
+                QString type = "QUrl";
+                QVariant val = imagePath;
+                itemLibraryEntry.addProperty(prop, type, val);
+
+                // create a texture
+                newModelNode = QmlItemNode::createQmlObjectNode(m_view, itemLibraryEntry, {}, targetProperty, false);
+
+                // set the texture to parent material's diffuseMap property
+                // TODO: allow the user to choose which map property to set the texture for
+                targetNode.bindingProperty("diffuseMap").setExpression(newModelNode.validId());
+            });
+        } else if (targetNode.isSubclassOf("QtQuick3D.Texture")) {
+            // if dropping an image on a texture, set the texture source
+            targetNode.variantProperty("source").setValue(imagePath);
+        } else {
+
+            // create an image
+            newModelNode = QmlItemNode::createQmlItemNodeFromImage(m_view, imageSource , QPointF(), targetProperty);
         }
 
-        if (newQmlItemNode.isValid())
-            m_view->selectModelNode(newQmlItemNode.modelNode());
+        if (newModelNode.isValid()) {
+            moveNodesInteractive(targetProperty, {newModelNode}, targetRowNumber);
+            m_view->setSelectedModelNode(newModelNode);
+        }
     }
 }
 
@@ -607,10 +640,7 @@ bool NavigatorTreeModel::setData(const QModelIndex &index, const QVariant &value
         QTC_ASSERT(m_view, return false);
         m_view->handleChangedExport(modelNode, value.toInt() != 0);
     } else if (index.column() == 2 && role == Qt::CheckStateRole) {
-        if (value.toInt() == 0)
-            modelNode.setAuxiliaryData("invisible", true);
-        else
-            modelNode.removeAuxiliaryData("invisible");
+        QmlVisualNode(modelNode).setVisibilityOverride(value.toInt() == 0);
     }
 
     return true;

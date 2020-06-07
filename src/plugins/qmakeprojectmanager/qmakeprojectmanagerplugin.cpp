@@ -32,8 +32,6 @@
 #include "qmakestep.h"
 #include "qmakemakestep.h"
 #include "qmakebuildconfiguration.h"
-#include "desktopqmakerunconfiguration.h"
-#include "wizards/simpleprojectwizard.h"
 #include "wizards/subdirsprojectwizard.h"
 #include "customwidgetwizard/customwidgetwizard.h"
 #include "qmakeprojectmanagerconstants.h"
@@ -98,9 +96,6 @@ public:
     QmakeMakeStepFactory makeStepFactory;
 
     QmakeBuildConfigurationFactory buildConfigFactory;
-    DesktopQmakeRunConfigurationFactory runConfigFactory;
-    SimpleRunWorkerFactory<SimpleTargetRunner, DesktopQmakeRunConfiguration>
-        runWorkerFactory;
 
     ProFileEditorFactory profileEditorFactory;
 
@@ -139,7 +134,7 @@ bool QmakeProjectManagerPlugin::initialize(const QStringList &arguments, QString
     Q_UNUSED(arguments)
     Q_UNUSED(errorMessage)
     const Context projectContext(QmakeProjectManager::Constants::QMAKEPROJECT_ID);
-    Context projecTreeContext(ProjectExplorer::Constants::C_PROJECT_TREE);
+    Context projectTreeContext(ProjectExplorer::Constants::C_PROJECT_TREE);
 
     d = new QmakeProjectManagerPluginPrivate;
 
@@ -149,8 +144,7 @@ bool QmakeProjectManagerPlugin::initialize(const QStringList &arguments, QString
     IWizardFactory::registerFactoryCreator([] {
         return QList<IWizardFactory *> {
             new SubdirsProjectWizard,
-            new CustomWidgetWizard,
-            new SimpleProjectWizard
+            new CustomWidgetWizard
         };
     });
 
@@ -213,7 +207,7 @@ bool QmakeProjectManagerPlugin::initialize(const QStringList &arguments, QString
     connect(d->m_buildFileContextMenu, &QAction::triggered,
             &d->qmakeProjectManager, &QmakeManager::buildFileContextMenu);
 
-    d->m_buildSubProjectAction = new Utils::ParameterAction(tr("Build Subproject"), tr("Build Subproject \"%1\""),
+    d->m_buildSubProjectAction = new Utils::ParameterAction(tr("Build &Subproject"), tr("Build &Subproject \"%1\""),
                                                          Utils::ParameterAction::AlwaysEnabled, this);
     command = ActionManager::registerAction(d->m_buildSubProjectAction, Constants::BUILDSUBDIR, projectContext);
     command->setAttribute(Command::CA_Hide);
@@ -284,7 +278,7 @@ bool QmakeProjectManagerPlugin::initialize(const QStringList &arguments, QString
 
     d->m_addLibraryActionContextMenu = new QAction(tr("Add Library..."), this);
     command = ActionManager::registerAction(d->m_addLibraryActionContextMenu,
-        Constants::ADDLIBRARY, projecTreeContext);
+        Constants::ADDLIBRARY, projectTreeContext);
     connect(d->m_addLibraryActionContextMenu, &QAction::triggered,
             &d->qmakeProjectManager, &QmakeManager::addLibraryContextMenu);
     mproject->addAction(command, ProjectExplorer::Constants::G_PROJECT_FILES);
@@ -323,8 +317,6 @@ void QmakeProjectManagerPluginPrivate::projectChanged()
     if (m_previousStartupProject) {
         connect(m_previousStartupProject, &Project::activeTargetChanged,
                 this, &QmakeProjectManagerPluginPrivate::activeTargetChanged);
-        connect(m_previousStartupProject, &Project::parsingFinished,
-                this, &QmakeProjectManagerPluginPrivate::updateActions);
     }
 
     activeTargetChanged();
@@ -338,9 +330,12 @@ void QmakeProjectManagerPluginPrivate::activeTargetChanged()
 
     m_previousTarget = m_previousStartupProject ? m_previousStartupProject->activeTarget() : nullptr;
 
-    if (m_previousTarget)
+    if (m_previousTarget) {
         connect(m_previousTarget, &Target::activeBuildConfigurationChanged,
                 this, &QmakeProjectManagerPluginPrivate::updateRunQMakeAction);
+        connect(m_previousTarget, &Target::parsingFinished,
+                this, &QmakeProjectManagerPluginPrivate::updateActions);
+    }
 
     updateRunQMakeAction();
 }

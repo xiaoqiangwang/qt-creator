@@ -278,10 +278,10 @@ public:
     UserFileBackUpStrategy(UserFileAccessor *accessor) : Utils::VersionedBackUpStrategy(accessor)
     { }
 
-    FilePathList readFileCandidates(const Utils::FilePath &baseFileName) const final;
+    FilePaths readFileCandidates(const Utils::FilePath &baseFileName) const final;
 };
 
-FilePathList UserFileBackUpStrategy::readFileCandidates(const FilePath &baseFileName) const
+FilePaths UserFileBackUpStrategy::readFileCandidates(const FilePath &baseFileName) const
 {
     const auto *const ac = static_cast<const UserFileAccessor *>(accessor());
     const FilePath externalUser = ac->externalUserFile();
@@ -289,7 +289,7 @@ FilePathList UserFileBackUpStrategy::readFileCandidates(const FilePath &baseFile
     QTC_CHECK(!baseFileName.isEmpty());
     QTC_CHECK(baseFileName == externalUser || baseFileName == projectUser);
 
-    FilePathList result = Utils::VersionedBackUpStrategy::readFileCandidates(projectUser);
+    FilePaths result = Utils::VersionedBackUpStrategy::readFileCandidates(projectUser);
     if (!externalUser.isEmpty())
         result.append(Utils::VersionedBackUpStrategy::readFileCandidates(externalUser));
 
@@ -469,9 +469,7 @@ QVariantMap UserFileAccessor::prepareToWriteSettings(const QVariantMap &data) co
 QVariantMap UserFileVersion14Upgrader::upgrade(const QVariantMap &map)
 {
     QVariantMap result;
-    QMapIterator<QString, QVariant> it(map);
-    while (it.hasNext()) {
-        it.next();
+    for (auto it = map.cbegin(), end = map.cend(); it != end; ++it) {
         if (it.value().type() == QVariant::Map)
             result.insert(it.key(), upgrade(it.value().toMap()));
         else if (it.key() == "AutotoolsProjectManager.AutotoolsBuildConfiguration.BuildDirectory"
@@ -801,7 +799,7 @@ QVariant UserFileVersion19Upgrader::process(const QVariant &entry, const QString
                                        "ProjectExplorer.CustomExecutableRunConfiguration.WorkingDirectory",
                                        "Qbs.RunConfiguration.WorkingDirectory",
                                        "Qt4ProjectManager.Qt4RunConfiguration.UserWorkingDirectory",
-                                       "RemoteLinux.CustomRunConfig.WorkingDirectory"
+                                       "RemoteLinux.CustomRunConfig.WorkingDirectory",
                                        "RemoteLinux.RunConfig.WorkingDirectory",
                                        "WorkingDir"};
     static const QStringList termKeys = {"CMakeProjectManager.CMakeRunConfiguration.UseTerminal",

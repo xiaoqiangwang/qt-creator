@@ -44,10 +44,11 @@
 #include <QLoggingCategory>
 #include <QProcess>
 
+using namespace Utils;
 using namespace std;
 
 namespace {
-Q_LOGGING_CATEGORY(simulatorLog, "qtc.ios.simulator", QtWarningMsg)
+static Q_LOGGING_CATEGORY(simulatorLog, "qtc.ios.simulator", QtWarningMsg)
 }
 
 namespace Ios {
@@ -78,20 +79,20 @@ static bool checkForTimeout(const chrono::high_resolution_clock::time_point &sta
     return timedOut;
 }
 
-static bool runCommand(QString command, const QStringList &args, QString *output)
+static bool runCommand(const CommandLine &command, QString *output)
 {
-    Utils::SynchronousProcess p;
+    SynchronousProcess p;
     p.setTimeoutS(-1);
-    Utils::SynchronousProcessResponse resp = p.runBlocking(command, args);
+    SynchronousProcessResponse resp = p.runBlocking(command);
     if (output)
         *output = resp.stdOut();
-    return resp.result == Utils::SynchronousProcessResponse::Finished;
+    return resp.result == SynchronousProcessResponse::Finished;
 }
 
 static bool runSimCtlCommand(QStringList args, QString *output)
 {
     args.prepend("simctl");
-    return runCommand("xcrun", args, output);
+    return runCommand({"xcrun", args}, output);
 }
 
 static bool launchSimulator(const QString &simUdid) {
@@ -102,10 +103,10 @@ static bool launchSimulator(const QString &simUdid) {
     if (IosConfigurations::xcodeVersion() >= QVersionNumber(9)) {
         // For XCode 9 boot the second device instead of launching simulator app twice.
         QString psOutput;
-        if (runCommand("ps", {"-A", "-o", "comm"}, &psOutput)) {
+        if (runCommand({"ps", {"-A", "-o", "comm"}}, &psOutput)) {
             for (const QString &comm : psOutput.split('\n')) {
                 if (comm == simulatorAppPath)
-                    return runSimCtlCommand(QStringList({"boot", simUdid}), nullptr);
+                    return runSimCtlCommand({"boot", simUdid}, nullptr);
             }
         } else {
             qCDebug(simulatorLog) << "Cannot start Simulator device."

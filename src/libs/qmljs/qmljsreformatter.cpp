@@ -24,8 +24,9 @@
 ****************************************************************************/
 
 #include "qmljsreformatter.h"
-
 #include "qmljscodeformatter.h"
+#include "qmljsbind.h"
+
 #include "parser/qmljsast_p.h"
 #include "parser/qmljsastvisitor_p.h"
 #include "parser/qmljsengine_p.h"
@@ -122,6 +123,10 @@ public:
 
 
         // emit directives
+        if (_doc->bind()->isJsLibrary()) {
+            out(QLatin1String(".pragma library"));
+            newLine();
+        }
         const QList<SourceLocation> &directives = _doc->jsDirectives();
         for (const auto &d: directives) {
             quint32 line = 1;
@@ -580,9 +585,11 @@ protected:
             out(QString::fromLatin1("\"%1\"").arg(ast->fileName.toString()));
         else
             accept(ast->importUri);
-        if (ast->versionToken.isValid()) {
+        if (ast->version) {
             out(" ");
-            out(ast->versionToken);
+            out(QString::number(ast->version->majorVersion));
+            out(".");
+            out(QString::number(ast->version->minorVersion));
         }
         if (!ast->importId.isNull()) {
             out(" as ", ast->asToken);
@@ -1333,6 +1340,10 @@ protected:
                 out(", ");
         }
         return false;
+    }
+
+    void throwRecursionDepthError() override {
+        out("/* ERROR: Hit recursion limit visiting AST, rewrite failed */");
     }
 };
 

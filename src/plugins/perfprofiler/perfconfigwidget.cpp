@@ -62,9 +62,11 @@ public:
                               const QModelIndex &index) const override;
 };
 
-PerfConfigWidget::PerfConfigWidget(PerfSettings *settings, QWidget *parent) :
-    QWidget(parent), m_settings(settings), m_ui(new Ui::PerfConfigWidget)
+PerfConfigWidget::PerfConfigWidget(PerfSettings *settings, QWidget *parent)
+    : m_settings(settings), m_ui(new Ui::PerfConfigWidget)
 {
+    setParent(parent);
+
     m_ui->setupUi(this);
     m_ui->useTracePointsButton->setVisible(false);
 
@@ -178,6 +180,11 @@ void PerfConfigWidget::setTracePointsButtonVisible(bool visible)
     m_ui->useTracePointsButton->setVisible(visible);
 }
 
+void PerfConfigWidget::apply()
+{
+    m_settings->writeGlobalSettings();
+}
+
 void PerfConfigWidget::readTracePoints()
 {
     QMessageBox messageBox;
@@ -187,7 +194,7 @@ void PerfConfigWidget::readTracePoints()
     messageBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
     if (messageBox.exec() == QMessageBox::Yes) {
         ProjectExplorer::Runnable runnable;
-        runnable.executable = QLatin1String("perf");
+        runnable.executable = Utils::FilePath::fromString("perf");
         runnable.commandLineArguments = QLatin1String("probe -l");
 
         m_process->start(runnable);
@@ -246,7 +253,7 @@ void PerfConfigWidget::handleProcessError(QProcess::ProcessError error)
 QWidget *SettingsDelegate::createEditor(QWidget *parent, const QStyleOptionViewItem &option,
                                         const QModelIndex &index) const
 {
-    Q_UNUSED(option);
+    Q_UNUSED(option)
     const int row = index.row();
     const int column = index.column();
     const PerfConfigEventsModel *model = qobject_cast<const PerfConfigEventsModel *>(index.model());
@@ -406,7 +413,7 @@ void SettingsDelegate::setModelData(QWidget *editor, QAbstractItemModel *model,
 void SettingsDelegate::updateEditorGeometry(QWidget *editor, const QStyleOptionViewItem &option,
                                             const QModelIndex &index) const
 {
-    Q_UNUSED(index);
+    Q_UNUSED(index)
     editor->setGeometry(option.rect);
 }
 

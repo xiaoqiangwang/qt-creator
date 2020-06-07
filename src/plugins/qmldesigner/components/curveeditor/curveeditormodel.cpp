@@ -25,12 +25,16 @@
 
 #include "curveeditormodel.h"
 #include "treeitem.h"
+
 #include "detail/graphicsview.h"
+#include "detail/selectionmodel.h"
 
 namespace DesignTools {
 
-CurveEditorModel::CurveEditorModel(QObject *parent)
+CurveEditorModel::CurveEditorModel(double minTime, double maxTime, QObject *parent)
     : TreeModel(parent)
+    , m_minTime(minTime)
+    , m_maxTime(maxTime)
 {}
 
 CurveEditorModel::~CurveEditorModel() {}
@@ -39,6 +43,24 @@ void CurveEditorModel::setCurrentFrame(int frame)
 {
     if (graphicsView())
         graphicsView()->setCurrentFrame(frame);
+}
+
+void CurveEditorModel::setMinimumTime(double time, bool internal)
+{
+    m_minTime = time;
+    if (internal)
+        emit updateStartFrame(m_minTime);
+    else
+        emit startFrameChanged(m_minTime);
+}
+
+void CurveEditorModel::setMaximumTime(double time, bool internal)
+{
+    m_maxTime = time;
+    if (internal)
+        emit updateEndFrame(m_maxTime);
+    else
+        emit endFrameChanged(m_maxTime);
 }
 
 void CurveEditorModel::setCurve(unsigned int id, const AnimationCurve &curve)
@@ -51,23 +73,45 @@ void CurveEditorModel::setCurve(unsigned int id, const AnimationCurve &curve)
     }
 }
 
+bool contains(const std::vector<TreeItem::Path> &selection, const TreeItem::Path &path)
+{
+    for (auto &&sel : selection)
+        if (path == sel)
+            return true;
+
+    return false;
+}
+
 void CurveEditorModel::reset(const std::vector<TreeItem *> &items)
 {
-    std::vector<TreeItem::Path> sel = selection();
+    std::vector<TreeItem::Path> sel;
+    if (SelectionModel *sm = selectionModel())
+        sel = sm->selectedPaths();
 
     beginResetModel();
 
     initialize();
 
     unsigned int counter = 0;
+    std::vector<CurveItem *> pinned;
+
     for (auto *item : items) {
         item->setId(++counter);
         root()->addChild(item);
+        if (auto *nti = item->asNodeItem()) {
+            for (auto *pti : nti->properties()) {
+                if (pti->pinned() && !contains(sel, pti->path()))
+                    pinned.push_back(TreeModel::curveItem(pti));
+            }
+        }
     }
 
     endResetModel();
 
-    select(sel);
+    graphicsView()->reset(pinned);
+
+    if (SelectionModel *sm = selectionModel())
+        sm->select(sel);
 }
 
 } // End namespace DesignTools.

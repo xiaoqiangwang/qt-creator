@@ -33,6 +33,7 @@
 #include "connectionmodel.h"
 #include "dynamicpropertiesmodel.h"
 #include "theme.h"
+#include "signalhandlerproperty.h"
 
 #include <designersettings.h>
 #include <qmldesignerplugin.h>
@@ -43,6 +44,10 @@
 
 #include <QToolButton>
 #include <QStyleFactory>
+#include <QMenu>
+#include <QShortcut>
+
+#include <bindingeditor/actioneditor.h>
 
 namespace QmlDesigner {
 
@@ -52,14 +57,35 @@ ConnectionViewWidget::ConnectionViewWidget(QWidget *parent) :
     QFrame(parent),
     ui(new Ui::ConnectionViewWidget)
 {
+    m_actionEditor = new QmlDesigner::ActionEditor(this);
+    m_deleteShortcut = new QShortcut(this);
+    QObject::connect(m_actionEditor, &QmlDesigner::ActionEditor::accepted,
+                     [&]() {
+        if (m_actionEditor->hasModelIndex()) {
+            ConnectionModel *connectionModel = qobject_cast<ConnectionModel *>(ui->connectionView->model());
+            if (connectionModel->connectionView()->isWidgetEnabled()
+                    && (connectionModel->rowCount() > m_actionEditor->modelIndex().row()))
+            {
+                SignalHandlerProperty signalHandler =
+                        connectionModel->signalHandlerPropertyForRow(m_actionEditor->modelIndex().row());
+                signalHandler.setSource(m_actionEditor->bindingValue());
+            }
+            m_actionEditor->resetModelIndex();
+        }
+
+        m_actionEditor->hideWidget();
+    });
+    QObject::connect(m_actionEditor, &QmlDesigner::ActionEditor::rejected,
+                     [&]() {
+        m_actionEditor->resetModelIndex();
+        m_actionEditor->hideWidget();
+    });
 
     setWindowTitle(tr("Connections", "Title of connection view"));
     ui->setupUi(this);
 
     QStyle *style = QStyleFactory::create("fusion");
-    setStyle(style);
-
-    setStyleSheet(Theme::replaceCssColors(QLatin1String(Utils::FileReader::fetchQrc(QLatin1String(":/connectionview/stylesheet.css")))));
+    ui->stackedWidget->setStyle(style);
 
     //ui->tabWidget->tabBar()->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
@@ -70,6 +96,11 @@ ConnectionViewWidget::ConnectionViewWidget(QWidget *parent) :
     ui->tabBar->addTab(tr("Bindings", "Title of connection view"));
     ui->tabBar->addTab(tr("Properties", "Title of dynamic properties view"));
 
+    const QList<QToolButton*> buttons = createToolBarWidgets();
+
+    for (auto toolButton : buttons)
+        ui->toolBar->addWidget(toolButton);
+
     auto settings = QmlDesignerPlugin::instance()->settings();
 
     if (!settings.value(DesignerSettingsKey::STANDALONE_MODE).toBool())
@@ -77,13 +108,9 @@ ConnectionViewWidget::ConnectionViewWidget(QWidget *parent) :
 
     ui->tabBar->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
 
-    const QString themedScrollBarCss = Theme::replaceCssColors(
-                QLatin1String(Utils::FileReader::fetchQrc(QLatin1String(":/qmldesigner/scrollbar.css"))));
-
-    ui->connectionView->setStyleSheet(themedScrollBarCss);
-    ui->bindingView->setStyleSheet(themedScrollBarCss);
-    ui->dynamicPropertiesView->setStyleSheet(themedScrollBarCss);
-    ui->backendView->setStyleSheet(themedScrollBarCss);
+    QByteArray sheet = Utils::FileReader::fetchQrc(":/connectionview/stylesheet.css");
+    sheet += Utils::FileReader::fetchQrc(":/qmldesigner/scrollbar.css");
+    setStyleSheet(Theme::replaceCssColors(QString::fromUtf8(sheet)));
 
     connect(ui->tabBar, &QTabBar::currentChanged,
             ui->stackedWidget, &QStackedWidget::setCurrentIndex);
@@ -96,7 +123,9 @@ ConnectionViewWidget::ConnectionViewWidget(QWidget *parent) :
 
 ConnectionViewWidget::~ConnectionViewWidget()
 {
+    delete m_actionEditor;
     delete ui;
+    delete m_deleteShortcut;
 }
 
 void ConnectionViewWidget::setBindingModel(BindingModel *model)
@@ -116,9 +145,37 @@ void ConnectionViewWidget::setConnectionModel(ConnectionModel *model)
     ui->connectionView->horizontalHeader()->setDefaultSectionSize(160);
     ui->connectionView->setSelectionMode(QAbstractItemView::SingleSelection);
     ui->connectionView->setItemDelegate(new ConnectionDelegate);
+
     connect(ui->connectionView->selectionModel(), &QItemSelectionModel::currentRowChanged,
             this, &ConnectionViewWidget::connectionTableViewSelectionChanged);
+}
 
+void ConnectionViewWidget::contextMenuEvent(QContextMenuEvent *event)
+{
+    if (currentTab() != ConnectionTab || ui->connectionView == nullptr)
+        return;
+
+    //adjusting qpoint to the qtableview entrances:
+    QPoint posInTable(ui->connectionView->mapFromGlobal(mapToGlobal(event->pos())));
+    posInTable = QPoint(posInTable.x(), posInTable.y() - ui->connectionView->horizontalHeader()->height());
+
+    //making sure that we have source column in our hands:
+    QModelIndex index = ui->connectionView->indexAt(posInTable).siblingAtColumn(ConnectionModel::SourceRow);
+    if (!index.isValid())
+        return;
+
+    QMenu menu(this);
+
+    menu.addAction(tr("Open Connection Editor"), [&]() {
+        if (index.isValid()) {
+            m_actionEditor->showWidget(mapToGlobal(event->pos()).x(), mapToGlobal(event->pos()).y());
+            m_actionEditor->setBindingValue(index.data().toString());
+            m_actionEditor->setModelIndex(index);
+            m_actionEditor->updateWindowName();
+        }
+    });
+
+    menu.exec(event->globalPos());
 }
 
 void ConnectionViewWidget::setDynamicPropertiesModel(DynamicPropertiesModel *model)
@@ -155,9 +212,12 @@ QList<QToolButton *> ConnectionViewWidget::createToolBarWidgets()
     buttons << new QToolButton();
     buttons.constLast()->setIcon(Utils::Icons::MINUS.icon());
     buttons.constLast()->setToolTip(tr("Remove selected binding or connection."));
-    buttons.constLast()->setShortcut(QKeySequence(Qt::Key_Delete));
     connect(buttons.constLast(), &QAbstractButton::clicked, this, &ConnectionViewWidget::removeButtonClicked);
     connect(this, &ConnectionViewWidget::setEnabledRemoveButton, buttons.constLast(), &QWidget::setEnabled);
+
+    m_deleteShortcut->setKey(Qt::Key_Delete);
+    m_deleteShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(m_deleteShortcut, &QShortcut::activated, this, &ConnectionViewWidget::removeButtonClicked);
 
     return buttons;
 }

@@ -26,11 +26,11 @@
 #include "cmakebuildstep.h"
 
 #include "cmakebuildconfiguration.h"
+#include "cmakebuildsystem.h"
 #include "cmakekitinformation.h"
 #include "cmakeparser.h"
 #include "cmakeprojectconstants.h"
 #include "cmakeproject.h"
-#include "cmakerunconfiguration.h"
 #include "cmaketool.h"
 
 #include <projectexplorer/buildsteplist.h>
@@ -52,11 +52,13 @@
 #include <utils/qtcprocess.h>
 #include <utils/pathchooser.h>
 
+#include <QCheckBox>
+#include <QDir>
 #include <QFormLayout>
 #include <QGroupBox>
-#include <QCheckBox>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QRadioButton>
 
 using namespace CMakeProjectManager;
 using namespace CMakeProjectManager::Internal;
@@ -74,8 +76,8 @@ static bool isCurrentExecutableTarget(const QString &target)
     return target == ADD_RUNCONFIGURATION_TEXT;
 }
 
-CMakeBuildStep::CMakeBuildStep(BuildStepList *bsl) :
-    AbstractProcessStep(bsl, Constants::CMAKE_BUILD_STEP_ID)
+CMakeBuildStep::CMakeBuildStep(BuildStepList *bsl, Core::Id id) :
+    AbstractProcessStep(bsl, id)
 {
     m_percentProgress = QRegExp("^\\[\\s*(\\d*)%\\]");
     m_ninjaProgress = QRegExp("^\\[\\s*(\\d*)/\\s*(\\d*)");
@@ -83,19 +85,13 @@ CMakeBuildStep::CMakeBuildStep(BuildStepList *bsl) :
     //: Default display name for the cmake make step.
     setDefaultDisplayName(tr("CMake Build"));
 
-    auto bc = qobject_cast<CMakeBuildConfiguration *>(bsl->parent());
-    if (!bc) {
-        auto t = qobject_cast<Target *>(bsl->parent()->parent());
-        QTC_ASSERT(t, return);
-        bc = qobject_cast<CMakeBuildConfiguration *>(t->activeBuildConfiguration());
-    }
-
     // Set a good default build target:
     if (m_buildTarget.isEmpty())
         setBuildTarget(defaultBuildTarget());
 
-    connect(target(), &Target::kitChanged, this, &CMakeBuildStep::cmakeCommandChanged);
-    connect(project(), &Project::parsingFinished,
+    setLowPriority();
+
+    connect(target(), &Target::parsingFinished,
             this, &CMakeBuildStep::handleBuildTargetChanges);
 }
 
@@ -104,17 +100,11 @@ CMakeBuildConfiguration *CMakeBuildStep::cmakeBuildConfiguration() const
     return static_cast<CMakeBuildConfiguration *>(buildConfiguration());
 }
 
-CMakeRunConfiguration *CMakeBuildStep::targetsActiveRunConfiguration() const
-{
-    return qobject_cast<CMakeRunConfiguration *>(target()->activeRunConfiguration());
-}
-
 void CMakeBuildStep::handleBuildTargetChanges(bool success)
 {
     if (!success)
         return; // Do not change when parsing failed.
-    if (!isCurrentExecutableTarget(m_buildTarget)
-        && !static_cast<CMakeProject *>(project())->buildTargetTitles().contains(m_buildTarget)) {
+    if (!isCurrentExecutableTarget(m_buildTarget) && !knownBuildTargets().contains(m_buildTarget)) {
         setBuildTarget(defaultBuildTarget());
     }
     emit buildTargetsChanged();
@@ -151,32 +141,26 @@ bool CMakeBuildStep::init()
         canInit = false;
     }
     if (bc && !bc->isEnabled()) {
-        emit addTask(Task(Task::Error,
-                          QCoreApplication::translate("CMakeProjectManager::CMakeBuildStep",
-                                                      "The build configuration is currently disabled."),
-                          Utils::FilePath(), -1, ProjectExplorer::Constants::TASK_CATEGORY_BUILDSYSTEM));
+        emit addTask(
+            BuildSystemTask(Task::Error, tr("The build configuration is currently disabled.")));
         canInit = false;
     }
 
     CMakeTool *tool = CMakeKitAspect::cmakeTool(target()->kit());
     if (!tool || !tool->isValid()) {
-        emit addTask(Task(Task::Error,
+        emit addTask(BuildSystemTask(Task::Error,
                           tr("A CMake tool must be set up for building. "
-                             "Configure a CMake tool in the kit options."),
-                          Utils::FilePath(), -1,
-                          ProjectExplorer::Constants::TASK_CATEGORY_BUILDSYSTEM));
+                             "Configure a CMake tool in the kit options.")));
         canInit = false;
     }
 
-    CMakeRunConfiguration *rc = targetsActiveRunConfiguration();
+    RunConfiguration *rc =  target()->activeRunConfiguration();
     if (isCurrentExecutableTarget(m_buildTarget) && (!rc || rc->buildKey().isEmpty())) {
-        emit addTask(Task(Task::Error,
+        emit addTask(BuildSystemTask(Task::Error,
                           QCoreApplication::translate("ProjectExplorer::Task",
                                     "You asked to build the current Run Configuration's build target only, "
                                     "but it is not associated with a build target. "
-                                    "Update the Make Step in your build settings."),
-                        Utils::FilePath(), -1,
-                        ProjectExplorer::Constants::TASK_CATEGORY_BUILDSYSTEM));
+                                    "Update the Make Step in your build settings.")));
         canInit = false;
     }
 
@@ -189,13 +173,11 @@ bool CMakeBuildStep::init()
     const Utils::FilePath projectDirectory = bc->target()->project()->projectDirectory();
     if (bc->buildDirectory() != projectDirectory) {
         if (projectDirectory.pathAppended("CMakeCache.txt").exists()) {
-            emit addTask(Task(Task::Warning,
+            emit addTask(BuildSystemTask(Task::Warning,
                               tr("There is a CMakeCache.txt file in \"%1\", which suggest an "
                                  "in-source build was done before. You are now building in \"%2\", "
                                  "and the CMakeCache.txt file might confuse CMake.")
-                              .arg(projectDirectory.toUserOutput(), bc->buildDirectory().toUserOutput()),
-                              Utils::FilePath(), -1,
-                              ProjectExplorer::Constants::TASK_CATEGORY_BUILDSYSTEM));
+                              .arg(projectDirectory.toUserOutput(), bc->buildDirectory().toUserOutput())));
         }
     }
 
@@ -205,14 +187,16 @@ bool CMakeBuildStep::init()
     pp->setMacroExpander(bc->macroExpander());
     Utils::Environment env = bc->environment();
     Utils::Environment::setupEnglishOutput(&env);
-    if (!env.value("NINJA_STATUS").startsWith(m_ninjaProgressString))
+    if (!env.expandedValueForKey("NINJA_STATUS").startsWith(m_ninjaProgressString))
         env.set("NINJA_STATUS", m_ninjaProgressString + "%o/sec] ");
     pp->setEnvironment(env);
     pp->setWorkingDirectory(bc->buildDirectory());
     pp->setCommandLine(cmakeCommand(rc));
     pp->resolveAll();
 
-    setOutputParser(new CMakeParser);
+    CMakeParser *cmakeParser = new CMakeParser;
+    cmakeParser->setSourceDirectory(projectDirectory.toString());
+    setOutputParser(cmakeParser);
     appendOutputParser(new GnuMakeParser);
     IOutputParser *parser = target()->kit()->createOutputParser();
     if (parser)
@@ -229,17 +213,17 @@ void CMakeBuildStep::doRun()
     QTC_ASSERT(bc, return);
 
     m_waiting = false;
-    auto p = static_cast<CMakeProject *>(bc->project());
-    if (p->persistCMakeState()) {
+    auto bs = static_cast<CMakeBuildSystem *>(buildConfiguration()->buildSystem());
+    if (bs->persistCMakeState()) {
         emit addOutput(tr("Persisting CMake state..."), BuildStep::OutputFormat::NormalMessage);
         m_waiting = true;
-    } else if (p->mustUpdateCMakeStateBeforeBuild()) {
+    } else if (buildConfiguration()->buildSystem()->isWaitingForParse()) {
         emit addOutput(tr("Running CMake in preparation to build..."), BuildStep::OutputFormat::NormalMessage);
         m_waiting = true;
     }
 
     if (m_waiting) {
-        m_runTrigger = connect(project(), &Project::parsingFinished,
+        m_runTrigger = connect(target(), &Target::parsingFinished,
                                this, [this](bool success) { handleProjectWasParsed(success); });
     } else {
         runImpl();
@@ -273,8 +257,9 @@ BuildStepConfigWidget *CMakeBuildStep::createConfigWidget()
 
 QString CMakeBuildStep::defaultBuildTarget() const
 {
-    const ProjectConfiguration *const pc = qobject_cast<ProjectConfiguration *>(parent());
-    const Core::Id parentId = pc ? pc->id() : Core::Id();
+    const BuildStepList *const bsl = stepList();
+    QTC_ASSERT(bsl, return {});
+    const Core::Id parentId = bsl->id();
     if (parentId == ProjectExplorer::Constants::BUILDSTEPS_CLEAN)
         return cleanTarget();
     if (parentId == ProjectExplorer::Constants::BUILDSTEPS_DEPLOY)
@@ -329,11 +314,6 @@ void CMakeBuildStep::setBuildTarget(const QString &buildTarget)
     emit targetToBuildChanged();
 }
 
-void CMakeBuildStep::clearBuildTargets()
-{
-    m_buildTarget.clear();
-}
-
 QString CMakeBuildStep::toolArguments() const
 {
     return m_toolArguments;
@@ -344,7 +324,7 @@ void CMakeBuildStep::setToolArguments(const QString &list)
     m_toolArguments = list;
 }
 
-Utils::CommandLine CMakeBuildStep::cmakeCommand(CMakeRunConfiguration *rc) const
+Utils::CommandLine CMakeBuildStep::cmakeCommand(RunConfiguration *rc) const
 {
     CMakeTool *tool = CMakeKitAspect::cmakeTool(target()->kit());
 
@@ -371,10 +351,16 @@ Utils::CommandLine CMakeBuildStep::cmakeCommand(CMakeRunConfiguration *rc) const
 
     if (!m_toolArguments.isEmpty()) {
         cmd.addArg("--");
-        cmd.addArgs(m_toolArguments);
+        cmd.addArgs(m_toolArguments, Utils::CommandLine::Raw);
     }
 
     return cmd;
+}
+
+QStringList CMakeBuildStep::knownBuildTargets()
+{
+    auto bc = qobject_cast<CMakeBuildSystem *>(buildConfiguration()->buildSystem());
+    return bc ? bc->buildTargetTitles() : QStringList();
 }
 
 QString CMakeBuildStep::cleanTarget()
@@ -415,7 +401,7 @@ CMakeBuildStepConfigWidget::CMakeBuildStepConfigWidget(CMakeBuildStep *buildStep
     setDisplayName(tr("Build", "CMakeProjectManager::CMakeBuildStepConfigWidget display name."));
 
     auto fl = new QFormLayout(this);
-    fl->setMargin(0);
+    fl->setContentsMargins(0, 0, 0, 0);
     fl->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
     setLayout(fl);
 
@@ -428,7 +414,7 @@ CMakeBuildStepConfigWidget::CMakeBuildStepConfigWidget(CMakeBuildStep *buildStep
     auto frame = new QFrame(this);
     frame->setFrameStyle(QFrame::StyledPanel);
     auto frameLayout = new QVBoxLayout(frame);
-    frameLayout->setMargin(0);
+    frameLayout->setContentsMargins(0, 0, 0, 0);
     frameLayout->addWidget(Core::ItemViewFind::createSearchableWrapper(m_buildTargetsList,
                                                                        Core::ItemViewFind::LightColored));
 
@@ -442,17 +428,20 @@ CMakeBuildStepConfigWidget::CMakeBuildStepConfigWidget(CMakeBuildStep *buildStep
     connect(ProjectExplorerPlugin::instance(), &ProjectExplorerPlugin::settingsChanged,
             this, &CMakeBuildStepConfigWidget::updateDetails);
 
-    connect(m_buildStep, &CMakeBuildStep::buildTargetsChanged, this, &CMakeBuildStepConfigWidget::buildTargetsChanged);
-    connect(m_buildStep, &CMakeBuildStep::targetToBuildChanged, this, &CMakeBuildStepConfigWidget::selectedBuildTargetsChanged);
-    m_buildStep->project()->subscribeSignal(&BuildConfiguration::environmentChanged, this, [this]() {
-        if (static_cast<BuildConfiguration *>(sender())->isActive())
-            updateDetails();
-    });
-    connect(m_buildStep->project(), &Project::activeProjectConfigurationChanged,
-            this, [this](ProjectConfiguration *pc) {
-        if (pc && pc->isActive())
-            updateDetails();
-    });
+    connect(m_buildStep,
+            &CMakeBuildStep::buildTargetsChanged,
+            this,
+            &CMakeBuildStepConfigWidget::buildTargetsChanged);
+
+    connect(m_buildStep,
+            &CMakeBuildStep::targetToBuildChanged,
+            this,
+            &CMakeBuildStepConfigWidget::updateBuildTarget);
+
+    connect(m_buildStep->buildConfiguration(),
+            &BuildConfiguration::environmentChanged,
+            this,
+            &CMakeBuildStepConfigWidget::updateDetails);
 }
 
 void CMakeBuildStepConfigWidget::toolArgumentsEdited()
@@ -472,50 +461,69 @@ void CMakeBuildStepConfigWidget::itemChanged(QListWidgetItem *item)
 void CMakeBuildStepConfigWidget::buildTargetsChanged()
 {
     {
+        auto addItem = [this](const QString &buildTarget,
+                const QString &displayName) {
+            auto item = new QListWidgetItem(m_buildTargetsList);
+            auto button = new QRadioButton(displayName);
+            connect(button, &QRadioButton::toggled, this, [this, buildTarget](bool toggled) {
+                if (toggled) {
+                    m_buildStep->setBuildTarget(buildTarget);
+                }
+            });
+            m_buildTargetsList->setItemWidget(item, button);
+            item->setData(Qt::UserRole, buildTarget);
+        };
+
         QSignalBlocker blocker(m_buildTargetsList);
         m_buildTargetsList->clear();
 
-        auto pro = static_cast<CMakeProject *>(m_buildStep->project());
-        QStringList targetList = pro->buildTargetTitles();
+        QStringList targetList = m_buildStep->knownBuildTargets();
         targetList.sort();
 
         QFont italics;
         italics.setItalic(true);
 
-        auto exeItem = new QListWidgetItem(tr(ADD_RUNCONFIGURATION_TEXT), m_buildTargetsList);
-        exeItem->setData(Qt::UserRole, ADD_RUNCONFIGURATION_TEXT);
+        addItem(ADD_RUNCONFIGURATION_TEXT, tr(ADD_RUNCONFIGURATION_TEXT));
 
-        foreach (const QString &buildTarget, targetList) {
-            auto item = new QListWidgetItem(buildTarget, m_buildTargetsList);
-            item->setData(Qt::UserRole, buildTarget);
-        }
+        foreach (const QString &buildTarget, targetList)
+            addItem(buildTarget, buildTarget);
 
         for (int i = 0; i < m_buildTargetsList->count(); ++i) {
             QListWidgetItem *item = m_buildTargetsList->item(i);
             const QString title = item->data(Qt::UserRole).toString();
+            QRadioButton *radio = itemWidget(item);
 
-            item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-            item->setCheckState(m_buildStep->buildsBuildTarget(title) ? Qt::Checked : Qt::Unchecked);
+            radio->setChecked(m_buildStep->buildsBuildTarget(title));
 
             // Print utility targets in italics:
             if (CMakeBuildStep::specialTargets().contains(title) || title == ADD_RUNCONFIGURATION_TEXT)
-                item->setFont(italics);
+                radio->setFont(italics);
         }
     }
     updateDetails();
 }
 
-void CMakeBuildStepConfigWidget::selectedBuildTargetsChanged()
+void CMakeBuildStepConfigWidget::updateBuildTarget()
 {
+    const QString buildTarget = m_buildStep->buildTarget();
     {
         QSignalBlocker blocker(m_buildTargetsList);
         for (int y = 0; y < m_buildTargetsList->count(); ++y) {
             QListWidgetItem *item = m_buildTargetsList->item(y);
-            item->setCheckState(m_buildStep->buildsBuildTarget(item->data(Qt::UserRole).toString())
-                                ? Qt::Checked : Qt::Unchecked);
+            const QString itemTarget = item->data(Qt::UserRole).toString();
+
+            if (itemTarget == buildTarget) {
+                QRadioButton *radio = itemWidget(item);
+                radio->setChecked(true);
+            }
         }
     }
     updateDetails();
+}
+
+QRadioButton *CMakeBuildStepConfigWidget::itemWidget(QListWidgetItem *item)
+{
+    return static_cast<QRadioButton *>(m_buildTargetsList->itemWidget(item));
 }
 
 void CMakeBuildStepConfigWidget::updateDetails()

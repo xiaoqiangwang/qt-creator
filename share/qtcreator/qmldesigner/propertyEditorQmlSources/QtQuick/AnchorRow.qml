@@ -26,7 +26,6 @@
 import QtQuick 2.0
 import HelperWidgets 2.0
 import QtQuick.Layouts 1.0
-import QtQuick.Controls 1.0 as Controls
 import QtQuickDesignerTheme 1.0
 
 import StudioControls 1.0 as StudioControls
@@ -100,6 +99,7 @@ RowLayout {
                 maximumValue: 0xffff
                 minimumValue: -0xffff
                 backendValue: anchorMargin
+                realDragRange: 5000
             }
 
             StudioControls.ButtonRow {

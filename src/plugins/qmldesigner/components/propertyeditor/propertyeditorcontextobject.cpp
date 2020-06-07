@@ -24,11 +24,13 @@
 ****************************************************************************/
 
 #include "propertyeditorcontextobject.h"
+#include "timelineeditor/easingcurvedialog.h"
 
 #include <abstractview.h>
 #include <nodemetainfo.h>
 #include <qmldesignerplugin.h>
 #include <qmlobjectnode.h>
+#include <qmlmodelnodeproxy.h>
 #include <rewritingexception.h>
 
 #include <coreplugin/messagebox.h>
@@ -37,7 +39,10 @@
 
 #include <QApplication>
 #include <QCursor>
+#include <QFontDatabase>
 #include <QQmlContext>
+
+#include <coreplugin/icore.h>
 
 static uchar fromHex(const uchar c, const uchar c2)
 {
@@ -342,6 +347,15 @@ void PropertyEditorContextObject::setStateName(const QString &newStateName)
     emit stateNameChanged();
 }
 
+void PropertyEditorContextObject::setAllStateNames(const QStringList &allStates)
+{
+    if (allStates == m_allStateNames)
+            return;
+
+    m_allStateNames = allStates;
+    emit allStateNamesChanged();
+}
+
 void PropertyEditorContextObject::setIsBaseState(bool newIsBaseState)
 {
     if (newIsBaseState ==  m_isBaseState)
@@ -404,6 +418,46 @@ void PropertyEditorContextObject::restoreCursor()
 
     QCursor::setPos(m_lastPos);
     QApplication::restoreOverrideCursor();
+}
+
+QStringList PropertyEditorContextObject::styleNamesForFamily(const QString &family)
+{
+    const QFontDatabase dataBase;
+    return dataBase.styles(family);
+}
+
+void EasingCurveEditor::registerDeclarativeType()
+{
+     qmlRegisterType<EasingCurveEditor>("HelperWidgets", 2, 0, "EasingCurveEditor");
+}
+
+void EasingCurveEditor::runDialog()
+{
+    if (m_modelNode.isValid())
+        EasingCurveDialog::runDialog({ m_modelNode }, Core::ICore::dialogParent());
+}
+
+void EasingCurveEditor::setModelNodeBackend(const QVariant &modelNodeBackend)
+{
+    if (!modelNodeBackend.isNull() && modelNodeBackend.isValid()) {
+        m_modelNodeBackend = modelNodeBackend;
+
+        const auto modelNodeBackendObject = m_modelNodeBackend.value<QObject*>();
+
+        const auto backendObjectCasted =
+                qobject_cast<const QmlDesigner::QmlModelNodeProxy *>(modelNodeBackendObject);
+
+        if (backendObjectCasted) {
+            m_modelNode = backendObjectCasted->qmlObjectNode().modelNode();
+        }
+
+        emit modelNodeBackendChanged();
+    }
+}
+
+QVariant EasingCurveEditor::modelNodeBackend() const
+{
+    return m_modelNodeBackend;
 }
 
 } //QmlDesigner

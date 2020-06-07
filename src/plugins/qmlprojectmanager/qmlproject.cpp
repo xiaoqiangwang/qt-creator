@@ -24,6 +24,7 @@
 ****************************************************************************/
 
 #include "qmlproject.h"
+
 #include "fileformat/qmlprojectfileformat.h"
 #include "fileformat/qmlprojectitem.h"
 #include "qmlprojectrunconfiguration.h"
@@ -31,10 +32,12 @@
 #include "qmlprojectmanagerconstants.h"
 #include "qmlprojectnodes.h"
 
+#include <coreplugin/documentmanager.h>
+#include <coreplugin/editormanager/documentmodel.h>
+#include <coreplugin/editormanager/ieditor.h>
 #include <coreplugin/icontext.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/messagemanager.h>
-#include <coreplugin/documentmanager.h>
 
 #include <projectexplorer/deploymentdata.h>
 #include <projectexplorer/kitinformation.h>
@@ -44,65 +47,92 @@
 #include <qtsupport/baseqtversion.h>
 #include <qtsupport/qtkitinformation.h>
 #include <qtsupport/qtsupportconstants.h>
-#include <qtsupport/desktopqtversion.h>
+
 #include <qmljs/qmljsmodelmanagerinterface.h>
+
+#include <texteditor/textdocument.h>
 
 #include <utils/algorithm.h>
 
 #include <QDebug>
+#include <QRegularExpression>
+#include <QTextCodec>
+#include <QLoggingCategory>
 
 using namespace Core;
 using namespace ProjectExplorer;
+using namespace QmlProjectManager::Internal;
+
+namespace {
+Q_LOGGING_CATEGORY(infoLogger, "QmlProjectManager.QmlBuildSystem", QtInfoMsg)
+}
 
 namespace QmlProjectManager {
 
-QmlProject::QmlProject(const Utils::FilePath &fileName) :
-    Project(QString::fromLatin1(Constants::QMLPROJECT_MIMETYPE), fileName,
-            [this]() { refreshProjectFile(); })
+QmlProject::QmlProject(const Utils::FilePath &fileName)
+    : Project(QString::fromLatin1(Constants::QMLPROJECT_MIMETYPE), fileName)
 {
-    const QString normalized
-            = Utils::FileUtils::normalizePathName(fileName.toFileInfo().canonicalFilePath());
-    m_canonicalProjectDir = Utils::FilePath::fromString(normalized).parentDir();
-
     setId(QmlProjectManager::Constants::QML_PROJECT_ID);
     setProjectLanguages(Context(ProjectExplorer::Constants::QMLJS_LANGUAGE_ID));
     setDisplayName(fileName.toFileInfo().completeBaseName());
+
+    setNeedsBuildConfigurations(false);
+    setBuildSystemCreator([](Target *t) { return new QmlBuildSystem(t); });
 }
 
-QmlProject::~QmlProject()
+QmlBuildSystem::QmlBuildSystem(Target *target)
+    : BuildSystem(target)
+{
+    const QString normalized
+            = Utils::FileUtils::normalizePathName(target->project()
+                      ->projectFilePath().toFileInfo().canonicalFilePath());
+    m_canonicalProjectDir = Utils::FilePath::fromString(normalized).parentDir();
+
+    connect(target->project(), &Project::projectFileIsDirty,
+            this, &QmlBuildSystem::refreshProjectFile);
+
+    // refresh first - project information is used e.g. to decide the default RC's
+    refresh(Everything);
+
+// FIXME: Check. Probably bogus after the BuildSystem move.
+//    // addedTarget calls updateEnabled on the runconfigurations
+//    // which needs to happen after refresh
+//    foreach (Target *t, targets())
+//        addedTarget(t);
+
+    connect(target->project(), &Project::activeTargetChanged,
+            this, &QmlBuildSystem::onActiveTargetChanged);
+    updateDeploymentData();
+}
+
+QmlBuildSystem::~QmlBuildSystem()
 {
     delete m_projectItem.data();
 }
 
-void QmlProject::addedTarget(Target *target)
+void QmlBuildSystem::triggerParsing()
 {
-    updateDeploymentData(target);
+    refresh(Everything);
 }
 
-void QmlProject::onActiveTargetChanged(Target *target)
-{
-    if (m_activeTarget)
-        disconnect(m_activeTarget, &Target::kitChanged, this, &QmlProject::onKitChanged);
-    m_activeTarget = target;
-    if (m_activeTarget)
-        connect(target, &Target::kitChanged, this, &QmlProject::onKitChanged);
-
-    // make sure e.g. the default qml imports are adapted
-    refresh(Configuration);
-}
-
-void QmlProject::onKitChanged()
+void QmlBuildSystem::onActiveTargetChanged(Target *)
 {
     // make sure e.g. the default qml imports are adapted
     refresh(Configuration);
 }
 
-Utils::FilePath QmlProject::canonicalProjectDir() const
+void QmlBuildSystem::onKitChanged()
+{
+    // make sure e.g. the default qml imports are adapted
+    refresh(Configuration);
+}
+
+Utils::FilePath QmlBuildSystem::canonicalProjectDir() const
 {
     return m_canonicalProjectDir;
 }
 
-void QmlProject::parseProject(RefreshOptions options)
+void QmlBuildSystem::parseProject(RefreshOptions options)
 {
     if (options & Files) {
         if (options & ProjectFile)
@@ -112,7 +142,7 @@ void QmlProject::parseProject(RefreshOptions options)
               m_projectItem = QmlProjectFileFormat::parseProjectFile(projectFilePath(), &errorMessage);
               if (m_projectItem) {
                   connect(m_projectItem.data(), &QmlProjectItem::qmlFilesChanged,
-                          this, &QmlProject::refreshFiles);
+                          this, &QmlBuildSystem::refreshFiles);
 
               } else {
                   MessageManager::write(tr("Error while loading project file %1.")
@@ -150,9 +180,9 @@ void QmlProject::parseProject(RefreshOptions options)
     }
 }
 
-void QmlProject::refresh(RefreshOptions options)
+void QmlBuildSystem::refresh(RefreshOptions options)
 {
-    emitParsingStarted();
+    ParseGuard guard = guardParsingRun();
     parseProject(options);
 
     if (options & Files)
@@ -163,32 +193,39 @@ void QmlProject::refresh(RefreshOptions options)
         return;
 
     QmlJS::ModelManagerInterface::ProjectInfo projectInfo =
-            modelManager->defaultProjectInfoForProject(this);
+            modelManager->defaultProjectInfoForProject(project());
     foreach (const QString &searchPath, makeAbsolute(canonicalProjectDir(), customImportPaths()))
         projectInfo.importPaths.maybeInsert(Utils::FilePath::fromString(searchPath),
                                             QmlJS::Dialect::Qml);
 
-    modelManager->updateProjectInfo(projectInfo, this);
+    modelManager->updateProjectInfo(projectInfo, project());
 
-    emitParsingFinished(true);
+    guard.markAsSuccess();
 }
 
-QString QmlProject::mainFile() const
+QString QmlBuildSystem::mainFile() const
 {
     if (m_projectItem)
         return m_projectItem.data()->mainFile();
     return QString();
 }
 
-void QmlProject::setMainFile(const QString &mainFilePath)
+bool QmlBuildSystem::qtForMCUs() const
+{
+    if (m_projectItem)
+        return m_projectItem.data()->qtForMCUs();
+    return false;
+}
+
+void QmlBuildSystem::setMainFile(const QString &mainFilePath)
 {
     if (m_projectItem)
         m_projectItem.data()->setMainFile(mainFilePath);
 }
 
-Utils::FilePath QmlProject::targetDirectory(const Target *target) const
+Utils::FilePath QmlBuildSystem::targetDirectory() const
 {
-    if (DeviceTypeKitAspect::deviceTypeId(target->kit())
+    if (DeviceTypeKitAspect::deviceTypeId(target()->kit())
             == ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE)
         return canonicalProjectDir();
 
@@ -196,63 +233,42 @@ Utils::FilePath QmlProject::targetDirectory(const Target *target) const
                          : Utils::FilePath();
 }
 
-Utils::FilePath QmlProject::targetFile(const Utils::FilePath &sourceFile,
-                                       const Target *target) const
+Utils::FilePath QmlBuildSystem::targetFile(const Utils::FilePath &sourceFile) const
 {
     const QDir sourceDir(m_projectItem ? m_projectItem->sourceDirectory()
                                        : canonicalProjectDir().toString());
-    const QDir targetDir(targetDirectory(target).toString());
+    const QDir targetDir(targetDirectory().toString());
     const QString relative = sourceDir.relativeFilePath(sourceFile.toString());
     return Utils::FilePath::fromString(QDir::cleanPath(targetDir.absoluteFilePath(relative)));
 }
 
-QList<Utils::EnvironmentItem> QmlProject::environment() const
+Utils::EnvironmentItems QmlBuildSystem::environment() const
 {
     if (m_projectItem)
         return m_projectItem.data()->environment();
     return {};
 }
 
-bool QmlProject::validProjectFile() const
-{
-    return !m_projectItem.isNull();
-}
-
-QStringList QmlProject::customImportPaths() const
+QStringList QmlBuildSystem::customImportPaths() const
 {
     if (m_projectItem)
         return m_projectItem.data()->importPaths();
     return {};
 }
 
-QStringList QmlProject::customFileSelectors() const
+QStringList QmlBuildSystem::customFileSelectors() const
 {
     if (m_projectItem)
         return m_projectItem.data()->fileSelectors();
     return {};
 }
 
-bool QmlProject::addFiles(const QStringList &filePaths)
+void QmlBuildSystem::refreshProjectFile()
 {
-    QStringList toAdd;
-    foreach (const QString &filePath, filePaths) {
-        if (!m_projectItem.data()->matchesFile(filePath))
-            toAdd << filePaths;
-    }
-    return toAdd.isEmpty();
+    refresh(QmlBuildSystem::ProjectFile | Files);
 }
 
-void QmlProject::refreshProjectFile()
-{
-    refresh(QmlProject::ProjectFile | Files);
-}
-
-bool QmlProject::needsBuildConfigurations() const
-{
-    return false;
-}
-
-QStringList QmlProject::makeAbsolute(const Utils::FilePath &path, const QStringList &relativePaths)
+QStringList QmlBuildSystem::makeAbsolute(const Utils::FilePath &path, const QStringList &relativePaths)
 {
     if (path.isEmpty())
         return relativePaths;
@@ -263,15 +279,12 @@ QStringList QmlProject::makeAbsolute(const Utils::FilePath &path, const QStringL
     });
 }
 
-QVariant QmlProject::additionalData(Id id, const Target *) const
+void QmlBuildSystem::refreshFiles(const QSet<QString> &/*added*/, const QSet<QString> &removed)
 {
-    if (id == Constants::customFileSelectorsData)
-        return customFileSelectors();
-    return {};
-}
-
-void QmlProject::refreshFiles(const QSet<QString> &/*added*/, const QSet<QString> &removed)
-{
+    if (m_blockFilesUpdate) {
+        qCDebug(infoLogger) << "Auto files refresh blocked.";
+        return;
+    }
     refresh(Files);
     if (!removed.isEmpty()) {
         if (auto modelManager = QmlJS::ModelManagerInterface::instance())
@@ -280,11 +293,9 @@ void QmlProject::refreshFiles(const QSet<QString> &/*added*/, const QSet<QString
     refreshTargetDirectory();
 }
 
-void QmlProject::refreshTargetDirectory()
+void QmlBuildSystem::refreshTargetDirectory()
 {
-    const QList<Target *> targetList = targets();
-    for (Target *target : targetList)
-        updateDeploymentData(target);
+    updateDeploymentData();
 }
 
 Tasks QmlProject::projectIssues(const Kit *k) const
@@ -307,7 +318,7 @@ Tasks QmlProject::projectIssues(const Kit *k) const
 
     if (dev->type() == ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE) {
         if (version->type() == QtSupport::Constants::DESKTOPQT) {
-            if (static_cast<const QtSupport::DesktopQtVersion *>(version)->qmlsceneCommand().isEmpty()) {
+            if (version->qmlsceneCommand().isEmpty()) {
                 result.append(createProjectTask(Task::TaskType::Error,
                                                 tr("Qt version has no qmlscene command.")));
             }
@@ -331,32 +342,19 @@ Project::RestoreResult QmlProject::fromMap(const QVariantMap &map, QString *erro
     if (result != RestoreResult::Ok)
         return result;
 
-    // refresh first - project information is used e.g. to decide the default RC's
-    refresh(Everything);
-
     if (!activeTarget()) {
         // find a kit that matches prerequisites (prefer default one)
-        const QList<Kit*> kits = KitManager::kits([this](const Kit *k) {
+        const QList<Kit*> kits = Utils::filtered(KitManager::kits(), [this](const Kit *k) {
             return !containsType(projectIssues(k), Task::TaskType::Error);
         });
 
         if (!kits.isEmpty()) {
-            Kit *kit = kits.contains(KitManager::defaultKit()) ? KitManager::defaultKit() : kits.first();
-            addTarget(createTarget(kit));
+            if (kits.contains(KitManager::defaultKit()))
+                addTargetForDefaultKit();
+            else
+                addTargetForKit(kits.first());
         }
     }
-
-    // addedTarget calls updateEnabled on the runconfigurations
-    // which needs to happen after refresh
-    foreach (Target *t, targets())
-        addedTarget(t);
-
-    connect(this, &ProjectExplorer::Project::addedTarget, this, &QmlProject::addedTarget);
-
-    connect(this, &ProjectExplorer::Project::activeTargetChanged,
-            this, &QmlProject::onActiveTargetChanged);
-
-    onActiveTargetChanged(activeTarget());
 
     return RestoreResult::Ok;
 }
@@ -366,12 +364,12 @@ ProjectExplorer::DeploymentKnowledge QmlProject::deploymentKnowledge() const
     return DeploymentKnowledge::Perfect;
 }
 
-void QmlProject::generateProjectTree()
+void QmlBuildSystem::generateProjectTree()
 {
     if (!m_projectItem)
         return;
 
-    auto newRoot = std::make_unique<Internal::QmlProjectNode>(this);
+    auto newRoot = std::make_unique<QmlProjectNode>(project());
 
     for (const QString &f : m_projectItem.data()->files()) {
         const Utils::FilePath fileName = Utils::FilePath::fromString(f);
@@ -385,12 +383,12 @@ void QmlProject::generateProjectTree()
     refreshTargetDirectory();
 }
 
-void QmlProject::updateDeploymentData(ProjectExplorer::Target *target)
+void QmlBuildSystem::updateDeploymentData()
 {
     if (!m_projectItem)
         return;
 
-    if (DeviceTypeKitAspect::deviceTypeId(target->kit())
+    if (DeviceTypeKitAspect::deviceTypeId(target()->kit())
             == ProjectExplorer::Constants::DESKTOP_DEVICE_TYPE) {
         return;
     }
@@ -399,10 +397,121 @@ void QmlProject::updateDeploymentData(ProjectExplorer::Target *target)
     for (const QString &file : m_projectItem->files()) {
         deploymentData.addFile(
                     file,
-                    targetFile(Utils::FilePath::fromString(file), target).parentDir().toString());
+                    targetFile(Utils::FilePath::fromString(file)).parentDir().toString());
     }
 
-    target->setDeploymentData(deploymentData);
+    setDeploymentData(deploymentData);
 }
+
+QVariant QmlBuildSystem::additionalData(Id id) const
+{
+    if (id == Constants::customFileSelectorsData)
+        return customFileSelectors();
+    if (id == Constants::customForceFreeTypeData)
+        return forceFreeType();
+    if (id == Constants::customQtForMCUs)
+        return qtForMCUs();
+    return {};
+}
+
+bool QmlBuildSystem::supportsAction(Node *context, ProjectAction action, const Node *node) const
+{
+    if (dynamic_cast<QmlProjectNode *>(context)) {
+        if (action == AddNewFile || action == EraseFile)
+            return true;
+        QTC_ASSERT(node, return false);
+
+        if (action == Rename && node->asFileNode()) {
+            const FileNode *fileNode = node->asFileNode();
+            QTC_ASSERT(fileNode, return false);
+            return fileNode->fileType() != FileType::Project;
+        }
+
+        return false;
+    }
+
+    return BuildSystem::supportsAction(context, action, node);
+}
+
+QmlProject *QmlBuildSystem::qmlProject() const
+{
+    return static_cast<QmlProject *>(BuildSystem::project());
+}
+
+bool QmlBuildSystem::forceFreeType() const
+{
+    if (m_projectItem)
+        return m_projectItem.data()->forceFreeType();
+    return false;
+}
+
+bool QmlBuildSystem::addFiles(Node *context, const QStringList &filePaths, QStringList *)
+{
+    if (!dynamic_cast<QmlProjectNode *>(context))
+        return false;
+
+    QStringList toAdd;
+    foreach (const QString &filePath, filePaths) {
+        if (!m_projectItem.data()->matchesFile(filePath))
+            toAdd << filePaths;
+    }
+    return toAdd.isEmpty();
+}
+
+bool QmlBuildSystem::deleteFiles(Node *context, const QStringList &filePaths)
+{
+    if (dynamic_cast<QmlProjectNode *>(context))
+        return true;
+
+    return BuildSystem::deleteFiles(context, filePaths);
+}
+
+bool QmlBuildSystem::renameFile(Node * context, const QString &filePath, const QString &newFilePath)
+{
+    if (dynamic_cast<QmlProjectNode *>(context)) {
+        if (filePath.endsWith(mainFile())) {
+            setMainFile(newFilePath);
+
+            // make sure to change it also in the qmlproject file
+            const QString qmlProjectFilePath = project()->projectFilePath().toString();
+            Core::FileChangeBlocker fileChangeBlocker(qmlProjectFilePath);
+            const QList<Core::IEditor *> editors = Core::DocumentModel::editorsForFilePath(qmlProjectFilePath);
+            TextEditor::TextDocument *document = nullptr;
+            if (!editors.isEmpty()) {
+                document = qobject_cast<TextEditor::TextDocument*>(editors.first()->document());
+                if (document && document->isModified())
+                    if (!Core::DocumentManager::saveDocument(document))
+                        return false;
+            }
+
+            QString fileContent;
+            QString error;
+            Utils::TextFileFormat textFileFormat;
+            const QTextCodec *codec = QTextCodec::codecForName("UTF-8"); // qml files are defined to be utf-8
+            if (Utils::TextFileFormat::readFile(qmlProjectFilePath, codec, &fileContent, &textFileFormat, &error)
+                    != Utils::TextFileFormat::ReadSuccess) {
+                qWarning() << "Failed to read file" << qmlProjectFilePath << ":" << error;
+            }
+
+            // find the mainFile and do the file name with brackets in a capture group and mask the . with \.
+            QString originalFileName = QFileInfo(filePath).fileName();
+            originalFileName.replace(".", "\\.");
+            const QRegularExpression expression(QString("mainFile:\\s*\"(%1)\"").arg(originalFileName));
+            const QRegularExpressionMatch match = expression.match(fileContent);
+
+            fileContent.replace(match.capturedStart(1), match.capturedLength(1), QFileInfo(newFilePath).fileName());
+
+            if (!textFileFormat.writeFile(qmlProjectFilePath, fileContent, &error))
+                qWarning() << "Failed to write file" << qmlProjectFilePath << ":" << error;
+
+            refresh(Everything);
+        }
+
+        return true;
+    }
+
+    return BuildSystem::renameFile(context, filePath, newFilePath);
+}
+
 } // namespace QmlProjectManager
 

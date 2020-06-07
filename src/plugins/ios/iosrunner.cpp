@@ -44,8 +44,6 @@
 
 #include <qmldebug/qmldebugcommandlinearguments.h>
 
-#include <qtsupport/qtkitinformation.h>
-
 #include <utils/fileutils.h>
 #include <utils/qtcprocess.h>
 #include <utils/url.h>
@@ -96,10 +94,10 @@ static void stopRunningRunControl(RunControl *runControl)
 IosRunner::IosRunner(RunControl *runControl)
     : RunWorker(runControl)
 {
+    setId("IosRunner");
     stopRunningRunControl(runControl);
     auto runConfig = qobject_cast<IosRunConfiguration *>(runControl->runConfiguration());
     m_bundleDir = runConfig->bundleDirectory().toString();
-    m_arguments = runControl->aspect<ArgumentsAspect>()->arguments(runConfig->macroExpander());
     m_device = DeviceKitAspect::device(runControl->target()->kit());
     m_deviceType = runConfig->deviceType();
 }
@@ -162,9 +160,7 @@ void IosRunner::start()
     m_cleanExit = false;
     m_qmlServerPort = Port();
     if (!QFileInfo::exists(m_bundleDir)) {
-        TaskHub::addTask(Task::Warning,
-                         tr("Could not find %1.").arg(m_bundleDir),
-                         ProjectExplorer::Constants::TASK_CATEGORY_DEPLOYMENT);
+        TaskHub::addTask(DeploymentTask(Task::Warning, tr("Could not find %1.").arg(m_bundleDir)));
         reportFailure();
         return;
     }
@@ -200,9 +196,13 @@ void IosRunner::start()
     connect(m_toolHandler, &IosToolHandler::finished,
             this, &IosRunner::handleFinished);
 
-    QStringList args = QtcProcess::splitArgs(m_arguments, OsTypeMac);
-    if (m_qmlServerPort.isValid())
-        args.append(QmlDebug::qmlDebugTcpArguments(m_qmlDebugServices, m_qmlServerPort));
+    const Runnable runnable = runControl()->runnable();
+    QStringList args = QtcProcess::splitArgs(runnable.commandLineArguments, OsTypeMac);
+    if (m_qmlServerPort.isValid()) {
+        QUrl qmlServer;
+        qmlServer.setPort(m_qmlServerPort.number());
+        args.append(QmlDebug::qmlDebugTcpArguments(m_qmlDebugServices, qmlServer));
+    }
 
     m_toolHandler->requestRunApp(bundlePath(), args, runType(), deviceId());
 }
@@ -218,7 +218,8 @@ void IosRunner::handleGotServerPorts(IosToolHandler *handler, const QString &bun
                                      Port qmlPort)
 {
     // Called when debugging on Device.
-    Q_UNUSED(bundlePath); Q_UNUSED(deviceId);
+    Q_UNUSED(bundlePath)
+    Q_UNUSED(deviceId)
 
     if (m_toolHandler != handler)
         return;
@@ -247,7 +248,8 @@ void IosRunner::handleGotInferiorPid(IosToolHandler *handler, const QString &bun
                                      const QString &deviceId, qint64 pid)
 {
     // Called when debugging on Simulator.
-    Q_UNUSED(bundlePath); Q_UNUSED(deviceId);
+    Q_UNUSED(bundlePath)
+    Q_UNUSED(deviceId)
 
     if (m_toolHandler != handler)
         return;
@@ -272,7 +274,7 @@ void IosRunner::handleGotInferiorPid(IosToolHandler *handler, const QString &bun
 
 void IosRunner::handleAppOutput(IosToolHandler *handler, const QString &output)
 {
-    Q_UNUSED(handler);
+    Q_UNUSED(handler)
     QRegExp qmlPortRe("QML Debugger: Waiting for connection on port ([0-9]+)...");
     int index = qmlPortRe.indexIn(output);
     QString res(output);
@@ -284,17 +286,15 @@ void IosRunner::handleAppOutput(IosToolHandler *handler, const QString &output)
 
 void IosRunner::handleErrorMsg(IosToolHandler *handler, const QString &msg)
 {
-    Q_UNUSED(handler);
+    Q_UNUSED(handler)
     QString res(msg);
     QString lockedErr ="Unexpected reply: ELocked (454c6f636b6564) vs OK (4f4b)";
     if (msg.contains("AMDeviceStartService returned -402653150")) {
-        TaskHub::addTask(Task::Warning,
-                         tr("Run failed. The settings in the Organizer window of Xcode might be incorrect."),
-                         ProjectExplorer::Constants::TASK_CATEGORY_DEPLOYMENT);
+        TaskHub::addTask(DeploymentTask(Task::Warning, tr("Run failed. "
+           "The settings in the Organizer window of Xcode might be incorrect.")));
     } else if (res.contains(lockedErr)) {
         QString message = tr("The device is locked, please unlock.");
-        TaskHub::addTask(Task::Error, message,
-                         ProjectExplorer::Constants::TASK_CATEGORY_DEPLOYMENT);
+        TaskHub::addTask(DeploymentTask(Task::Error, message));
         res.replace(lockedErr, message);
     }
     QRegExp qmlPortRe("QML Debugger: Waiting for connection on port ([0-9]+)...");
@@ -308,7 +308,7 @@ void IosRunner::handleErrorMsg(IosToolHandler *handler, const QString &msg)
 
 void IosRunner::handleToolExited(IosToolHandler *handler, int code)
 {
-    Q_UNUSED(handler);
+    Q_UNUSED(handler)
     m_cleanExit = (code == 0);
 }
 
@@ -352,6 +352,7 @@ Utils::Port IosRunner::qmlServerPort() const
 IosRunSupport::IosRunSupport(RunControl *runControl)
     : IosRunner(runControl)
 {
+    setId("IosRunSupport");
     runControl->setIcon(Icons::RUN_SMALL_TOOLBAR);
     QString displayName = QString("Run on %1").arg(device().isNull() ? QString() : device()->displayName());
     runControl->setDisplayName(displayName);
@@ -380,21 +381,13 @@ void IosRunSupport::stop()
 IosQmlProfilerSupport::IosQmlProfilerSupport(RunControl *runControl)
     : RunWorker(runControl)
 {
-    setId("IosAnalyzeSupport");
-
-    auto iosRunConfig = qobject_cast<IosRunConfiguration *>(runControl->runConfiguration());
-    Runnable runnable;
-    runnable.executable = iosRunConfig->localExecutable().toUserOutput();
-    runnable.commandLineArguments =
-            runControl->aspect<ArgumentsAspect>()->arguments(iosRunConfig->macroExpander());
-    runControl->setDisplayName(iosRunConfig->applicationName());
-    runControl->setRunnable(runnable);
+    setId("IosQmlProfilerSupport");
 
     m_runner = new IosRunner(runControl);
     m_runner->setQmlDebugging(QmlDebug::QmlProfilerServices);
     addStartDependency(m_runner);
 
-    m_profiler = runControl->createWorker(runControl->runMode());
+    m_profiler = runControl->createWorker(ProjectExplorer::Constants::QML_PROFILER_RUNNER);
     m_profiler->addStartDependency(this);
 }
 
@@ -423,6 +416,8 @@ void IosQmlProfilerSupport::start()
 IosDebugSupport::IosDebugSupport(RunControl *runControl)
     : Debugger::DebuggerRunTool(runControl)
 {
+    setId("IosDebugSupport");
+
     m_runner = new IosRunner(runControl);
     m_runner->setCppDebugging(isCppDebugging());
     m_runner->setQmlDebugging(isQmlDebugging() ? QmlDebug::QmlDebuggerServices : QmlDebug::NoQmlDebugServices);
@@ -446,21 +441,20 @@ void IosDebugSupport::start()
                                              + "/Library/Developer/Xcode/iOS DeviceSupport/"
                                              + osVersion + "/Symbols");
         QString deviceSdk;
-        if (deviceSdk1.toFileInfo().isDir()) {
+        if (deviceSdk1.isDir()) {
             deviceSdk = deviceSdk1.toString();
         } else {
             const FilePath deviceSdk2 = IosConfigurations::developerPath()
                     .pathAppended("Platforms/iPhoneOS.platform/DeviceSupport/"
                                   + osVersion + "/Symbols");
-            if (deviceSdk2.toFileInfo().isDir()) {
+            if (deviceSdk2.isDir()) {
                 deviceSdk = deviceSdk2.toString();
             } else {
-                TaskHub::addTask(Task::Warning, tr(
+                TaskHub::addTask(DeploymentTask(Task::Warning, tr(
                   "Could not find device specific debug symbols at %1. "
                   "Debugging initialization will be slow until you open the Organizer window of "
                   "Xcode with the device connected to have the symbols generated.")
-                                 .arg(deviceSdk1.toUserOutput()),
-                                 ProjectExplorer::Constants::TASK_CATEGORY_DEPLOYMENT);
+                                 .arg(deviceSdk1.toUserOutput())));
             }
         }
         setDeviceSymbolsRoot(deviceSdk);
@@ -480,7 +474,7 @@ void IosDebugSupport::start()
     const bool cppDebug = isCppDebugging();
     const bool qmlDebug = isQmlDebugging();
     if (cppDebug) {
-        setInferiorExecutable(iosRunConfig->localExecutable().toString());
+        setInferiorExecutable(iosRunConfig->localExecutable());
         setRemoteChannel("connect://localhost:" + gdbServerPort.toString());
 
         QString bundlePath = iosRunConfig->bundleDirectory().toString();
@@ -488,10 +482,9 @@ void IosDebugSupport::start()
         FilePath dsymPath = FilePath::fromString(bundlePath.append(".dSYM"));
         if (dsymPath.exists() && dsymPath.toFileInfo().lastModified()
                 < QFileInfo(iosRunConfig->localExecutable().toUserOutput()).lastModified()) {
-            TaskHub::addTask(Task::Warning,
-                             tr("The dSYM %1 seems to be outdated, it might confuse the debugger.")
-                             .arg(dsymPath.toUserOutput()),
-                             ProjectExplorer::Constants::TASK_CATEGORY_DEPLOYMENT);
+            TaskHub::addTask(DeploymentTask(Task::Warning,
+                     tr("The dSYM %1 seems to be outdated, it might confuse the debugger.")
+                             .arg(dsymPath.toUserOutput())));
         }
     }
 

@@ -47,7 +47,7 @@ class PchTaskQueue : public testing::Test
 protected:
     NiceMock<MockTaskScheduler<ClangBackEnd::PchTaskQueue::Task>> mockSytemPchTaskScheduler;
     NiceMock<MockTaskScheduler<ClangBackEnd::PchTaskQueue::Task>> mockProjectPchTaskScheduler;
-    MockPrecompiledHeaderStorage mockPrecompiledHeaderStorage;
+    NiceMock<MockPrecompiledHeaderStorage> mockPrecompiledHeaderStorage;
     MockSqliteTransactionBackend mockSqliteTransactionBackend;
     NiceMock<MockFunction<void(int, int)>> mockSetProgressCallback;
     ClangBackEnd::ProgressCounter progressCounter{mockSetProgressCallback.AsStdFunction()};
@@ -334,7 +334,7 @@ TEST_F(PchTaskQueue, CreateProjectTaskFromPchTask)
     EXPECT_CALL(mockPchCreator, generatePch(Eq(projectTask)));
     EXPECT_CALL(mockPchCreator, projectPartPch()).WillOnce(ReturnRef(projectPartPch));
     EXPECT_CALL(mockPrecompiledHeaderStorage,
-                insertProjectPrecompiledHeader(Eq(1), Eq("/path/to/pch"), 99));
+                insertProjectPrecompiledHeader(Eq(1), Eq("/path/to/pch"), Eq(99)));
 
     tasks.front()(mockPchCreator);
 }
@@ -343,7 +343,7 @@ TEST_F(PchTaskQueue, DeleteProjectPchEntryInDatabaseIfNoPchIsGenerated)
 {
     InSequence s;
     MockPchCreator mockPchCreator;
-    ClangBackEnd::ProjectPartPch projectPartPch{{}, "", 0};
+    ClangBackEnd::ProjectPartPch projectPartPch{{}, "", 34};
     auto tasks = queue.createProjectTasks({projectTask1});
     auto projectTask = projectTask1;
     projectTask.systemPchPath = "/path/to/pch";
@@ -353,7 +353,7 @@ TEST_F(PchTaskQueue, DeleteProjectPchEntryInDatabaseIfNoPchIsGenerated)
         .WillOnce(Return(ClangBackEnd::FilePath{"/path/to/pch"}));
     EXPECT_CALL(mockPchCreator, generatePch(Eq(projectTask)));
     EXPECT_CALL(mockPchCreator, projectPartPch()).WillOnce(ReturnRef(projectPartPch));
-    EXPECT_CALL(mockPrecompiledHeaderStorage, deleteProjectPrecompiledHeader(Eq(1)));
+    EXPECT_CALL(mockPrecompiledHeaderStorage, deleteProjectPrecompiledHeader(Eq(1), Eq(34)));
 
     tasks.front()(mockPchCreator);
 }
@@ -377,7 +377,7 @@ TEST_F(PchTaskQueue, CreateSystemTaskFromPchTask)
     EXPECT_CALL(mockPchCreator, generatePch(Eq(systemTask)));
     EXPECT_CALL(mockPchCreator, projectPartPch()).WillOnce(ReturnRef(projectPartPch));
     EXPECT_CALL(mockPrecompiledHeaderStorage,
-                insertSystemPrecompiledHeaders(UnorderedElementsAre(1, 3), Eq("/path/to/pch"), 99));
+                insertSystemPrecompiledHeaders(UnorderedElementsAre(1, 3), Eq("/path/to/pch"), Eq(99)));
 
     tasks.front()(mockPchCreator);
 }

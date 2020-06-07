@@ -30,6 +30,7 @@
 #include "projectnodes.h"
 #include "projecttreewidget.h"
 #include "session.h"
+#include "target.h"
 
 #include <coreplugin/actionmanager/actioncontainer.h>
 #include <coreplugin/actionmanager/actionmanager.h>
@@ -102,6 +103,18 @@ ProjectTree *ProjectTree::instance()
 Project *ProjectTree::currentProject()
 {
     return s_instance->m_currentProject;
+}
+
+Target *ProjectTree::currentTarget()
+{
+    Project *p = currentProject();
+    return p ? p->activeTarget() : nullptr;
+}
+
+BuildSystem *ProjectTree::currentBuildSystem()
+{
+    Target *t = currentTarget();
+    return t ? t->buildSystem() : nullptr;
 }
 
 Node *ProjectTree::currentNode()
@@ -321,7 +334,7 @@ void ProjectTree::updateExternalFileWarning()
     }
     infoBar->addInfo(Core::InfoBarEntry(externalFileId,
                                         tr("<b>Warning:</b> This file is outside the project directory."),
-                                        Core::InfoBarEntry::GlobalSuppressionEnabled));
+                                        Core::InfoBarEntry::GlobalSuppression::Enabled));
 }
 
 bool ProjectTree::hasFocus(ProjectTreeWidget *widget)
@@ -351,9 +364,9 @@ void ProjectTree::showContextMenu(ProjectTreeWidget *focus, const QPoint &global
         contextMenu = Core::ActionManager::actionContainer(Constants::M_FILECONTEXT)->menu();
     }
 
-    if (contextMenu && contextMenu->actions().count() > 0) {
-        contextMenu->popup(globalPos);
+    if (contextMenu && !contextMenu->actions().isEmpty()) {
         s_instance->m_focusForContextMenu = focus;
+        contextMenu->popup(globalPos);
         connect(contextMenu, &QMenu::aboutToHide,
                 s_instance, &ProjectTree::hideContextMenu,
                 Qt::ConnectionType(Qt::UniqueConnection | Qt::QueuedConnection));

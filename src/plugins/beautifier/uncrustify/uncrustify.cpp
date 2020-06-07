@@ -41,8 +41,9 @@
 #include <coreplugin/editormanager/ieditor.h>
 #include <coreplugin/idocument.h>
 #include <cppeditor/cppeditorconstants.h>
-#include <projectexplorer/projecttree.h>
 #include <projectexplorer/project.h>
+#include <projectexplorer/projectnodes.h>
+#include <projectexplorer/projecttree.h>
 #include <texteditor/formattexteditor.h>
 #include <texteditor/texteditor.h>
 #include <utils/fileutils.h>
@@ -78,8 +79,6 @@ Uncrustify::Uncrustify()
 
     connect(&m_settings, &UncrustifySettings::supportedMimeTypesChanged,
             [this] { updateActions(Core::EditorManager::currentEditor()); });
-
-    new UncrustifyOptionsPage(&m_settings, this);
 }
 
 QString Uncrustify::id() const
@@ -144,10 +143,9 @@ QString Uncrustify::configurationFile() const
     if (m_settings.useOtherFiles()) {
         if (const ProjectExplorer::Project *project
                 = ProjectExplorer::ProjectTree::currentProject()) {
-            const Utils::FilePathList files = project->files(ProjectExplorer::Project::AllFiles);
+            const Utils::FilePaths files = project->files(
+                [](const ProjectExplorer::Node *n) { return n->filePath().endsWith("cfg"); });
             for (const Utils::FilePath &file : files) {
-                if (!file.endsWith("cfg"))
-                    continue;
                 const QFileInfo fi = file.toFileInfo();
                 if (fi.isReadable() && fi.fileName() == "uncrustify.cfg")
                     return file.toString();
@@ -184,7 +182,7 @@ bool Uncrustify::isApplicable(const Core::IDocument *document) const
 Command Uncrustify::command(const QString &cfgFile, bool fragment) const
 {
     Command command;
-    command.setExecutable(m_settings.command());
+    command.setExecutable(m_settings.command().toString());
     command.setProcessing(Command::PipeProcessing);
     if (m_settings.version() >= 62) {
         command.addOption("--assume");

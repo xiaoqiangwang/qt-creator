@@ -64,8 +64,8 @@ public:
         Uninstall,
         ForceUnintall
     };
-public:
-    explicit AndroidDeployQtStep(ProjectExplorer::BuildStepList *bc);
+
+    AndroidDeployQtStep(ProjectExplorer::BuildStepList *bc, Core::Id id);
 
     static Core::Id stepId();
 
@@ -80,7 +80,7 @@ signals:
     void setSerialNumber(const QString &serialNumber);
 
 private:
-    void runCommand(const QString &program, const QStringList &arguments);
+    void runCommand(const Utils::CommandLine &command);
 
     bool init() override;
     void doRun() override;
@@ -111,7 +111,7 @@ private:
     Utils::FilePath m_apkPath;
     QMap<QString, QString> m_filesToPull;
 
-    QString m_targetArch;
+    QStringList m_androidABIs;
     bool m_uninstallPreviousPackage = false;
     bool m_uninstallPreviousPackageRun = false;
     bool m_useAndroiddeployqt = false;

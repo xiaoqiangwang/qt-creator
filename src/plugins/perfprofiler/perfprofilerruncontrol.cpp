@@ -150,11 +150,11 @@ public:
         QStringList arguments;
         arguments << "record";
         arguments += m_perfRecordArguments;
-        arguments << "-o" << "-" << "--" << perfRunnable.executable
+        arguments << "-o" << "-" << "--" << perfRunnable.executable.toString()
                   << Utils::QtcProcess::splitArgs(perfRunnable.commandLineArguments,
                                                   Utils::OsTypeLinux);
 
-        perfRunnable.executable = "perf";
+        perfRunnable.executable = FilePath::fromString("perf");
         perfRunnable.commandLineArguments = Utils::QtcProcess::joinArgs(arguments,
                                                                         Utils::OsTypeLinux);
         m_process->start(perfRunnable);
@@ -185,11 +185,10 @@ PerfProfilerRunner::PerfProfilerRunner(RunControl *runControl)
     // If the parser is gone, there is no point in going on.
     m_perfParserWorker->setEssential(true);
 
-    if (auto perfRecorder = device()->workerCreator("PerfRecorder")) {
-        m_perfRecordWorker = perfRecorder(runControl);
-
+    if ((m_perfRecordWorker = runControl->createWorker("PerfRecorder"))) {
         m_perfParserWorker->addStartDependency(m_perfRecordWorker);
         addStartDependency(m_perfParserWorker);
+
     } else {
         m_perfRecordWorker = new LocalPerfRecordWorker(runControl);
 

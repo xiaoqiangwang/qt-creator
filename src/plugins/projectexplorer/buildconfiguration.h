@@ -34,12 +34,16 @@
 
 namespace ProjectExplorer {
 
-class BaseStringAspect;
+namespace Internal { class BuildConfigurationPrivate; }
+
+class BuildDirectoryAspect;
 class BuildInfo;
+class BuildSystem;
 class BuildStepList;
 class Kit;
 class NamedWidget;
 class Node;
+class RunConfiguration;
 class Target;
 
 class PROJECTEXPLORER_EXPORT BuildConfiguration : public ProjectConfiguration
@@ -51,9 +55,13 @@ protected:
     explicit BuildConfiguration(Target *target, Core::Id id);
 
 public:
+    ~BuildConfiguration() override;
+
     Utils::FilePath buildDirectory() const;
     Utils::FilePath rawBuildDirectory() const;
     void setBuildDirectory(const Utils::FilePath &dir);
+
+    virtual BuildSystem *buildSystem() const;
 
     virtual NamedWidget *createConfigWidget();
     virtual QList<NamedWidget *> createSubConfigWidgets();
@@ -62,26 +70,28 @@ public:
     Utils::Environment baseEnvironment() const;
     QString baseEnvironmentText() const;
     Utils::Environment environment() const;
-    void setUserEnvironmentChanges(const QList<Utils::EnvironmentItem> &diff);
-    QList<Utils::EnvironmentItem> userEnvironmentChanges() const;
+    void setUserEnvironmentChanges(const Utils::EnvironmentItems &diff);
+    Utils::EnvironmentItems userEnvironmentChanges() const;
     bool useSystemEnvironment() const;
     void setUseSystemEnvironment(bool b);
 
     virtual void addToEnvironment(Utils::Environment &env) const;
 
-    QList<Core::Id> knownStepLists() const;
-    BuildStepList *stepList(Core::Id id) const;
+    BuildStepList *buildSteps() const;
+    BuildStepList *cleanSteps() const;
+
+    void appendInitialBuildStep(Core::Id id);
+    void appendInitialCleanStep(Core::Id id);
 
     bool fromMap(const QVariantMap &map) override;
     QVariantMap toMap() const override;
-
-    Target *target() const;
-    Project *project() const override;
 
     virtual bool isEnabled() const;
     virtual QString disabledReason() const;
 
     virtual bool regenerateBuildFiles(Node *node);
+
+    virtual void restrictNextBuild(const RunConfiguration *rc);
 
     enum BuildType {
         Unknown,
@@ -89,20 +99,24 @@ public:
         Profile,
         Release
     };
-    virtual BuildType buildType() const = 0;
+    virtual BuildType buildType() const;
 
     static QString buildTypeName(BuildType type);
 
-    bool isActive() const override;
+    bool isActive() const;
 
     static void prependCompilerPathToEnvironment(Kit *k, Utils::Environment &env);
     void updateCacheAndEmitEnvironmentChanged();
 
-    ProjectExplorer::BaseStringAspect *buildDirectoryAspect() const;
+    ProjectExplorer::BuildDirectoryAspect *buildDirectoryAspect() const;
     void setConfigWidgetDisplayName(const QString &display);
     void setBuildDirectoryHistoryCompleter(const QString &history);
     void setConfigWidgetHasFrame(bool configWidgetHasFrame);
     void setBuildDirectorySettingsKey(const QString &key);
+
+    void addConfigWidgets(const std::function<void (NamedWidget *)> &adder);
+
+    void doInitialize(const BuildInfo &info);
 
 signals:
     void environmentChanged();
@@ -111,28 +125,21 @@ signals:
     void buildTypeChanged();
 
 protected:
-    virtual void initialize(const BuildInfo &info);
+    void setInitializer(const std::function<void(const BuildInfo &info)> &initializer);
 
 private:
     void emitBuildDirectoryChanged();
-
-    bool m_clearSystemEnvironment = false;
-    QList<Utils::EnvironmentItem> m_userEnvironmentChanges;
-    QList<BuildStepList *> m_stepLists;
-    ProjectExplorer::BaseStringAspect *m_buildDirectoryAspect = nullptr;
-    Utils::FilePath m_lastEmmitedBuildDirectory;
-    mutable Utils::Environment m_cachedEnvironment;
-    QString m_configWidgetDisplayName;
-    bool m_configWidgetHasFrame = false;
+    Internal::BuildConfigurationPrivate *d = nullptr;
 };
 
-class PROJECTEXPLORER_EXPORT BuildConfigurationFactory : public QObject
+class PROJECTEXPLORER_EXPORT BuildConfigurationFactory
 {
-    Q_OBJECT
-
 protected:
     BuildConfigurationFactory();
-    ~BuildConfigurationFactory() override;
+    BuildConfigurationFactory(const BuildConfigurationFactory &) = delete;
+    BuildConfigurationFactory &operator=(const BuildConfigurationFactory &) = delete;
+
+    virtual ~BuildConfigurationFactory(); // Needed for dynamic_casts in importers.
 
 public:
     // List of build information that can be used to create a new build configuration via
@@ -140,14 +147,15 @@ public:
     const QList<BuildInfo> allAvailableBuilds(const Target *parent) const;
 
     // List of build information that can be used to initially set up a new build configuration.
-    const QList<BuildInfo> allAvailableSetups(const Kit *k, const QString &projectPath) const;
+    const QList<BuildInfo>
+        allAvailableSetups(const Kit *k, const Utils::FilePath &projectPath) const;
 
     BuildConfiguration *create(Target *parent, const BuildInfo &info) const;
 
     static BuildConfiguration *restore(Target *parent, const QVariantMap &map);
     static BuildConfiguration *clone(Target *parent, const BuildConfiguration *source);
 
-    static BuildConfigurationFactory *find(const Kit *k, const QString &projectPath);
+    static BuildConfigurationFactory *find(const Kit *k, const Utils::FilePath &projectPath);
     static BuildConfigurationFactory *find(Target *parent);
 
     using IssueReporter = std::function<Tasks(Kit *, const QString &, const QString &)>;
@@ -156,8 +164,9 @@ public:
                              const QString &projectPath, const QString &buildDir) const;
 
 protected:
-    virtual QList<BuildInfo> availableBuilds(const Target *parent) const = 0;
-    virtual QList<BuildInfo> availableSetups(const Kit *k, const QString &projectPath) const = 0;
+    using BuildGenerator
+        = std::function<QList<BuildInfo>(const Kit *, const Utils::FilePath &, bool)>;
+    void setBuildGenerator(const BuildGenerator &buildGenerator);
 
     bool supportsTargetDeviceType(Core::Id id) const;
     void setSupportedProjectType(Core::Id id);
@@ -170,7 +179,6 @@ protected:
     template <class BuildConfig>
     void registerBuildConfiguration(Core::Id buildConfigId)
     {
-        setObjectName(buildConfigId.toString() + "BuildConfigurationFactory");
         m_creator = [buildConfigId](Target *t) { return new BuildConfig(t, buildConfigId); };
         m_buildConfigId = buildConfigId;
     }
@@ -184,6 +192,7 @@ private:
     QList<Core::Id> m_supportedTargetDeviceTypes;
     QString m_supportedProjectMimeTypeName;
     IssueReporter m_issueReporter;
+    BuildGenerator m_buildGenerator;
 };
 
 } // namespace ProjectExplorer

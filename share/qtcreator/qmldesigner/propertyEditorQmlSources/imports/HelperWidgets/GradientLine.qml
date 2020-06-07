@@ -25,7 +25,6 @@
 
 import QtQuick 2.1
 import HelperWidgets 2.0
-import QtQuick.Controls.Private 1.0 // showing a ToolTip
 
 Item {
     width: 300
@@ -224,6 +223,10 @@ Item {
         }
     }
 
+    Tooltip {
+        id: myTooltip
+    }
+
     Component {
         id: component
         Item {
@@ -242,9 +245,9 @@ Item {
                 if (showToolTip) {
                     var currentPoint = Qt.point(gradientStopHandleMouseArea.mouseX, gradientStopHandleMouseArea.mouseY);
                     var fixedGradiantStopPosition = currentGradiantStopPosition();
-                    Tooltip.showText(gradientStopHandleMouseArea, currentPoint, fixedGradiantStopPosition.toFixed(3));
+                    myTooltip.showText(gradientStopHandleMouseArea, currentPoint, fixedGradiantStopPosition.toFixed(3));
                 } else {
-                    Tooltip.hideText()
+                    myTooltip.hideText()
                 }
             }
             function currentGradiantStopPosition() {

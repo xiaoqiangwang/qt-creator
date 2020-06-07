@@ -8,6 +8,7 @@ HEADERS += \
     dynamiccapabilities.h \
     languageclient_global.h \
     languageclientcompletionassist.h \
+    languageclientformatter.h \
     languageclientfunctionhint.h \
     languageclienthoverhandler.h \
     languageclientinterface.h \
@@ -17,7 +18,9 @@ HEADERS += \
     languageclientquickfix.h \
     languageclientsettings.h \
     languageclientutils.h \
-    locatorfilter.h
+    locatorfilter.h \
+    lsplogger.h \
+    semantichighlightsupport.h
 
 
 SOURCES += \
@@ -25,6 +28,7 @@ SOURCES += \
     documentsymbolcache.cpp \
     dynamiccapabilities.cpp \
     languageclientcompletionassist.cpp \
+    languageclientformatter.cpp \
     languageclientfunctionhint.cpp \
     languageclienthoverhandler.cpp \
     languageclientinterface.cpp \
@@ -34,7 +38,9 @@ SOURCES += \
     languageclientquickfix.cpp \
     languageclientsettings.cpp \
     languageclientutils.cpp \
-    locatorfilter.cpp
+    locatorfilter.cpp \
+    lsplogger.cpp \
+    semantichighlightsupport.cpp
 
 RESOURCES += \
     languageclient.qrc

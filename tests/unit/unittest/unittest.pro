@@ -48,7 +48,7 @@ QMAKE_SUBSTITUTES += cpptoolsjson
 DEFINES += CPPTOOLS_JSON=\"R\\\"xxx($${cpptoolsjson.output})xxx\\\"\"
 
 SOURCES += \
-    directorypathcompressor-test.cpp \
+    clangindexingsettingsmanager-test.cpp \
     clangpathwatcher-test.cpp \
     clangqueryexamplehighlightmarker-test.cpp \
     clangqueryhighlightmarker-test.cpp \
@@ -57,6 +57,7 @@ SOURCES += \
     cppprojectfilecategorizer-test.cpp \
     cppprojectinfogenerator-test.cpp \
     cppprojectpartchooser-test.cpp \
+    directorypathcompressor-test.cpp \
     fakeprocess.cpp \
     filepath-test.cpp \
     filepathview-test.cpp \
@@ -69,6 +70,7 @@ SOURCES += \
     pchmanagerclientserverinprocess-test.cpp \
     pchmanagerclient-test.cpp \
     pchmanagerserver-test.cpp \
+    preprocessormacrocollector-test.cpp \
     processevents-utilities.cpp \
     projectpartsmanager-test.cpp \
     projectpartsstorage-test.cpp \
@@ -105,6 +107,7 @@ SOURCES += \
     symbolindexertaskqueue-test.cpp \
     refactoringprojectupdater-test.cpp \
     processormanager-test.cpp \
+    task.cpp \
     taskscheduler-test.cpp \
     compileroptionsbuilder-test.cpp \
     progresscounter-test.cpp \
@@ -118,7 +121,8 @@ SOURCES += \
     commandlinebuilder-test.cpp \
     headerpathfilter-test.cpp \
     toolchainargumentscache-test.cpp \
-    modifiedtimechecker-test.cpp
+    modifiedtimechecker-test.cpp \
+    readexporteddiagnostics-test.cpp
 
 !isEmpty(LIBCLANG_LIBS) {
 SOURCES += \
@@ -134,7 +138,6 @@ SOURCES += \
     clangdocumentprocessors-test.cpp \
     clangdocumentprocessor-test.cpp \
     clangdocuments-test.cpp \
-    clangdocumentsuspenderresumer-test.cpp \
     clangdocument-test.cpp \
     clangfixitoperation-test.cpp \
     clangfollowsymbol-test.cpp \
@@ -142,7 +145,6 @@ SOURCES += \
     clangjobqueue-test.cpp \
     clangjobs-test.cpp \
     clangparsesupportivetranslationunitjob-test.cpp \
-    clangreferencescollector-test.cpp \
     clangrequestannotationsjob-test.cpp \
     clangrequestreferencesjob-test.cpp \
     clangresumedocumentjob-test.cpp \
@@ -173,7 +175,6 @@ SOURCES += \
     sqlitetable-test.cpp \
     sqlstatementbuilder-test.cpp \
     token-test.cpp \
-    tokenprocessor-test.cpp \
     translationunitupdater-test.cpp \
     unsavedfiles-test.cpp \
     unsavedfile-test.cpp \
@@ -183,9 +184,11 @@ SOURCES += \
 !isEmpty(LIBTOOLING_LIBS) {
 SOURCES += \
     gtest-llvm-printing.cpp \
+    clangdocumentsuspenderresumer-test.cpp \
     clangquerygatherer-test.cpp \
     clangqueryprojectfindfilter-test.cpp \
     clangquery-test.cpp \
+    clangreferencescollector-test.cpp \
     gtest-clang-printing.cpp \
     pchcreator-test.cpp \
     refactoringclientserverinprocess-test.cpp \
@@ -198,7 +201,8 @@ SOURCES += \
     symbolscollector-test.cpp \
     testclangtool.cpp \
     usedmacrocollector-test.cpp \
-    builddependencycollector-test.cpp
+    builddependencycollector-test.cpp \
+    tokenprocessor-test.cpp
 }
 
 !isEmpty(CLANGFORMAT_LIBS) {

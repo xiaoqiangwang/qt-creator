@@ -25,9 +25,9 @@
 
 #include "nimcompilerbuildstep.h"
 #include "nimbuildconfiguration.h"
-#include "nimconstants.h"
+#include "nimbuildsystem.h"
 #include "nimcompilerbuildstepconfigwidget.h"
-#include "nimproject.h"
+#include "nimconstants.h"
 #include "nimtoolchain.h"
 
 #include <projectexplorer/buildconfiguration.h>
@@ -89,17 +89,12 @@ private:
         else
             return;
 
-        Task task(type,
-                  message,
-                  Utils::FilePath::fromUserInput(filename),
-                  lineNumber,
-                  ProjectExplorer::Constants::TASK_CATEGORY_COMPILE);
-        emit addTask(task);
+        emit addTask(CompileTask(type, message, FilePath::fromUserInput(filename), lineNumber));
     }
 };
 
-NimCompilerBuildStep::NimCompilerBuildStep(BuildStepList *parentList)
-    : AbstractProcessStep(parentList, Constants::C_NIMCOMPILERBUILDSTEP_ID)
+NimCompilerBuildStep::NimCompilerBuildStep(BuildStepList *parentList, Core::Id id)
+    : AbstractProcessStep(parentList, id)
 {
     setDefaultDisplayName(tr(Constants::C_NIMCOMPILERBUILDSTEP_DISPLAY));
     setDisplayName(tr(Constants::C_NIMCOMPILERBUILDSTEP_DISPLAY));
@@ -206,7 +201,6 @@ void NimCompilerBuildStep::updateProcessParameters()
 {
     updateOutFilePath();
     updateCommand();
-    updateArguments();
     updateWorkingDirectory();
     updateEnvironment();
     emit processParametersChanged();
@@ -220,16 +214,6 @@ void NimCompilerBuildStep::updateOutFilePath()
     setOutFilePath(bc->buildDirectory().pathAppended(targetName));
 }
 
-void NimCompilerBuildStep::updateCommand()
-{
-    QTC_ASSERT(target(), return);
-    QTC_ASSERT(target()->kit(), return);
-    Kit *kit = target()->kit();
-    auto tc = dynamic_cast<NimToolChain*>(ToolChainKitAspect::toolChain(kit, Constants::C_NIMLANGUAGE_ID));
-    QTC_ASSERT(tc, return);
-    processParameters()->setCommand(tc->compilerCommand());
-}
-
 void NimCompilerBuildStep::updateWorkingDirectory()
 {
     auto bc = qobject_cast<NimBuildConfiguration *>(buildConfiguration());
@@ -237,38 +221,38 @@ void NimCompilerBuildStep::updateWorkingDirectory()
     processParameters()->setWorkingDirectory(bc->buildDirectory());
 }
 
-void NimCompilerBuildStep::updateArguments()
+void NimCompilerBuildStep::updateCommand()
 {
     auto bc = qobject_cast<NimBuildConfiguration *>(buildConfiguration());
     QTC_ASSERT(bc, return);
 
-    QStringList arguments;
-    arguments << QStringLiteral("c");
+    QTC_ASSERT(target(), return);
+    QTC_ASSERT(target()->kit(), return);
+    Kit *kit = target()->kit();
+    auto tc = dynamic_cast<NimToolChain*>(ToolChainKitAspect::toolChain(kit, Constants::C_NIMLANGUAGE_ID));
+    QTC_ASSERT(tc, return);
 
-    switch (m_defaultOptions) {
-    case Release:
-        arguments << QStringLiteral("-d:release");
-        break;
-    case Debug:
-        arguments << QStringLiteral("--debugInfo")
-                  << QStringLiteral("--lineDir:on");
-        break;
-    default:
-        break;
+    CommandLine cmd{tc->compilerCommand()};
+
+    cmd.addArg("c");
+
+    if (m_defaultOptions == Release)
+        cmd.addArg("-d:release");
+    else if (m_defaultOptions == Debug)
+        cmd.addArgs({"--debugInfo", "--lineDir:on"});
+
+    cmd.addArg("--out:" + m_outFilePath.toString());
+    cmd.addArg("--nimCache:" + bc->cacheDirectory().toString());
+
+    for (const QString &arg : m_userCompilerOptions) {
+        if (!arg.isEmpty())
+            cmd.addArg(arg);
     }
 
-    arguments << QStringLiteral("--out:%1").arg(m_outFilePath.toString());
-    arguments << QStringLiteral("--nimCache:%1").arg(bc->cacheDirectory().toString());
+    if (!m_targetNimFile.isEmpty())
+        cmd.addArg(m_targetNimFile.toString());
 
-    arguments << m_userCompilerOptions;
-    arguments << m_targetNimFile.toString();
-
-    // Remove empty args
-    auto predicate = [](const QString &str) { return str.isEmpty(); };
-    auto it = std::remove_if(arguments.begin(), arguments.end(), predicate);
-    arguments.erase(it, arguments.end());
-
-    processParameters()->setArguments(arguments.join(QChar::Space));
+    processParameters()->setCommandLine(cmd);
 }
 
 void NimCompilerBuildStep::updateEnvironment()
@@ -282,7 +266,9 @@ void NimCompilerBuildStep::updateTargetNimFile()
 {
     if (!m_targetNimFile.isEmpty())
         return;
-    const Utils::FilePathList nimFiles = static_cast<NimProject *>(project())->nimFiles();
+    const Utils::FilePaths nimFiles = project()->files([](const Node *n) {
+        return Project::AllFiles(n) && n->path().endsWith(".nim");
+    });
     if (!nimFiles.isEmpty())
         setTargetNimFile(nimFiles.at(0));
 }
@@ -336,20 +322,18 @@ void NimPlugin::testNimParser_data()
             << QString::fromLatin1("main.nim(23, 1) Error: undeclared identifier: 'x'")
             << OutputParserTester::STDERR
             << QString("") << QString("main.nim(23, 1) Error: undeclared identifier: 'x'\n")
-            << Tasks({Task(Task::Error,
-                            "Error: undeclared identifier: 'x'",
-                            Utils::FilePath::fromUserInput("main.nim"), 23,
-                            ProjectExplorer::Constants::TASK_CATEGORY_COMPILE)})
+            << Tasks({CompileTask(Task::Error,
+                                  "Error: undeclared identifier: 'x'",
+                                  FilePath::fromUserInput("main.nim"), 23)})
             << QString();
 
     QTest::newRow("Parse warning string")
             << QString::fromLatin1("lib/pure/parseopt.nim(56, 34) Warning: quoteIfContainsWhite is deprecated [Deprecated]")
             << OutputParserTester::STDERR
             << QString("") << QString("lib/pure/parseopt.nim(56, 34) Warning: quoteIfContainsWhite is deprecated [Deprecated]\n")
-            << Tasks({Task(Task::Warning,
-                            "Warning: quoteIfContainsWhite is deprecated [Deprecated]",
-                            Utils::FilePath::fromUserInput("lib/pure/parseopt.nim"), 56,
-                            ProjectExplorer::Constants::TASK_CATEGORY_COMPILE)})
+            << Tasks({CompileTask(Task::Warning,
+                                  "Warning: quoteIfContainsWhite is deprecated [Deprecated]",
+                                   FilePath::fromUserInput("lib/pure/parseopt.nim"), 56)})
             << QString();
 }
 

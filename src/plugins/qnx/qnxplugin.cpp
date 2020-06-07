@@ -55,6 +55,7 @@
 #include <projectexplorer/toolchain.h>
 
 #include <remotelinux/genericdirectuploadstep.h>
+#include <remotelinux/makeinstallstep.h>
 #include <remotelinux/remotelinuxcheckforfreediskspacestep.h>
 
 #include <qtsupport/qtkitinformation.h>
@@ -65,6 +66,13 @@ using namespace ProjectExplorer;
 
 namespace Qnx {
 namespace Internal {
+
+class QnxUploadStep : public RemoteLinux::GenericDirectUploadStep
+{
+public:
+    QnxUploadStep(BuildStepList *bsl, Core::Id id) : GenericDirectUploadStep(bsl, id, false) {}
+    static Core::Id stepId() { return "Qnx.DirectUploadStep"; }
+};
 
 template <class Step>
 class GenericQnxDeployStepFactory : public BuildStepFactory
@@ -90,9 +98,14 @@ public:
         addSupportedTargetDeviceType(Constants::QNX_QNX_OS_TYPE);
         setUseDeploymentDataView();
 
+        addInitialStep(RemoteLinux::MakeInstallStep::stepId(), [](Target *target) {
+            const Project * const prj = target->project();
+            return prj->deploymentKnowledge() == DeploymentKnowledge::Bad
+                    && prj->hasMakeInstallEquivalent();
+        });
         addInitialStep(DeviceCheckBuildStep::stepId());
         addInitialStep(RemoteLinux::RemoteLinuxCheckForFreeDiskSpaceStep::stepId());
-        addInitialStep(RemoteLinux::GenericDirectUploadStep::stepId());
+        addInitialStep(QnxUploadStep::stepId());
     }
 };
 
@@ -108,19 +121,29 @@ public:
     QnxQtVersionFactory qtVersionFactory;
     QnxDeviceFactory deviceFactory;
     QnxDeployConfigurationFactory deployConfigFactory;
-    GenericQnxDeployStepFactory<RemoteLinux::GenericDirectUploadStep> directUploadDeployFactory;
+    GenericQnxDeployStepFactory<QnxUploadStep> directUploadDeployFactory;
     GenericQnxDeployStepFactory<RemoteLinux::RemoteLinuxCheckForFreeDiskSpaceStep> checkForFreeDiskSpaceDeployFactory;
+    GenericQnxDeployStepFactory<RemoteLinux::MakeInstallStep> makeInstallDeployFactory;
     GenericQnxDeployStepFactory<DeviceCheckBuildStep> checkBuildDeployFactory;
     QnxRunConfigurationFactory runConfigFactory;
     QnxSettingsPage settingsPage;
     QnxToolChainFactory toolChainFactory;
 
-    SimpleRunWorkerFactory<SimpleTargetRunner, QnxRunConfiguration>
-        runWorkerFactory{ProjectExplorer::Constants::NORMAL_RUN_MODE};
-    SimpleRunWorkerFactory<QnxDebugSupport, QnxRunConfiguration>
-        debugWorkerFactory{ProjectExplorer::Constants::DEBUG_RUN_MODE};
-    SimpleRunWorkerFactory<QnxQmlProfilerSupport, QnxRunConfiguration>
-        qmlProfilerWorkerFactory;
+    RunWorkerFactory runWorkerFactory{
+        RunWorkerFactory::make<SimpleTargetRunner>(),
+        {ProjectExplorer::Constants::NORMAL_RUN_MODE},
+        {runConfigFactory.id()}
+    };
+    RunWorkerFactory debugWorkerFactory{
+        RunWorkerFactory::make<QnxDebugSupport>(),
+        {ProjectExplorer::Constants::DEBUG_RUN_MODE},
+        {runConfigFactory.id()}
+    };
+    RunWorkerFactory qmlProfilerWorkerFactory{
+        RunWorkerFactory::make<QnxQmlProfilerSupport>(),
+        {}, // FIXME: Shouldn't this use the run mode id somehow?
+        {runConfigFactory.id()}
+    };
 };
 
 static QnxPluginPrivate *dd = nullptr;

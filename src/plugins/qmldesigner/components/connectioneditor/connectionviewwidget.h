@@ -29,6 +29,7 @@
 #include <QAbstractItemView>
 
 QT_BEGIN_NAMESPACE
+class QShortcut;
 class QToolButton;
 class QTableView;
 class QListView;
@@ -37,6 +38,8 @@ QT_END_NAMESPACE
 namespace QmlDesigner {
 
 namespace Ui { class ConnectionViewWidget; }
+
+class ActionEditor;
 
 namespace Internal {
 
@@ -88,6 +91,9 @@ signals:
     void setEnabledAddButton(bool enabled);
     void setEnabledRemoveButton(bool enabled);
 
+protected:
+    void contextMenuEvent(QContextMenuEvent *event) override;
+
 private:
     void handleTabChanged(int i);
     void removeButtonClicked();
@@ -95,6 +101,8 @@ private:
 
 private:
     Ui::ConnectionViewWidget *ui;
+    QmlDesigner::ActionEditor *m_actionEditor;
+    QShortcut *m_deleteShortcut;
 };
 
 } // namespace Internal

@@ -25,7 +25,6 @@
 
 #include "ldparser.h"
 #include "projectexplorerconstants.h"
-#include "task.h"
 
 #include <utils/qtcassert.h>
 
@@ -58,6 +57,9 @@ LdParser::LdParser()
 void LdParser::stdError(const QString &line)
 {
     QString lne = rightTrimmed(line);
+    if (!lne.isEmpty() && !lne.at(0).isSpace() && !m_incompleteTask.isNull())
+        flush();
+
     if (lne.startsWith(QLatin1String("TeamBuilder "))
             || lne.startsWith(QLatin1String("distcc["))
             || lne.contains(QLatin1String("ar: creating "))) {
@@ -65,23 +67,29 @@ void LdParser::stdError(const QString &line)
         return;
     }
 
-    if (lne.startsWith(QLatin1String("collect2:"))) {
-        Task task = Task(Task::Error,
-                         lne /* description */,
-                         Utils::FilePath() /* filename */,
-                         -1 /* linenumber */,
-                         Constants::TASK_CATEGORY_COMPILE);
-        emit addTask(task, 1);
+    // ld on macOS
+    if (lne.startsWith("Undefined symbols for architecture") && lne.endsWith(":")) {
+        m_incompleteTask = CompileTask(Task::Error, lne);
+        return;
+    }
+    if (!m_incompleteTask.isNull() && lne.startsWith("  ")) {
+        m_incompleteTask.description.append('\n').append(lne);
+        static const QRegularExpression locRegExp("    (?<symbol>\\S+) in (?<file>\\S+)");
+        const QRegularExpressionMatch match = locRegExp.match(lne);
+        if (match.hasMatch())
+            m_incompleteTask.setFile(Utils::FilePath::fromString(match.captured("file")));
+        return;
+    }
+
+    if (lne.startsWith("collect2:") || lne.startsWith("collect2.exe:")) {
+        emit addTask(CompileTask(Task::Error, lne /* description */), 1);
         return;
     }
 
     QRegularExpressionMatch match = m_ranlib.match(lne);
     if (match.hasMatch()) {
         QString description = match.captured(2);
-        Task task(Task::Warning, description,
-                  Utils::FilePath(), -1,
-                  Constants::TASK_CATEGORY_COMPILE);
-        emit addTask(task, 1);
+        emit addTask(CompileTask(Task::Warning, description), 1);
         return;
     }
 
@@ -95,9 +103,7 @@ void LdParser::stdError(const QString &line)
         } else if (description.startsWith(QLatin1String("fatal: ")))  {
             description = description.mid(7);
         }
-        Task task(type, description, Utils::FilePath() /* filename */, -1 /* line */,
-                  Constants::TASK_CATEGORY_COMPILE);
-        emit addTask(task, 1);
+        emit addTask(CompileTask(type, description), 1);
         return;
     }
 
@@ -127,10 +133,18 @@ void LdParser::stdError(const QString &line)
             type = Task::Warning;
             description = description.mid(9);
         }
-        Task task(type, description, filename, lineno, Constants::TASK_CATEGORY_COMPILE);
-        emit addTask(task, 1);
+        emit addTask(CompileTask(type, description, filename, lineno), 1);
         return;
     }
 
     IOutputParser::stdError(line);
+}
+
+void LdParser::doFlush()
+{
+    if (m_incompleteTask.isNull())
+        return;
+    const Task t = m_incompleteTask;
+    m_incompleteTask.clear();
+    emit addTask(t);
 }

@@ -1,5 +1,5 @@
 add_qtc_plugin(Debugger
-  DEPENDS LanguageUtils QmlDebug qmljs QtcSsh registryaccess
+  DEPENDS LanguageUtils QmlDebug QmlJS QtcSsh registryaccess
   PLUGIN_DEPENDS Core CppTools ProjectExplorer QtSupport TextEditor
   PLUGIN_RECOMMENDS QmakeProjectManager
   SOURCES
@@ -64,6 +64,7 @@ add_qtc_plugin(Debugger
     namedemangler/parsetreenodes.cpp namedemangler/parsetreenodes.h
     outputcollector.cpp outputcollector.h
     pdb/pdbengine.cpp pdb/pdbengine.h
+    peripheralregisterhandler.cpp peripheralregisterhandler.h
     procinterrupt.cpp procinterrupt.h
     qml/interactiveinterpreter.cpp qml/interactiveinterpreter.h
     #qml/qmlcppengine.cpp qml/qmlcppengine.h
@@ -88,6 +89,11 @@ add_qtc_plugin(Debugger
     threaddata.h
     threadshandler.cpp threadshandler.h
     unstartedappwatcherdialog.cpp unstartedappwatcherdialog.h
+    uvsc/uvscclient.cpp uvsc/uvscclient.h
+    uvsc/uvscdatatypes.h
+    uvsc/uvscengine.cpp uvsc/uvscengine.h
+    uvsc/uvscfunctions.h
+    uvsc/uvscutils.cpp uvsc/uvscutils.h
     watchdata.cpp watchdata.h
     watchdelegatewidgets.cpp watchdelegatewidgets.h
     watchhandler.cpp watchhandler.h

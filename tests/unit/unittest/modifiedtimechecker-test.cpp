@@ -50,19 +50,30 @@ protected:
 
     NiceMock<MockFileSystem> mockFileSystem;
     ClangBackEnd::ModifiedTimeChecker<> checker{mockFileSystem};
-    SourceEntries upToDateEntries = {{1, SourceType::UserInclude, 100},
+    SourceEntries upToDateEntries = {{1, SourceType::UserInclude, 51},
                                      {2, SourceType::SystemInclude, 30},
-                                     {3, SourceType::UserInclude, 100},
-                                     {4, SourceType::SystemInclude, 30}};
+                                     {3, SourceType::UserInclude, 50},
+                                     {4, SourceType::SystemInclude, 31}};
+    SourceEntries equalEntries = {{1, SourceType::UserInclude, 50},
+                                  {2, SourceType::SystemInclude, 30},
+                                  {3, SourceType::UserInclude, 50},
+                                  {4, SourceType::SystemInclude, 30}};
     SourceEntries notUpToDateEntries = {{1, SourceType::UserInclude, 50},
-                                        {2, SourceType::SystemInclude, 20},
-                                        {3, SourceType::UserInclude, 100},
+                                        {2, SourceType::SystemInclude, 29},
+                                        {3, SourceType::UserInclude, 50},
                                         {4, SourceType::SystemInclude, 30}};
 };
 
 TEST_F(ModifiedTimeChecker, IsUpToDate)
 {
     auto isUpToDate = checker.isUpToDate(upToDateEntries);
+
+    ASSERT_TRUE(isUpToDate);
+}
+
+TEST_F(ModifiedTimeChecker, EqualEntriesAreUpToDate)
+{
+    auto isUpToDate = checker.isUpToDate(equalEntries);
 
     ASSERT_TRUE(isUpToDate);
 }
@@ -118,65 +129,6 @@ TEST_F(ModifiedTimeChecker, IsNotUpToDateAnyMoreAfterUpdating)
     checker.pathsChanged({1, 2, 3});
 
     ASSERT_FALSE(checker.isUpToDate(upToDateEntries));
-}
-
-TEST_F(ModifiedTimeChecker, Reset)
-{
-    checker.isUpToDate(upToDateEntries);
-
-    checker.reset({2, 3});
-
-    ASSERT_FALSE(checker.isUpToDate(upToDateEntries));
-}
-
-TEST_F(ModifiedTimeChecker, UpdateNonResetedId)
-{
-    checker.isUpToDate(upToDateEntries);
-
-    checker.reset({2, 3});
-
-    ASSERT_TRUE(checker.isUpToDate({upToDateEntries[0]}));
-}
-
-TEST_F(ModifiedTimeChecker, ResetTwoTimes)
-{
-    checker.isUpToDate(upToDateEntries);
-    checker.reset({2, 3});
-
-    checker.reset({2, 3});
-
-    ASSERT_FALSE(checker.isUpToDate(upToDateEntries));
-    ASSERT_TRUE(checker.isUpToDate(upToDateEntries));
-}
-
-TEST_F(ModifiedTimeChecker, ResetSecondUpdate)
-{
-    checker.isUpToDate(upToDateEntries);
-    checker.reset({2, 3});
-    checker.isUpToDate(upToDateEntries);
-
-    auto isUpToDate = checker.isUpToDate(upToDateEntries);
-
-    ASSERT_TRUE(isUpToDate);
-}
-
-TEST_F(ModifiedTimeChecker, ResetPartialUpdate)
-{
-    checker.isUpToDate(upToDateEntries);
-    checker.reset({2, 3});
-    checker.isUpToDate({upToDateEntries[1]});
-
-    ASSERT_FALSE(checker.isUpToDate({upToDateEntries[2]}));
-}
-
-TEST_F(ModifiedTimeChecker, ResetMoreIds)
-{
-    checker.isUpToDate(upToDateEntries);
-    checker.reset({2, 3});
-
-    checker.reset({1, 5});
-
-    ASSERT_FALSE(checker.isUpToDate({upToDateEntries[2]}));
 }
 
 } // namespace

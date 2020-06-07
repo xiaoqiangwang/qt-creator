@@ -42,12 +42,13 @@ class TEXTEDITOR_EXPORT AssistProposalItemInterface
 {
 public:
     // We compare proposals by enum values, be careful changing their values
-    enum class PrefixMatch
+    enum class ProposalMatch
     {
         Full = 0,
         Exact = 1,
-        Lower = 2,
-        None = 3
+        Prefix = 2,
+        Infix = 3,
+        None = 4
     };
 
     AssistProposalItemInterface() = default;
@@ -70,12 +71,12 @@ public:
 
     inline int order() const { return m_order; }
     inline void setOrder(int order) { m_order = order; }
-    inline PrefixMatch prefixMatch() { return m_prefixMatch; }
-    inline void setPrefixMatch(PrefixMatch match) { m_prefixMatch = match; }
+    inline ProposalMatch proposalMatch() { return m_proposalMatch; }
+    inline void setProposalMatch(ProposalMatch match) { m_proposalMatch = match; }
 
 private:
     int m_order = 0;
-    PrefixMatch m_prefixMatch = PrefixMatch::None;
+    ProposalMatch m_proposalMatch = ProposalMatch::None;
 };
 
 } // namespace TextEditor

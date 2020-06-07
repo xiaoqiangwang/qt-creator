@@ -38,6 +38,7 @@ namespace DesignTools {
 class CurveItem;
 class CurveEditorModel;
 class Playhead;
+class PropertyTreeItem;
 
 class GraphicsView : public QGraphicsView
 {
@@ -45,16 +46,17 @@ class GraphicsView : public QGraphicsView
 
     friend class Playhead;
 
+signals:
+    void notifyFrameChanged(int frame);
+
 public:
     GraphicsView(CurveEditorModel *model, QWidget *parent = nullptr);
+
+    ~GraphicsView() override;
 
     CurveEditorModel *model() const;
 
     CurveEditorStyle editorStyle() const;
-
-    bool hasActiveItem() const;
-
-    bool hasActiveHandle() const;
 
     int mapTimeToX(double time) const;
 
@@ -88,19 +90,25 @@ public:
 
     QRectF defaultRasterRect() const;
 
+    void setLocked(PropertyTreeItem *item);
+
     void setStyle(const CurveEditorStyle &style);
 
     void setZoomX(double zoom, const QPoint &pivot = QPoint());
 
     void setZoomY(double zoom, const QPoint &pivot = QPoint());
 
-    void setCurrentFrame(int frame);
+    void setCurrentFrame(int frame, bool notify = true);
 
     void scrollContent(double x, double y);
 
     void reset(const std::vector<CurveItem *> &items);
 
+    void updateSelection(const std::vector<CurveItem *> &items);
+
     void setInterpolation(Keyframe::Interpolation interpol);
+
+    void toggleUnified();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -124,10 +132,6 @@ protected:
 private:
     void applyZoom(double x, double y, const QPoint &pivot = QPoint());
 
-    void insertKeyframe(double time, bool allVisibleCurves = false);
-
-    void deleteSelectedKeyframes();
-
     void drawGrid(QPainter *painter, const QRectF &rect);
 
 #if 0
@@ -140,7 +144,13 @@ private:
 
     void drawValueScale(QPainter *painter, const QRectF &rect);
 
+    void drawRangeBar(QPainter *painter, const QRectF &rect);
+
     double timeLabelInterval(QPainter *painter, double maxTime);
+
+    QRectF rangeMinHandle(const QRectF &rect);
+
+    QRectF rangeMaxHandle(const QRectF &rect);
 
 private:
     double m_zoomX;
@@ -149,7 +159,7 @@ private:
 
     QTransform m_transform;
 
-    GraphicsScene m_scene;
+    GraphicsScene *m_scene;
 
     CurveEditorModel *m_model;
 

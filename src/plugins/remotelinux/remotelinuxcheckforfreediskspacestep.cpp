@@ -34,65 +34,37 @@
 using namespace ProjectExplorer;
 
 namespace RemoteLinux {
-namespace Internal {
 
-const char PathToCheckAspectId[] = "PathToCheckAspectId";
-const char PathToCheckKey[] = "RemoteLinux.CheckForFreeDiskSpaceStep.PathToCheck";
-
-const char RequiredSpaceAspectId[] = "RequiredSpaceAspectId";
-const char RequiredSpaceKey[] = "RemoteLinux.CheckForFreeDiskSpaceStep.RequiredSpace";
-
-class RemoteLinuxCheckForFreeDiskSpaceStepPrivate
+RemoteLinuxCheckForFreeDiskSpaceStep::RemoteLinuxCheckForFreeDiskSpaceStep
+    (BuildStepList *bsl, Core::Id id)
+        : AbstractRemoteLinuxDeployStep(bsl, id)
 {
-public:
-    RemoteLinuxCheckForFreeDiskSpaceService deployService;
-};
-
-} // namespace Internal
-
-using namespace Internal;
-
-RemoteLinuxCheckForFreeDiskSpaceStep::RemoteLinuxCheckForFreeDiskSpaceStep(BuildStepList *bsl)
-        : AbstractRemoteLinuxDeployStep(bsl, stepId())
-{
-    d = new Internal::RemoteLinuxCheckForFreeDiskSpaceStepPrivate;
     setDefaultDisplayName(displayName());
 
+    auto service = createDeployService<RemoteLinuxCheckForFreeDiskSpaceService>();
+
     auto pathToCheckAspect = addAspect<BaseStringAspect>();
-    pathToCheckAspect->setId(PathToCheckAspectId);
-    pathToCheckAspect->setSettingsKey(PathToCheckKey);
+    pathToCheckAspect->setSettingsKey("RemoteLinux.CheckForFreeDiskSpaceStep.PathToCheck");
     pathToCheckAspect->setDisplayStyle(BaseStringAspect::LineEditDisplay);
     pathToCheckAspect->setValue("/");
     pathToCheckAspect->setLabelText(tr("Remote path to check for free space:"));
 
     auto requiredSpaceAspect = addAspect<BaseIntegerAspect>();
-    requiredSpaceAspect->setId(RequiredSpaceAspectId);
-    requiredSpaceAspect->setSettingsKey(RequiredSpaceKey);
+    requiredSpaceAspect->setSettingsKey("RemoteLinux.CheckForFreeDiskSpaceStep.RequiredSpace");
     requiredSpaceAspect->setLabel(tr("Required disk space:"));
     requiredSpaceAspect->setDisplayScaleFactor(1024*1024);
     requiredSpaceAspect->setValue(5*1024*1024);
     requiredSpaceAspect->setSuffix(tr("MB"));
     requiredSpaceAspect->setRange(1, std::numeric_limits<int>::max());
+
+    setInternalInitializer([service, pathToCheckAspect, requiredSpaceAspect] {
+        service->setPathToCheck(pathToCheckAspect->value());
+        service->setRequiredSpaceInBytes(requiredSpaceAspect->value());
+        return CheckResult::success();
+    });
 }
 
-RemoteLinuxCheckForFreeDiskSpaceStep::~RemoteLinuxCheckForFreeDiskSpaceStep()
-{
-    delete d;
-}
-
-CheckResult RemoteLinuxCheckForFreeDiskSpaceStep::initInternal()
-{
-    d->deployService.setPathToCheck(
-        static_cast<BaseStringAspect *>(aspect(PathToCheckAspectId))->value());
-    d->deployService.setRequiredSpaceInBytes(
-        static_cast<BaseIntegerAspect *>(aspect(RequiredSpaceAspectId))->value());
-    return CheckResult::success();
-}
-
-AbstractRemoteLinuxDeployService *RemoteLinuxCheckForFreeDiskSpaceStep::deployService() const
-{
-    return &d->deployService;
-}
+RemoteLinuxCheckForFreeDiskSpaceStep::~RemoteLinuxCheckForFreeDiskSpaceStep() = default;
 
 Core::Id RemoteLinuxCheckForFreeDiskSpaceStep::stepId()
 {

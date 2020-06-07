@@ -39,6 +39,7 @@
 #include <coreplugin/variablechooser.h>
 #include <ssh/sshconnection.h>
 #include <utils/algorithm.h>
+#include <utils/elidinglabel.h>
 #include <utils/environment.h>
 #include <utils/environmentdialog.h>
 #include <utils/macroexpander.h>
@@ -94,12 +95,6 @@ private:
             m_chooser->setFileName(SysRootKitAspect::sysRoot(m_kit));
     }
 
-    void setPalette(const QPalette &p) override
-    {
-        KitAspectWidget::setPalette(p);
-        m_chooser->setOkColor(p.color(QPalette::Active, QPalette::Text));
-    }
-
     void pathWasChanged()
     {
         m_ignoreChange = true;
@@ -135,14 +130,14 @@ Tasks SysRootKitAspect::validate(const Kit *k) const
     const QFileInfo fi = dir.toFileInfo();
 
     if (!fi.exists()) {
-        result << Task(Task::Warning, tr("Sys Root \"%1\" does not exist in the file system.").arg(dir.toUserOutput()),
-                       Utils::FilePath(), -1, Core::Id(Constants::TASK_CATEGORY_BUILDSYSTEM));
+        result << BuildSystemTask(Task::Warning,
+                    tr("Sys Root \"%1\" does not exist in the file system.").arg(dir.toUserOutput()));
     } else if (!fi.isDir()) {
-        result << Task(Task::Warning, tr("Sys Root \"%1\" is not a directory.").arg(dir.toUserOutput()),
-                       Utils::FilePath(), -1, Core::Id(Constants::TASK_CATEGORY_BUILDSYSTEM));
+        result << BuildSystemTask(Task::Warning,
+                    tr("Sys Root \"%1\" is not a directory.").arg(dir.toUserOutput()));
     } else if (QDir(dir.toString()).entryList(QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty()) {
-        result << Task(Task::Warning, tr("Sys Root \"%1\" is empty.").arg(dir.toUserOutput()),
-                       Utils::FilePath(), -1, Core::Id(Constants::TASK_CATEGORY_BUILDSYSTEM));
+        result << BuildSystemTask(Task::Warning,
+                    tr("Sys Root \"%1\" is empty.").arg(dir.toUserOutput()));
     }
     return result;
 }
@@ -375,8 +370,7 @@ Tasks ToolChainKitAspect::validate(const Kit *k) const
 
     const QList<ToolChain*> tcList = toolChains(k);
     if (tcList.isEmpty()) {
-        result << Task(Task::Warning, ToolChainKitAspect::msgNoToolChainInTarget(),
-                       Utils::FilePath(), -1, Core::Id(Constants::TASK_CATEGORY_BUILDSYSTEM));
+        result << BuildSystemTask(Task::Warning, ToolChainKitAspect::msgNoToolChainInTarget());
     } else {
         QSet<Abi> targetAbis;
         foreach (ToolChain *tc, tcList) {
@@ -384,9 +378,9 @@ Tasks ToolChainKitAspect::validate(const Kit *k) const
             result << tc->validateKit(k);
         }
         if (targetAbis.count() != 1) {
-            result << Task(Task::Error, tr("Compilers produce code for different ABIs: %1")
-                           .arg(Utils::transform<QList>(targetAbis, &Abi::toString).join(", ")),
-                           Utils::FilePath(), -1, Core::Id(Constants::TASK_CATEGORY_BUILDSYSTEM));
+            result << BuildSystemTask(Task::Error,
+                        tr("Compilers produce code for different ABIs: %1")
+                           .arg(Utils::transform<QList>(targetAbis, &Abi::toString).join(", ")));
         }
     }
     return result;
@@ -733,13 +727,15 @@ void ToolChainKitAspect::kitsWereLoaded()
 
 void ToolChainKitAspect::toolChainUpdated(ToolChain *tc)
 {
-    for (Kit *k : KitManager::kits([tc](const Kit *k) { return toolChain(k, tc->language()) == tc; }))
-        notifyAboutUpdate(k);
+    for (Kit *k : KitManager::kits()) {
+        if (toolChain(k, tc->language()) == tc)
+            notifyAboutUpdate(k);
+    }
 }
 
 void ToolChainKitAspect::toolChainRemoved(ToolChain *tc)
 {
-    Q_UNUSED(tc);
+    Q_UNUSED(tc)
     foreach (Kit *k, KitManager::kits())
         fix(k);
 }
@@ -811,7 +807,7 @@ void DeviceTypeKitAspect::setup(Kit *k)
 
 Tasks DeviceTypeKitAspect::validate(const Kit *k) const
 {
-    Q_UNUSED(k);
+    Q_UNUSED(k)
     return {};
 }
 
@@ -976,11 +972,9 @@ Tasks DeviceKitAspect::validate(const Kit *k) const
     IDevice::ConstPtr dev = DeviceKitAspect::device(k);
     Tasks result;
     if (dev.isNull())
-        result.append(Task(Task::Warning, tr("No device set."),
-                           Utils::FilePath(), -1, Core::Id(Constants::TASK_CATEGORY_BUILDSYSTEM)));
+        result.append(BuildSystemTask(Task::Warning, tr("No device set.")));
     else if (!dev->isCompatibleWith(k))
-        result.append(Task(Task::Error, tr("Device is incompatible with this kit."),
-                           Utils::FilePath(), -1, Core::Id(Constants::TASK_CATEGORY_BUILDSYSTEM)));
+        result.append(BuildSystemTask(Task::Error, tr("Device is incompatible with this kit.")));
 
     return result;
 }
@@ -1127,7 +1121,7 @@ class EnvironmentKitAspectWidget : public KitAspectWidget
 public:
     EnvironmentKitAspectWidget(Kit *workingCopy, const KitAspect *ki)
         : KitAspectWidget(workingCopy, ki),
-          m_summaryLabel(new QLabel),
+          m_summaryLabel(new Utils::ElidingLabel),
           m_manageButton(new QPushButton),
           m_mainWidget(new QWidget)
     {
@@ -1150,41 +1144,36 @@ private:
 
     void refresh() override
     {
-        const QList<Utils::EnvironmentItem> changes = currentEnvironment();
-        QString shortSummary = Utils::EnvironmentItem::toStringList(changes).join(QLatin1String("; "));
-        QFontMetrics fm(m_summaryLabel->font());
-        shortSummary = fm.elidedText(shortSummary, Qt::ElideRight, m_summaryLabel->width());
+        const Utils::EnvironmentItems changes = currentEnvironment();
+        const QString shortSummary = Utils::EnvironmentItem::toStringList(changes).join("; ");
         m_summaryLabel->setText(shortSummary.isEmpty() ? tr("No changes to apply.") : shortSummary);
     }
 
     void editEnvironmentChanges()
     {
-        bool ok;
         Utils::MacroExpander *expander = m_kit->macroExpander();
         Utils::EnvironmentDialog::Polisher polisher = [expander](QWidget *w) {
             Core::VariableChooser::addSupportForChildWidgets(w, expander);
         };
-        QList<Utils::EnvironmentItem>
-                changes = Utils::EnvironmentDialog::getEnvironmentItems(&ok,
-                                                                        m_summaryLabel,
-                                                                        currentEnvironment(),
-                                                                        QString(),
-                                                                        polisher);
-        if (!ok)
+        auto changes = Utils::EnvironmentDialog::getEnvironmentItems(m_summaryLabel,
+                                                                     currentEnvironment(),
+                                                                     QString(),
+                                                                     polisher);
+        if (!changes)
             return;
 
         if (Utils::HostOsInfo::isWindowsHost()) {
             const Utils::EnvironmentItem forceMSVCEnglishItem("VSLANG", "1033");
-            if (m_vslangCheckbox->isChecked() && changes.indexOf(forceMSVCEnglishItem) < 0)
-                changes.append(forceMSVCEnglishItem);
+            if (m_vslangCheckbox->isChecked() && changes->indexOf(forceMSVCEnglishItem) < 0)
+                changes->append(forceMSVCEnglishItem);
         }
 
-        EnvironmentKitAspect::setEnvironmentChanges(m_kit, changes);
+        EnvironmentKitAspect::setEnvironmentChanges(m_kit, *changes);
     }
 
-    QList<Utils::EnvironmentItem> currentEnvironment() const
+    Utils::EnvironmentItems currentEnvironment() const
     {
-        QList<Utils::EnvironmentItem> changes = EnvironmentKitAspect::environmentChanges(m_kit);
+        Utils::EnvironmentItems changes = EnvironmentKitAspect::environmentChanges(m_kit);
 
         if (Utils::HostOsInfo::isWindowsHost()) {
             const Utils::EnvironmentItem forceMSVCEnglishItem("VSLANG", "1033");
@@ -1207,8 +1196,7 @@ private:
                                         "just forces UTF-8 output (may vary depending on the used MSVC "
                                         "compiler)."));
         connect(m_vslangCheckbox, &QCheckBox::toggled, this, [this](bool checked) {
-            QList<Utils::EnvironmentItem> changes
-                    = EnvironmentKitAspect::environmentChanges(m_kit);
+            Utils::EnvironmentItems changes = EnvironmentKitAspect::environmentChanges(m_kit);
             const Utils::EnvironmentItem forceMSVCEnglishItem("VSLANG", "1033");
             if (!checked && changes.indexOf(forceMSVCEnglishItem) >= 0)
                 changes.removeAll(forceMSVCEnglishItem);
@@ -1218,7 +1206,7 @@ private:
         });
     }
 
-    QLabel *m_summaryLabel;
+    Utils::ElidingLabel *m_summaryLabel;
     QPushButton *m_manageButton;
     QCheckBox *m_vslangCheckbox;
     QWidget *m_mainWidget;
@@ -1240,10 +1228,9 @@ Tasks EnvironmentKitAspect::validate(const Kit *k) const
     QTC_ASSERT(k, return result);
 
     const QVariant variant = k->value(EnvironmentKitAspect::id());
-    if (!variant.isNull() && !variant.canConvert(QVariant::List)) {
-        result.append(Task(Task::Error, tr("The environment setting value is invalid."),
-                           Utils::FilePath(), -1, Core::Id(Constants::TASK_CATEGORY_BUILDSYSTEM)));
-    }
+    if (!variant.isNull() && !variant.canConvert(QVariant::List))
+        result << BuildSystemTask(Task::Error, tr("The environment setting value is invalid."));
+
     return result;
 }
 
@@ -1254,7 +1241,7 @@ void EnvironmentKitAspect::fix(Kit *k)
     const QVariant variant = k->value(EnvironmentKitAspect::id());
     if (!variant.isNull() && !variant.canConvert(QVariant::List)) {
         qWarning("Kit \"%s\" has a wrong environment value set.", qPrintable(k->displayName()));
-        setEnvironmentChanges(k, QList<Utils::EnvironmentItem>());
+        setEnvironmentChanges(k, Utils::EnvironmentItems());
     }
 }
 
@@ -1283,14 +1270,14 @@ Core::Id EnvironmentKitAspect::id()
     return "PE.Profile.Environment";
 }
 
-QList<Utils::EnvironmentItem> EnvironmentKitAspect::environmentChanges(const Kit *k)
+Utils::EnvironmentItems EnvironmentKitAspect::environmentChanges(const Kit *k)
 {
      if (k)
          return Utils::EnvironmentItem::fromStringList(k->value(EnvironmentKitAspect::id()).toStringList());
-     return QList<Utils::EnvironmentItem>();
+     return Utils::EnvironmentItems();
 }
 
-void EnvironmentKitAspect::setEnvironmentChanges(Kit *k, const QList<Utils::EnvironmentItem> &changes)
+void EnvironmentKitAspect::setEnvironmentChanges(Kit *k, const Utils::EnvironmentItems &changes)
 {
     if (k)
         k->setValue(EnvironmentKitAspect::id(), Utils::EnvironmentItem::toStringList(changes));

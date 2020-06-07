@@ -25,7 +25,6 @@
 
 #pragma once
 
-#include "centralwidget.h"
 #include "helpviewer.h"
 #include "openpagesmanager.h"
 
@@ -92,8 +91,6 @@ public:
 
     void scaleUp();
     void scaleDown();
-
-    void setSource(const QUrl &name) override;
 
     void withFixedTopPosition(const std::function<void()> &action);
 

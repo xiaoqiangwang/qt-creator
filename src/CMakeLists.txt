@@ -1,13 +1,7 @@
-# Not in the main CMakeLists.txt file because some tests fail if we have the flags set as default
-list(APPEND DEFAULT_DEFINES
-  QT_CREATOR QT_NO_CAST_TO_ASCII QT_RESTRICTED_CAST_FROM_ASCII
-  QT_DISABLE_DEPRECATED_BEFORE=0x050900
-  QT_USE_FAST_OPERATOR_PLUS
-  QT_USE_FAST_CONCATENATION
-)
-
 add_library(app_version INTERFACE)
-target_include_directories(app_version INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
+target_include_directories(app_version
+  INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+  INTERFACE $<INSTALL_INTERFACE:include/src>)
 install(TARGETS app_version EXPORT QtCreator)
 
 add_subdirectory(libs)
@@ -55,6 +49,10 @@ if (NOT DEFINED add_qtc_plugin)
   include(\${CMAKE_CURRENT_LIST_DIR}/QtCreatorAPI.cmake)
 endif()
 
+if (NOT DEFINED add_translation_targets)
+  include(\${CMAKE_CURRENT_LIST_DIR}/QtCreatorTranslations.cmake)
+endif()
+
 if (NOT TARGET QtCreator::Core)
   include(\${CMAKE_CURRENT_LIST_DIR}/QtCreatorTargets.cmake)
 endif()
@@ -67,6 +65,7 @@ export(EXPORT QtCreator
 
 file(COPY
   ${PROJECT_SOURCE_DIR}/cmake/QtCreatorIDEBranding.cmake
+  ${PROJECT_SOURCE_DIR}/cmake/QtCreatorTranslations.cmake
   ${PROJECT_SOURCE_DIR}/cmake/QtCreatorAPI.cmake
   DESTINATION ${CMAKE_BINARY_DIR}/cmake
 )
@@ -75,6 +74,7 @@ file(COPY
 install(
   FILES
     ${PROJECT_SOURCE_DIR}/cmake/QtCreatorIDEBranding.cmake
+    ${PROJECT_SOURCE_DIR}/cmake/QtCreatorTranslations.cmake
     ${PROJECT_SOURCE_DIR}/cmake/QtCreatorAPI.cmake
     ${CMAKE_BINARY_DIR}/cmake/QtCreatorConfig.cmake
   DESTINATION lib/cmake/QtCreator

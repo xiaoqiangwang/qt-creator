@@ -120,7 +120,7 @@ QString LibraryDetailsController::libraryPlatformFilter() const
 void LibraryDetailsController::updateGui()
 {
     // read values from gui
-    m_platforms = nullptr;
+    m_platforms = {};
     if (libraryDetailsWidget()->linCheckBox->isChecked())
         m_platforms |= AddLibraryWizard::LinuxPlatform;
     if (libraryDetailsWidget()->macCheckBox->isChecked())
@@ -448,7 +448,7 @@ static QString generateLibsSnippet(AddLibraryWizard::Platforms platforms,
                                                                | AddLibraryWizard::WindowsMSVCPlatform);
 
     AddLibraryWizard::Platforms diffPlatforms = platforms ^ commonPlatforms;
-    AddLibraryWizard::Platforms generatedPlatforms = nullptr;
+    AddLibraryWizard::Platforms generatedPlatforms;
 
     QString snippetMessage;
     QTextStream str(&snippetMessage);
@@ -534,7 +534,7 @@ static QString generatePreTargetDepsSnippet(AddLibraryWizard::Platforms platform
     QString snippetMessage;
     QTextStream str(&snippetMessage);
     str << "\n";
-    AddLibraryWizard::Platforms generatedPlatforms = nullptr;
+    AddLibraryWizard::Platforms generatedPlatforms;
     AddLibraryWizard::Platforms windowsPlatforms = platforms
             & (AddLibraryWizard::WindowsMinGWPlatform | AddLibraryWizard::WindowsMSVCPlatform);
     AddLibraryWizard::Platforms commonPlatforms = platforms;
@@ -1018,8 +1018,12 @@ void InternalLibraryDetailsController::updateProFile()
 
     m_rootProjectPath = project->projectDirectory().toString();
 
+    auto t = project->activeTarget();
+    auto bs = dynamic_cast<QmakeBuildSystem *>(t ? t->buildSystem() : nullptr);
+    QTC_ASSERT(bs, return);
+
     QDir rootDir(m_rootProjectPath);
-    foreach (QmakeProFile *proFile, project->rootProFile()->allProFiles()) {
+    foreach (QmakeProFile *proFile, bs->rootProFile()->allProFiles()) {
         QmakeProjectManager::ProjectType type = proFile->projectType();
         if (type != ProjectType::SharedLibraryTemplate && type != ProjectType::StaticLibraryTemplate)
             continue;

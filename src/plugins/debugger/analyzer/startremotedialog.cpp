@@ -58,7 +58,6 @@ StartRemoteDialog::StartRemoteDialog(QWidget *parent)
     : QDialog(parent)
     , d(new Internal::StartRemoteDialogPrivate)
 {
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     setWindowTitle(tr("Start Remote Analysis"));
 
     d->kitChooser = new KitChooser(this);
@@ -133,7 +132,7 @@ Runnable StartRemoteDialog::runnable() const
     Kit *kit = d->kitChooser->currentKit();
     Runnable r;
     r.device = DeviceKitAspect::device(kit);
-    r.executable = d->executable->text();
+    r.executable = Utils::FilePath::fromString(d->executable->text());
     r.commandLineArguments = d->arguments->text();
     r.workingDirectory = d->workingDirectory->text();
     return r;

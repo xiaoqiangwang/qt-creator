@@ -32,7 +32,7 @@
 #include "perftimelinemodelmanager.h"
 
 #include <debugger/debuggermainwindow.h>
-#include <projectexplorer/runconfiguration.h>
+#include <projectexplorer/runcontrol.h>
 #include <tracing/timelinezoomcontrol.h>
 #include <utils/fileinprojectfinder.h>
 
@@ -49,6 +49,8 @@ class PerfProfilerTool  : public QObject
     Q_OBJECT
 public:
     PerfProfilerTool();
+    ~PerfProfilerTool();
+
     static PerfProfilerTool *instance();
 
     PerfProfilerTraceManager *traceManager() const;
@@ -72,7 +74,6 @@ public:
 signals:
     void recordingChanged(bool recording);
     void aggregatedChanged(bool aggregated);
-    void viewsCreated();
 
 private:
     void createViews();
@@ -116,6 +117,7 @@ private:
     QMenu *m_filterMenu = nullptr;
     QToolButton *m_aggregateButton = nullptr;
     QToolButton *m_tracePointsButton = nullptr;
+    QList<QObject *> m_objectsToDelete;
 
     PerfProfilerTraceView *m_traceView = nullptr;
     PerfProfilerStatisticsView *m_statisticsView = nullptr;

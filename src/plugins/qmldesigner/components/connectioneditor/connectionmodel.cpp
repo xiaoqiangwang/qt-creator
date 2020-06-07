@@ -33,6 +33,7 @@
 #include <nodeabstractproperty.h>
 #include <exception.h>
 #include <nodemetainfo.h>
+#include <nodelistproperty.h>
 
 #include <QStandardItemModel>
 #include <QMessageBox>
@@ -47,6 +48,7 @@ QStringList propertyNameListToStringList(const QmlDesigner::PropertyNameList &pr
     foreach (QmlDesigner::PropertyName propertyName, propertyNameList) {
         stringList << QString::fromUtf8(propertyName);
     }
+    stringList.removeDuplicates();
     return stringList;
 }
 
@@ -127,7 +129,7 @@ void ConnectionModel::addSignalHandler(const SignalHandlerProperty &signalHandle
     ModelNode connectionsModelNode = signalHandlerProperty.parentModelNode();
 
     if (connectionsModelNode.bindingProperty("target").isValid()) {
-        idLabel =connectionsModelNode.bindingProperty("target").expression();
+        idLabel = connectionsModelNode.bindingProperty("target").expression();
     }
 
     targetItem = new QStandardItem(idLabel);
@@ -209,6 +211,10 @@ void ConnectionModel::updateTargetNode(int rowNumber)
     ModelNode connectionNode = signalHandlerProperty.parentModelNode();
 
     if (!newTarget.isEmpty()) {
+        const ModelNode parent = connectionView()->modelNodeForId(newTarget);
+        if (parent.isValid() && QmlItemNode::isValidQmlItemNode(parent))
+            parent.nodeListProperty("data").reparentHere(connectionNode);
+
         connectionView()->executeInTransaction("ConnectionModel::updateTargetNode", [= ,&connectionNode](){
             connectionNode.bindingProperty("target").setExpression(newTarget);
         });
@@ -253,17 +259,28 @@ void ConnectionModel::addConnection()
                 ModelNode newNode = connectionView()->createModelNode("QtQuick.Connections",
                                                                       nodeMetaInfo.majorVersion(),
                                                                       nodeMetaInfo.minorVersion());
+                QString source = "print(\"clicked\")";
 
-                rootModelNode.nodeAbstractProperty(rootModelNode.metaInfo().defaultPropertyName()).reparentHere(newNode);
-                newNode.signalHandlerProperty("onClicked").setSource(QLatin1String("print(\"clicked\")"));
+                if (connectionView()->selectedModelNodes().count() == 1) {
+                    ModelNode selectedNode = connectionView()->selectedModelNodes().constFirst();
+                    if (QmlItemNode::isValidQmlItemNode(selectedNode))
+                        selectedNode.nodeAbstractProperty("data").reparentHere(newNode);
+                    else
+                        rootModelNode.nodeAbstractProperty(rootModelNode.metaInfo().defaultPropertyName()).reparentHere(newNode);
 
-                if (connectionView()->selectedModelNodes().count() == 1
-                        && !connectionView()->selectedModelNodes().constFirst().id().isEmpty()) {
-                    const ModelNode selectedNode = connectionView()->selectedModelNodes().constFirst();
+                    if (QmlItemNode(selectedNode).isFlowActionArea())
+                        source = selectedNode.validId() + ".trigger()";
+
+                    if (!connectionView()->selectedModelNodes().constFirst().id().isEmpty())
                     newNode.bindingProperty("target").setExpression(selectedNode.id());
+                    else
+                        newNode.bindingProperty("target").setExpression(QLatin1String("parent"));
                 } else {
+                    rootModelNode.nodeAbstractProperty(rootModelNode.metaInfo().defaultPropertyName()).reparentHere(newNode);
                     newNode.bindingProperty("target").setExpression(QLatin1String("parent"));
                 }
+
+                newNode.signalHandlerProperty("onClicked").setSource(source);
             });
         }
     }
@@ -281,9 +298,36 @@ void ConnectionModel::variantPropertyChanged(const VariantProperty &variantPrope
         resetModel();
 }
 
+void ConnectionModel::abstractPropertyChanged(const AbstractProperty &abstractProperty)
+{
+    if (isConnection(abstractProperty.parentModelNode()))
+        resetModel();
+}
+
 void ConnectionModel::deleteConnectionByRow(int currentRow)
 {
-    signalHandlerPropertyForRow(currentRow).parentModelNode().destroy();
+    SignalHandlerProperty targetSignal = signalHandlerPropertyForRow(currentRow);
+    QmlDesigner::ModelNode node = targetSignal.parentModelNode();
+    QList<SignalHandlerProperty> allSignals = node.signalProperties();
+    if (allSignals.size() > 1) {
+        if (allSignals.contains(targetSignal))
+            node.removeProperty(targetSignal.name());
+    }
+    else {
+        node.destroy();
+    }
+}
+
+void ConnectionModel::removeRowFromTable(const SignalHandlerProperty &property)
+{
+    for (int currentRow = 0; currentRow < rowCount(); currentRow++) {
+        SignalHandlerProperty targetSignal = signalHandlerPropertyForRow(currentRow);
+
+        if (targetSignal == property) {
+            removeRow(currentRow);
+            break;
+        }
+    }
 }
 
 void ConnectionModel::handleException()
@@ -336,6 +380,26 @@ QStringList ConnectionModel::getSignalsForRow(int row) const
     }
 
     return stringList;
+}
+
+QStringList ConnectionModel::getflowActionTriggerForRow(int row) const
+{
+    QStringList stringList;
+    SignalHandlerProperty signalHandlerProperty = signalHandlerPropertyForRow(row);
+
+    if (signalHandlerProperty.isValid()) {
+        const ModelNode parentModelNode = signalHandlerProperty.parentModelNode();
+        ModelNode targetNode = getTargetNodeForConnection(parentModelNode);
+        if (!targetNode.isValid() && !parentModelNode.isRootNode())
+             targetNode = parentModelNode.parentProperty().parentModelNode();
+         if (targetNode.isValid()) {
+             for (auto &node : targetNode.allSubModelNodesAndThisNode()) {
+                 if (QmlItemNode(node).isFlowActionArea() && node.hasId())
+                     stringList.append(node.id() + ".trigger()");
+             }
+         }
+     }
+     return stringList;
 }
 
 QStringList ConnectionModel::getPossibleSignalsForConnection(const ModelNode &connection) const

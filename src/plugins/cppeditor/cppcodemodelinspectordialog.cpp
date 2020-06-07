@@ -42,6 +42,7 @@
 #include <cplusplus/Overview.h>
 #include <cplusplus/Token.h>
 #include <utils/qtcassert.h>
+#include <utils/fancylineedit.h>
 
 #include <QAbstractTableModel>
 #include <QLabel>
@@ -146,7 +147,7 @@ signals:
 
 private:
     QTreeView *view;
-    QLineEdit *lineEdit;
+    Utils::FancyLineEdit *lineEdit;
 };
 
 FilterableView::FilterableView(QWidget *parent)
@@ -157,20 +158,17 @@ FilterableView::FilterableView(QWidget *parent)
     view->setTextElideMode(Qt::ElideMiddle);
     view->setSortingEnabled(true);
 
-    lineEdit = new QLineEdit(this);
+    lineEdit = new Utils::FancyLineEdit(this);
+    lineEdit->setFiltering(true);
     lineEdit->setPlaceholderText(QLatin1String("File Path"));
     QObject::connect(lineEdit, &QLineEdit::textChanged, this, &FilterableView::filterChanged);
 
     QLabel *label = new QLabel(QLatin1String("&Filter:"), this);
     label->setBuddy(lineEdit);
 
-    QPushButton *clearButton = new QPushButton(QLatin1String("&Clear"), this);
-    QObject::connect(clearButton, &QAbstractButton::clicked, this, &FilterableView::clearFilter);
-
     auto filterBarLayout = new QHBoxLayout();
     filterBarLayout->addWidget(label);
     filterBarLayout->addWidget(lineEdit);
-    filterBarLayout->addWidget(clearButton);
 
     auto mainLayout = new QVBoxLayout();
     mainLayout->addWidget(view);
@@ -902,7 +900,7 @@ QModelIndex SymbolsModel::index(int row, int column, const QModelIndex &parent) 
         scope = m_document->globalNamespace();
 
     if (scope) {
-        if ((unsigned)row < scope->memberCount())
+        if (row < scope->memberCount())
             return createIndex(row, column, scope->memberAt(row));
     }
 
@@ -997,8 +995,8 @@ public:
 private:
     struct TokenInfo {
         Token token;
-        unsigned line;
-        unsigned column;
+        int line;
+        int column;
     };
     QList<TokenInfo> m_tokenInfos;
 };
@@ -1254,9 +1252,8 @@ void WorkingCopyModel::configure(const WorkingCopy &workingCopy)
 {
     emit layoutAboutToBeChanged();
     m_workingCopyList.clear();
-    QHashIterator<Utils::FilePath, QPair<QByteArray, unsigned> > it = workingCopy.iterator();
-    while (it.hasNext()) {
-        it.next();
+    const WorkingCopy::Table &elements = workingCopy.elements();
+    for (auto it = elements.cbegin(), end = elements.cend(); it != end; ++it) {
         m_workingCopyList << WorkingCopyEntry(it.key().toString(), it.value().first,
                                               it.value().second);
     }
@@ -1814,6 +1811,7 @@ void CppCodeModelInspectorDialog::updateProjectPartData(const ProjectPart::Ptr &
         {QString::fromLatin1("ToolChain Type"), part->toolchainType.toString()},
         {QString::fromLatin1("ToolChain Target Triple"), part->toolChainTargetTriple},
         {QString::fromLatin1("ToolChain Word Width"), CMI::Utils::toString(part->toolChainWordWidth)},
+        {QString::fromLatin1("ToolChain Install Dir"), part->toolChainInstallDir.toString()},
         {QString::fromLatin1("Language Version"), CMI::Utils::toString(part->languageVersion)},
         {QString::fromLatin1("Language Extensions"), CMI::Utils::toString(part->languageExtensions)},
         {QString::fromLatin1("Qt Version"), CMI::Utils::toString(part->qtVersion)}

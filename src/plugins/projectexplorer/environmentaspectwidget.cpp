@@ -49,11 +49,11 @@ EnvironmentAspectWidget::EnvironmentAspectWidget(EnvironmentAspect *aspect, QWid
 
     setContentsMargins(0, 0, 0, 0);
     auto topLayout = new QVBoxLayout(this);
-    topLayout->setMargin(0);
+    topLayout->setContentsMargins(0, 0, 0, 25);
 
     auto baseEnvironmentWidget = new QWidget;
     auto baseLayout = new QHBoxLayout(baseEnvironmentWidget);
-    baseLayout->setMargin(0);
+    baseLayout->setContentsMargins(0, 0, 0, 0);
     auto label = new QLabel(tr("Base environment for this run configuration:"), this);
     baseLayout->addWidget(label);
 
@@ -75,7 +75,7 @@ EnvironmentAspectWidget::EnvironmentAspectWidget(EnvironmentAspect *aspect, QWid
     const EnvironmentWidget::Type widgetType = aspect->isLocal()
             ? EnvironmentWidget::TypeLocal : EnvironmentWidget::TypeRemote;
     m_environmentWidget = new EnvironmentWidget(this, widgetType, baseEnvironmentWidget);
-    m_environmentWidget->setBaseEnvironment(m_aspect->currentUnmodifiedBaseEnvironment());
+    m_environmentWidget->setBaseEnvironment(m_aspect->modifiedBaseEnvironment());
     m_environmentWidget->setBaseEnvironmentText(m_aspect->currentDisplayName());
     m_environmentWidget->setUserChanges(m_aspect->userEnvironmentChanges());
     m_environmentWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -106,7 +106,7 @@ void EnvironmentAspectWidget::baseEnvironmentSelected(int idx)
 {
     m_ignoreChange = true;
     m_aspect->setBaseEnvironmentBase(idx);
-    m_environmentWidget->setBaseEnvironment(m_aspect->currentUnmodifiedBaseEnvironment());
+    m_environmentWidget->setBaseEnvironment(m_aspect->modifiedBaseEnvironment());
     m_environmentWidget->setBaseEnvironmentText(m_aspect->currentDisplayName());
     m_ignoreChange = false;
 }
@@ -122,7 +122,7 @@ void EnvironmentAspectWidget::changeBaseEnvironment()
             m_baseEnvironmentComboBox->setCurrentIndex(i);
     }
     m_environmentWidget->setBaseEnvironmentText(m_aspect->currentDisplayName());
-    m_environmentWidget->setBaseEnvironment(m_aspect->currentUnmodifiedBaseEnvironment());
+    m_environmentWidget->setBaseEnvironment(m_aspect->modifiedBaseEnvironment());
 }
 
 void EnvironmentAspectWidget::userChangesEdited()
@@ -132,7 +132,7 @@ void EnvironmentAspectWidget::userChangesEdited()
     m_ignoreChange = false;
 }
 
-void EnvironmentAspectWidget::changeUserChanges(QList<Utils::EnvironmentItem> changes)
+void EnvironmentAspectWidget::changeUserChanges(Utils::EnvironmentItems changes)
 {
     if (m_ignoreChange)
         return;
@@ -143,7 +143,7 @@ void EnvironmentAspectWidget::environmentChanged()
 {
     if (m_ignoreChange)
         return;
-    m_environmentWidget->setBaseEnvironment(m_aspect->currentUnmodifiedBaseEnvironment());
+    m_environmentWidget->setBaseEnvironment(m_aspect->modifiedBaseEnvironment());
 }
 
 } // namespace ProjectExplorer

@@ -38,6 +38,10 @@ class QComboBox;
 class QLabel;
 QT_END_NAMESPACE
 
+namespace Utils {
+class InfoLabel;
+}
+
 namespace Android {
 namespace Internal {
 
@@ -52,6 +56,9 @@ private:
     void setCertificates();
     void updateSigningWarning();
     void signPackageCheckBoxToggled(bool checked);
+    void onOpenSslCheckBoxChanged();
+    bool isOpenSslLibsIncluded();
+    QString openSslIncludeFileContent(const Utils::FilePath &projectPath);
 
     QWidget *createApplicationGroup();
     QWidget *createSignPackageGroup();
@@ -62,10 +69,10 @@ private:
 private:
     AndroidBuildApkStep *m_step = nullptr;
     QCheckBox *m_signPackageCheckBox = nullptr;
-    QLabel *m_signingDebugWarningIcon = nullptr;
-    QLabel *m_signingDebugWarningLabel = nullptr;
+    Utils::InfoLabel *m_signingDebugWarningLabel = nullptr;
     QComboBox *m_certificatesAliasComboBox = nullptr;
     QCheckBox *m_addDebuggerCheckBox = nullptr;
+    QCheckBox *m_openSslCheckBox = nullptr;
 };
 
 } // namespace Internal

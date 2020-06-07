@@ -4,7 +4,6 @@ add_qtc_plugin(Help
   PLUGIN_DEPENDS Core ProjectExplorer
   PLUGIN_RECOMMENDS TextEditor
   SOURCES
-    centralwidget.cpp centralwidget.h
     docsettingspage.cpp docsettingspage.h docsettingspage.ui
     filtersettingspage.cpp filtersettingspage.h filtersettingspage.ui
     generalsettingspage.cpp generalsettingspage.h generalsettingspage.ui
@@ -19,10 +18,8 @@ add_qtc_plugin(Help
     helpwidget.cpp helpwidget.h
     localhelpmanager.cpp localhelpmanager.h
     openpagesmanager.cpp openpagesmanager.h
-    openpagesmodel.cpp openpagesmodel.h
     openpagesswitcher.cpp openpagesswitcher.h
     openpageswidget.cpp openpageswidget.h
-    remotehelpfilter.cpp remotehelpfilter.h remotehelpfilter.ui
     searchtaskhandler.cpp searchtaskhandler.h
     searchwidget.cpp searchwidget.h
     textbrowserhelpviewer.cpp textbrowserhelpviewer.h
@@ -31,6 +28,7 @@ add_qtc_plugin(Help
 
 extend_qtc_plugin(Help
   CONDITION FWWebKit AND FWAppKit
+  FEATURE_INFO "Native WebKit help viewer"
   DEPENDS ${FWWebKit} ${FWAppKit}
   DEFINES QTC_MAC_NATIVE_HELPVIEWER
   SOURCES
@@ -41,9 +39,29 @@ extend_qtc_plugin(Help
 find_package(Qt5WebEngineWidgets QUIET)
 extend_qtc_plugin(Help
   CONDITION TARGET Qt5::WebEngineWidgets
+  FEATURE_INFO "QtWebEngine help viewer"
   DEPENDS Qt5::WebEngineWidgets
   DEFINES QTC_WEBENGINE_HELPVIEWER
   SOURCES
     webenginehelpviewer.cpp
     webenginehelpviewer.h
+)
+
+if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/qlitehtml/litehtml/CMakeLists.txt)
+  add_subdirectory(qlitehtml)
+else()
+  find_package(litehtml QUIET)
+  if (TARGET litehtml)
+    add_subdirectory(qlitehtml)
+  endif()
+endif()
+
+extend_qtc_plugin(Help
+  CONDITION TARGET litehtml AND TARGET qlitehtml
+  FEATURE_INFO "litehtml help viewer"
+  DEPENDS qlitehtml
+  DEFINES QTC_LITEHTML_HELPVIEWER
+  SOURCES
+    litehtmlhelpviewer.cpp
+    litehtmlhelpviewer.h
 )

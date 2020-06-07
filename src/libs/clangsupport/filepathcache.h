@@ -29,94 +29,69 @@
 #include "filepath.h"
 #include "filepathexceptions.h"
 #include "filepathid.h"
+#include "filepathstoragesources.h"
 #include "filepathview.h"
 #include "stringcache.h"
+
+#include <sqlitetransaction.h>
 
 #include <algorithm>
 
 namespace ClangBackEnd {
 
-template <typename FilePathStorage>
+template<typename FilePathStorage, typename Mutex = SharedMutex>
 class CLANGSUPPORT_GCCEXPORT FilePathCache
 {
-    class FileNameView
-    {
-    public:
-        friend bool operator==(const FileNameView &first, const FileNameView &second)
-        {
-            return first.directoryId == second.directoryId
-                && first.fileName == second.fileName;
-        }
+    FilePathCache(const FilePathCache &) = default;
+    FilePathCache &operator=(const FilePathCache &) = default;
 
-        static
-        int compare(FileNameView first, FileNameView second) noexcept
-        {
-            int directoryDifference = first.directoryId - second.directoryId;
+    template<typename Storage, typename M>
+    friend class FilePathCache;
 
-            if (directoryDifference)
-                return directoryDifference;
-
-            return Utils::compare(first.fileName, second.fileName);
-        }
-
-    public:
-        Utils::SmallStringView fileName;
-        int directoryId;
-    };
-
-    class FileNameEntry
-    {
-    public:
-        FileNameEntry(Utils::SmallStringView fileName, int directoryId)
-            : fileName(fileName),
-              directoryId(directoryId)
-        {}
-
-        FileNameEntry(FileNameView view)
-            : fileName(view.fileName),
-              directoryId(view.directoryId)
-        {}
-
-        friend bool operator==(const FileNameEntry &first, const FileNameEntry &second)
-        {
-            return first.directoryId == second.directoryId
-                && first.fileName == second.fileName;
-        }
-
-        operator FileNameView() const
-        {
-            return {fileName, directoryId};
-        }
-
-        operator Utils::SmallString() &&
-        {
-            return std::move(fileName);
-        }
-
-    public:
-        Utils::SmallString fileName;
-        int directoryId;
-    };
-
+public:
     using DirectoryPathCache = StringCache<Utils::PathString,
                                            Utils::SmallStringView,
                                            int,
-                                           SharedMutex,
+                                           Mutex,
                                            decltype(&Utils::reverseCompare),
-                                           Utils::reverseCompare>;
+                                           Utils::reverseCompare,
+                                           Sources::Directory>;
     using FileNameCache = StringCache<FileNameEntry,
                                       FileNameView,
                                       int,
-                                      SharedMutex,
+                                      Mutex,
                                       decltype(&FileNameView::compare),
-                                      FileNameView::compare>;
-public:
+                                      FileNameView::compare,
+                                      Sources::Source>;
+
     FilePathCache(FilePathStorage &filePathStorage)
         : m_filePathStorage(filePathStorage)
-    {}
+    {
+        populateIfEmpty();
+    }
 
-    FilePathCache(const FilePathCache &) = delete;
-    FilePathCache &operator=(const FilePathCache &) = delete;
+    FilePathCache(FilePathCache &&) = default;
+    FilePathCache &operator=(FilePathCache &&) = default;
+
+    void populateIfEmpty()
+    {
+        if (m_fileNameCache.isEmpty()) {
+            m_directoryPathCache.populate(m_filePathStorage.fetchAllDirectories());
+            m_fileNameCache.populate(m_filePathStorage.fetchAllSources());
+        }
+    }
+
+    template<typename Cache>
+    Cache clone()
+    {
+        using DirectoryPathCache = typename Cache::DirectoryPathCache;
+        using FileNameCache = typename Cache::FileNameCache;
+        Cache cache{m_filePathStorage};
+        cache.m_directoryPathCache = m_directoryPathCache.template clone<DirectoryPathCache>();
+        cache.m_fileNameCache = m_fileNameCache.template clone<FileNameCache>();
+
+        return cache;
+    }
 
     FilePathId filePathId(FilePathView filePath) const
     {
@@ -158,8 +133,7 @@ public:
             return FileNameEntry{entry.sourceName, entry.directoryId};
         };
 
-        FileNameEntry entry = m_fileNameCache.string(filePathId.filePathId,
-                                                     fetchSoureNameAndDirectoryId);
+        auto entry = m_fileNameCache.string(filePathId.filePathId, fetchSoureNameAndDirectoryId);
 
         auto fetchDirectoryPath = [&] (int id) { return m_filePathStorage.fetchDirectoryPath(id); };
 
@@ -189,10 +163,38 @@ public:
             return FileNameEntry{entry.sourceName, entry.directoryId};
         };
 
-        FileNameEntry entry = m_fileNameCache.string(filePathId.filePathId,
-                                                     fetchSoureNameAndDirectoryId);
-
         return m_fileNameCache.string(filePathId.filePathId, fetchSoureNameAndDirectoryId).directoryId;
+    }
+
+    template<typename Container>
+    void addFilePaths(Container &&filePaths)
+    {
+        auto directoryPaths = Utils::transform<std::vector<Utils::SmallStringView>>(
+            filePaths, [](FilePathView filePath) { return filePath.directory(); });
+
+        std::unique_ptr<Sqlite::DeferredTransaction> transaction;
+
+        m_directoryPathCache.addStrings(std::move(directoryPaths), [&](Utils::SmallStringView directoryPath) {
+            if (!transaction)
+                transaction = std::make_unique<Sqlite::DeferredTransaction>(
+                    m_filePathStorage.database());
+            return m_filePathStorage.fetchDirectoryIdUnguarded(directoryPath);
+        });
+
+        auto sourcePaths = Utils::transform<std::vector<FileNameView>>(filePaths, [&](FilePathView filePath) {
+            return FileNameView{filePath.name(), m_directoryPathCache.stringId(filePath.directory())};
+        });
+
+        m_fileNameCache.addStrings(std::move(sourcePaths), [&](FileNameView fileNameView) {
+            if (!transaction)
+                transaction = std::make_unique<Sqlite::DeferredTransaction>(
+                    m_filePathStorage.database());
+            return m_filePathStorage.fetchSourceIdUnguarded(fileNameView.directoryId,
+                                                            fileNameView.fileName);
+        });
+
+        if (transaction)
+            transaction->commit();
     }
 
 private:

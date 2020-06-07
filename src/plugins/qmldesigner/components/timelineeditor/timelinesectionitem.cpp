@@ -44,16 +44,15 @@
 #include <utils/qtcassert.h>
 
 #include <QAction>
+#include <QApplication>
 #include <QColorDialog>
-#include <QComboBox>
-#include <QGraphicsProxyWidget>
 #include <QGraphicsScene>
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsView>
 #include <QHBoxLayout>
 #include <QMenu>
 #include <QPainter>
-#include <QToolBar>
+#include <QPainterPath>
 
 #include <QGraphicsView>
 
@@ -532,7 +531,7 @@ static void drawCenteredText(QPainter *p, int x, int y, const QString &text)
     p->drawText(rect, Qt::AlignCenter, text);
 }
 
-TimelineRulerSectionItem *TimelineRulerSectionItem::create(QGraphicsScene *parentScene,
+TimelineRulerSectionItem *TimelineRulerSectionItem::create(QGraphicsScene * ,
                                                            TimelineItem *parent)
 {
     auto item = new TimelineRulerSectionItem(parent);
@@ -540,19 +539,6 @@ TimelineRulerSectionItem *TimelineRulerSectionItem::create(QGraphicsScene *paren
 
     auto widget = new QWidget;
     widget->setFixedWidth(TimelineConstants::sectionWidth);
-
-    auto toolBar = new QToolBar;
-    toolBar->setFixedHeight(TimelineConstants::rulerHeight);
-
-    auto layout = new QHBoxLayout(widget);
-    layout->addWidget(toolBar);
-    layout->setMargin(0);
-
-    layout->addWidget(toolBar);
-    layout->setMargin(0);
-
-    QGraphicsProxyWidget *proxy = parentScene->addWidget(widget);
-    proxy->setParentItem(item);
 
     return item;
 }
@@ -701,8 +687,6 @@ void TimelineRulerSectionItem::paint(QPainter *painter, const QStyleOptionGraphi
 
 void TimelineRulerSectionItem::paintTicks(QPainter *painter)
 {
-    const int totalWidth = size().width() / m_scaling + timelineScene()->scrollOffset() / m_scaling;
-
     QFontMetrics fm(painter->font());
 
     int minSpacingText = fm.horizontalAdvance(QString("X%1X").arg(rulerDuration()));
@@ -734,8 +718,10 @@ void TimelineRulerSectionItem::paintTicks(QPainter *painter)
         }
     }
 
-    int height = size().height();
+    m_frameTick = qreal(deltaLine);
 
+    int height = size().height();
+    const int totalWidth = (size().width() + timelineScene()->scrollOffset()) / m_scaling;
     for (int i = timelineScene()->scrollOffset() / m_scaling; i < totalWidth; ++i) {
         if ((i % deltaText) == 0) {
             drawCenteredText(painter,
@@ -757,6 +743,11 @@ void TimelineRulerSectionItem::paintTicks(QPainter *painter)
                      height * 0.75);
         }
     }
+}
+
+qreal TimelineRulerSectionItem::getFrameTick() const
+{
+    return m_frameTick;
 }
 
 void TimelineRulerSectionItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
@@ -801,10 +792,19 @@ void TimelineBarItem::itemMoved(const QPointF &start, const QPointF &end)
     if (isActiveHandle(Location::Undefined))
         dragInit(rect(), start);
 
-    const qreal min = qreal(TimelineConstants::sectionWidth + TimelineConstants::timelineLeftOffset
-                            - scrollOffset());
-    const qreal max = qreal(timelineScene()->rulerWidth() - TimelineConstants::sectionWidth
-                            + rect().width());
+    qreal min = qreal(TimelineConstants::sectionWidth + TimelineConstants::timelineLeftOffset
+                      - scrollOffset());
+    qreal max = qreal(timelineScene()->rulerWidth() - TimelineConstants::sectionWidth
+                      + rect().width());
+
+    const qreal minFrameX = mapFromFrameToScene(timelineScene()->startFrame());
+    const qreal maxFrameX = mapFromFrameToScene(timelineScene()->endFrame());
+
+    if (min < minFrameX)
+        min = minFrameX;
+
+    if (max > maxFrameX)
+        max = maxFrameX;
 
     if (isActiveHandle(Location::Center))
         dragCenter(rect(), end, min, max);
@@ -846,8 +846,8 @@ void TimelineBarItem::scrollOffsetChanged()
 
 void TimelineBarItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
 {
-    Q_UNUSED(option);
-    Q_UNUSED(widget);
+    Q_UNUSED(option)
+    Q_UNUSED(widget)
 
     QColor brushColorSelected = Theme::getColor(Theme::QmlDesigner_HighlightColor);
     QColor brushColor = Theme::getColor(Theme::QmlDesigner_HighlightColor).darker(120);
@@ -973,7 +973,12 @@ void TimelineBarItem::dragInit(const QRectF &rect, const QPointF &pos)
 void TimelineBarItem::dragCenter(QRectF rect, const QPointF &pos, qreal min, qreal max)
 {
     if (validateBounds(pos.x() - rect.topLeft().x())) {
-        rect.moveLeft(pos.x() - m_pivot);
+        qreal targetX = pos.x() - m_pivot;
+        if (QApplication::keyboardModifiers() & Qt::ShiftModifier) { // snapping
+            qreal snappedTargetFrame = timelineScene()->snap(mapFromSceneToFrame(targetX));
+            targetX = mapFromFrameToScene(snappedTargetFrame);
+        }
+        rect.moveLeft(targetX);
         if (rect.topLeft().x() < min) {
             rect.moveLeft(min);
             setOutOfBounds(Location::Left);
@@ -992,7 +997,12 @@ void TimelineBarItem::dragHandle(QRectF rect, const QPointF &pos, qreal min, qre
 
     if (isActiveHandle(Location::Left)) {
         if (validateBounds(pos.x() - left.topLeft().x())) {
-            rect.setLeft(pos.x() - m_pivot);
+            qreal targetX = pos.x() - m_pivot;
+            if (QApplication::keyboardModifiers() & Qt::ShiftModifier) { // snapping
+                qreal snappedTargetFrame = timelineScene()->snap(mapFromSceneToFrame(targetX));
+                targetX = mapFromFrameToScene(snappedTargetFrame);
+            }
+            rect.setLeft(targetX);
             if (rect.left() < min) {
                 rect.setLeft(min);
                 setOutOfBounds(Location::Left);
@@ -1003,7 +1013,12 @@ void TimelineBarItem::dragHandle(QRectF rect, const QPointF &pos, qreal min, qre
         }
     } else if (isActiveHandle(Location::Right)) {
         if (validateBounds(pos.x() - right.topRight().x())) {
-            rect.setRight(pos.x() - m_pivot);
+            qreal targetX = pos.x() - m_pivot;
+            if (QApplication::keyboardModifiers() & Qt::ShiftModifier) { // snapping
+                qreal snappedTargetFrame = timelineScene()->snap(mapFromSceneToFrame(targetX));
+                targetX = mapFromFrameToScene(snappedTargetFrame);
+            }
+            rect.setRight(targetX);
             if (rect.right() > max) {
                 rect.setRight(max);
                 setOutOfBounds(Location::Right);

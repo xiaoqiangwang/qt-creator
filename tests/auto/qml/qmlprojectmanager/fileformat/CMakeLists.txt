@@ -1,3 +1,7 @@
+if (NOT TARGET QmlProjectManager)
+  return()
+endif()
+
 get_target_property(QmlProjectManagerSources QmlProjectManager SOURCES)
 foreach(source IN LISTS QmlProjectManagerSources)
   if (source MATCHES "fileformat")
@@ -6,7 +10,7 @@ foreach(source IN LISTS QmlProjectManagerSources)
 endforeach()
 
 add_qtc_test(tst_qml_fileformat
-  DEPENDS qmljs Utils
+  DEPENDS QmlJS Utils
   INCLUDES "${PROJECT_SOURCE_DIR}/src/plugins/qmlprojectmanager/fileformat"
   DEFINES
     QT_CREATOR

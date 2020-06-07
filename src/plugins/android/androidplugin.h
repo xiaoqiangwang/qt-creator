@@ -30,7 +30,7 @@
 namespace Android {
 namespace Internal {
 
-class AndroidPlugin : public ExtensionSystem::IPlugin
+class AndroidPlugin final : public ExtensionSystem::IPlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QtCreatorPlugin" FILE "Android.json")
@@ -38,9 +38,9 @@ class AndroidPlugin : public ExtensionSystem::IPlugin
     ~AndroidPlugin() final;
 
     bool initialize(const QStringList &arguments, QString *errorMessage) final;
-    void extensionsInitialized() final { }
 
     void kitsRestored();
+    void askUserAboutAndroidSetup();
 
     class AndroidPluginPrivate *d = nullptr;
 };

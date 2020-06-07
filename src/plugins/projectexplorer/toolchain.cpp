@@ -70,6 +70,7 @@ public:
     QByteArray m_id;
     QSet<Core::Id> m_supportedLanguages;
     mutable QString m_displayName;
+    QString m_typeDisplayName;
     Core::Id m_typeId;
     Core::Id m_language;
     Detection m_detection = ToolChain::UninitializedDetection;
@@ -169,11 +170,6 @@ QStringList ToolChain::suggestedMkspecList() const
     return {};
 }
 
-Utils::FilePath ToolChain::suggestedDebugger() const
-{
-    return ToolChainManager::defaultDebugger(targetAbi());
-}
-
 Core::Id ToolChain::typeId() const
 {
     return d->m_typeId;
@@ -260,6 +256,16 @@ void ToolChain::setDetection(ToolChain::Detection de)
         d->m_detection = de;
         toolChainUpdated();
     }
+}
+
+QString ToolChain::typeDisplayName() const
+{
+    return d->m_typeDisplayName;
+}
+
+void ToolChain::setTypeDisplayName(const QString &typeName)
+{
+    d->m_typeDisplayName = typeName;
 }
 
 /*!
@@ -432,15 +438,14 @@ const QList<ToolChainFactory *> ToolChainFactory::allToolChainFactories()
 
 QList<ToolChain *> ToolChainFactory::autoDetect(const QList<ToolChain *> &alreadyKnown)
 {
-    Q_UNUSED(alreadyKnown);
-    return QList<ToolChain *>();
+    Q_UNUSED(alreadyKnown)
+    return {};
 }
 
-QList<ToolChain *> ToolChainFactory::autoDetect(const Utils::FilePath &compilerPath, const Core::Id &language)
+QList<ToolChain *> ToolChainFactory::detectForImport(const ToolChainDescription &tcd)
 {
-    Q_UNUSED(compilerPath);
-    Q_UNUSED(language);
-    return QList<ToolChain *>();
+    Q_UNUSED(tcd)
+    return {};
 }
 
 bool ToolChainFactory::canCreate() const
@@ -489,6 +494,19 @@ Core::Id ToolChainFactory::typeIdFromMap(const QVariantMap &data)
 void ToolChainFactory::autoDetectionToMap(QVariantMap &data, bool detected)
 {
     data.insert(QLatin1String(AUTODETECT_KEY), detected);
+}
+
+ToolChain *ToolChainFactory::createToolChain(Core::Id toolChainType)
+{
+    for (ToolChainFactory *factory : qAsConst(Internal::g_toolChainFactories)) {
+        if (factory->m_supportedToolChainType == toolChainType) {
+            if (ToolChain *tc = factory->create()) {
+                tc->d->m_typeId = toolChainType;
+                return tc;
+            }
+        }
+    }
+    return nullptr;
 }
 
 QSet<Core::Id> ToolChainFactory::supportedLanguages() const

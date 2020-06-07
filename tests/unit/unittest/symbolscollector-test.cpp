@@ -146,7 +146,7 @@ protected:
 
    static std::time_t lastModified(Utils::SmallStringView filePath)
     {
-        return QFileInfo(QString(filePath)).lastModified().toTime_t();
+        return QFileInfo(QString(filePath)).lastModified().toSecsSinceEpoch();
     }
 
     ClangBackEnd::FileStatus fileStatus(Utils::SmallStringView filePath) const
@@ -177,7 +177,7 @@ protected:
     Sqlite::Database database{":memory:", Sqlite::JournalMode::Memory};
     ClangBackEnd::RefactoringDatabaseInitializer<Sqlite::Database> initializer{database};
     FilePathCaching filePathCache{database};
-    ClangBackEnd::SymbolsCollector collector{database};
+    ClangBackEnd::SymbolsCollector collector{filePathCache};
 };
 
 TEST_F(SymbolsCollector, CollectSymbolName)
@@ -264,8 +264,10 @@ TEST_F(SymbolsCollector, ReferencedSymboldMatchesLocation)
 
 TEST_F(SymbolsCollector, DISABLED_ON_WINDOWS(CollectInUnsavedFile))
 {
-    FileContainers unsaved{
-        {{TESTDATA_DIR, "symbolscollector/generated_file.h"}, "void function();", {}}};
+    FileContainers unsaved{{{TESTDATA_DIR, "symbolscollector/generated_file.h"},
+                            filePathId({TESTDATA_DIR, "symbolscollector/generated_file.h"}),
+                            "void function();",
+                            {}}};
     collector.setFile(filePathId(TESTDATA_DIR "/symbolscollector/unsaved.cpp"), {"cc"});
     collector.setUnsavedFiles(std::move(unsaved));
 
@@ -295,16 +297,6 @@ TEST_F(SymbolsCollector, ClearSourceLocations)
     ASSERT_THAT(collector.sourceLocations(), IsEmpty());
 }
 
-TEST_F(SymbolsCollector, ClearFileStatus)
-{
-    collector.setFile(filePathId(TESTDATA_DIR "/symbolscollector/main.cpp"), {"cc"});
-    collector.collectSymbols();
-
-    collector.clear();
-
-    ASSERT_THAT(collector.fileStatuses(), IsEmpty());
-}
-
 TEST_F(SymbolsCollector, DontCollectSymbolsAfterFilesAreCleared)
 {
     collector.setFile(filePathId(TESTDATA_DIR "/symbolscollector/main.cpp"), {"cc"});
@@ -313,16 +305,6 @@ TEST_F(SymbolsCollector, DontCollectSymbolsAfterFilesAreCleared)
     collector.collectSymbols();
 
     ASSERT_THAT(collector.symbols(), IsEmpty());
-}
-
-TEST_F(SymbolsCollector, DontCollectFileStatusAfterFilesAreCleared)
-{
-    collector.setFile(filePathId(TESTDATA_DIR "/symbolscollector/main.cpp"), {"cc"});
-
-    collector.clear();
-    collector.collectSymbols();
-
-    ASSERT_THAT(collector.fileStatuses(), IsEmpty());
 }
 
 TEST_F(SymbolsCollector, CollectMacroDefinitionSourceLocation)
@@ -455,19 +437,6 @@ TEST_F(SymbolsCollector, DISABLED_CollectMacroCompilerArgumentSymbols)
 
     ASSERT_THAT(collector.symbols(),
                 Contains(AllOf(HasSymbolName("COMPILER_ARGUMENT"), HasSymbolKind(SymbolKind::Macro))));
-}
-
-TEST_F(SymbolsCollector, CollectFileStatuses)
-{
-    auto fileId = filePathId(TESTDATA_DIR "/symbolscollector/main.cpp");
-    collector.setFile(fileId, {"cc"});
-
-    collector.collectSymbols();
-
-    ASSERT_THAT(collector.fileStatuses(),
-                ElementsAre(fileStatus(TESTDATA_DIR "/symbolscollector/main.cpp"),
-                            fileStatus(TESTDATA_DIR "/symbolscollector/header1.h"),
-                            fileStatus(TESTDATA_DIR "/symbolscollector/header2.h")));
 }
 
 TEST_F(SymbolsCollector, IsClassSymbol)
@@ -678,5 +647,45 @@ TEST_F(SymbolsCollector, ClearInputFilesAfterCollectingSymbols)
     collector.collectSymbols();
 
     ASSERT_TRUE(collector.isClean());
+}
+
+TEST_F(SymbolsCollector, ClassDeclarations)
+{
+    collector.setFile(filePathId(TESTDATA_DIR "/symbolscollector/class.cpp"), {"cc"});
+
+    collector.collectSymbols();
+
+    ASSERT_THAT(
+        collector.sourceLocations(),
+        AllOf(Contains(IsSourceLocationEntry(symbolId("Class"),
+                                             filePathId(TESTDATA_DIR "/symbolscollector/class.cpp"),
+                                             1,
+                                             7,
+                                             SourceLocationKind::Definition)),
+              Contains(IsSourceLocationEntry(symbolId("bar"),
+                                             filePathId(TESTDATA_DIR "/symbolscollector/class.cpp"),
+                                             8,
+                                             8,
+                                             SourceLocationKind::Definition)),
+              Contains(IsSourceLocationEntry(symbolId("foo"),
+                                             filePathId(TESTDATA_DIR "/symbolscollector/class.cpp"),
+                                             11,
+                                             13,
+                                             SourceLocationKind::Definition)),
+              Contains(IsSourceLocationEntry(symbolId("foo"),
+                                             filePathId(TESTDATA_DIR "/symbolscollector/class.cpp"),
+                                             6,
+                                             8,
+                                             SourceLocationKind::Declaration)),
+              Contains(IsSourceLocationEntry(symbolId("Class"),
+                                             filePathId(TESTDATA_DIR "/symbolscollector/class.cpp"),
+                                             11,
+                                             6,
+                                             SourceLocationKind::DeclarationReference)),
+              Contains(IsSourceLocationEntry(symbolId("bar"),
+                                             filePathId(TESTDATA_DIR "/symbolscollector/class.cpp"),
+                                             13,
+                                             5,
+                                             SourceLocationKind::DeclarationReference))));
 }
 } // namespace

@@ -245,7 +245,7 @@ QVariant EngineItem::data(int column, int role) const
                 return myName;
             }
             case 1:
-                return rp.coreFile.isEmpty() ? rp.inferior.executable : rp.coreFile;
+                return rp.coreFile.isEmpty() ? rp.inferior.executable.toUserOutput() : rp.coreFile;
             }
             return QVariant();
 
@@ -275,7 +275,7 @@ QVariant EngineItem::data(int column, int role) const
 
 bool EngineItem::setData(int row, const QVariant &value, int role)
 {
-    Q_UNUSED(row);
+    Q_UNUSED(row)
     if (!m_engine)
         return false;
 

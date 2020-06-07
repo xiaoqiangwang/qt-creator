@@ -49,6 +49,7 @@ class FilePath;
 }
 
 namespace ProjectExplorer {
+class BuildPropertiesSettings;
 class RunControl;
 class RunConfiguration;
 class Project;
@@ -135,8 +136,12 @@ public:
     static void setAppOutputSettings(const Internal::AppOutputSettings &settings);
     static const Internal::AppOutputSettings &appOutputSettings();
 
+    static void setBuildPropertiesSettings(const BuildPropertiesSettings &settings);
+    static const BuildPropertiesSettings &buildPropertiesSettings();
+    static void showQtSettings();
+
     static void startRunControl(RunControl *runControl);
-    static void showRunErrorMessage(const QString &errorMessage);
+    static void showOutputPaneForRunControl(RunControl *runControl);
 
     // internal public for FlatModel
     static void renameFile(Node *node, const QString &newFilePath);
@@ -150,27 +155,32 @@ public:
     static void runRunConfiguration(RunConfiguration *rc, Core::Id runMode,
                              const bool forceSkipDeploy = false);
     static QList<QPair<Runnable, Utils::ProcessHandle>> runningRunControlProcesses();
+    static QList<RunControl *> allRunControls();
 
     static void addExistingFiles(FolderNode *folderNode, const QStringList &filePaths);
-
-    static void buildProject(Project *p);
 
     static void initiateInlineRenaming();
 
     static QString displayNameForStepId(Core::Id stepId);
 
-    static QString directoryFor(Node *node);
     static QStringList projectFileGlobs();
-
-    static void updateContextMenuActions();
 
     static QThreadPool *sharedThreadPool();
 
+    static void showSessionManager();
     static void openNewProjectDialog();
     static void openOpenProjectDialog();
 
     static QString buildDirectoryTemplate();
     static QString defaultBuildDirectoryTemplate();
+
+    static void updateActions();
+
+    static void activateProjectPanel(Core::Id panelId);
+    static void clearRecentProjects();
+    static void removeFromRecentProjects(const QString &fileName, const QString &displayName);
+
+    static void updateRunActions();
 
 signals:
     void finishedInitialization();
@@ -183,10 +193,11 @@ signals:
 
     void settingsChanged();
 
-    void updateRunActions();
+    void runActionsUpdated();
 
 private:
     static bool coreAboutToClose();
+    void handleCommandLineArguments(const QStringList &arguments);
 
 #ifdef WITH_TESTS
 private slots:
@@ -243,6 +254,7 @@ private slots:
 
     void testToolChainMerging_data();
     void testToolChainMerging();
+    void deleteTestToolchains();
 
     void testUserFileAccessor_prepareToReadSettings();
     void testUserFileAccessor_prepareToReadSettingsObsoleteVersion();

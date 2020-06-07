@@ -27,7 +27,6 @@
 
 #include "icore.h"
 #include "jsexpander.h"
-#include "toolsettings.h"
 #include "mimetypesettings.h"
 #include "fancytabwidget.h"
 #include "documentmanager.h"
@@ -56,6 +55,7 @@
 #include <coreplugin/actionmanager/actionmanager.h>
 #include <coreplugin/actionmanager/actionmanager_p.h>
 #include <coreplugin/actionmanager/command.h>
+#include <coreplugin/dialogs/externaltoolconfig.h>
 #include <coreplugin/dialogs/newdialog.h>
 #include <coreplugin/dialogs/shortcutsettings.h>
 #include <coreplugin/editormanager/editormanager.h>
@@ -128,9 +128,6 @@ MainWindow::MainWindow()
     setWindowTitle(Constants::IDE_DISPLAY_NAME);
     if (HostOsInfo::isLinuxHost())
         QApplication::setWindowIcon(Icons::QTCREATORLOGO_BIG.icon());
-    QCoreApplication::setApplicationName(QLatin1String(Constants::IDE_CASED_ID));
-    QCoreApplication::setApplicationVersion(QLatin1String(Constants::IDE_VERSION_LONG));
-    QCoreApplication::setOrganizationName(QLatin1String(Constants::IDE_SETTINGSVARIANT_STR));
     QString baseName = QApplication::style()->objectName();
     // Sometimes we get the standard windows 95 style as a fallback
     if (HostOsInfo::isAnyUnixHost() && !HostOsInfo::isMacHost()
@@ -149,6 +146,8 @@ MainWindow::MainWindow()
     }
 
     QApplication::setStyle(new ManhattanStyle(baseName));
+    m_generalSettings->setShowShortcutsInContextMenu(
+        m_generalSettings->showShortcutsInContextMenu());
 
     setDockNestingEnabled(true);
 
@@ -313,8 +312,24 @@ void MainWindow::extensionsInitialized()
     QTimer::singleShot(0, m_coreImpl, &ICore::coreOpened);
 }
 
+static void setRestart(bool restart)
+{
+    qApp->setProperty("restart", restart);
+}
+
+void MainWindow::restart()
+{
+    setRestart(true);
+    exit();
+}
+
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    const auto cancelClose = [event] {
+        event->ignore();
+        setRestart(false);
+    };
+
     // work around QTBUG-43344
     static bool alreadyClosed = false;
     if (alreadyClosed) {
@@ -326,13 +341,13 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
     // Save opened files
     if (!DocumentManager::saveAllModifiedDocuments()) {
-        event->ignore();
+        cancelClose();
         return;
     }
 
     foreach (const std::function<bool()> &listener, m_preCloseListeners) {
         if (!listener()) {
-            event->ignore();
+            cancelClose();
             return;
         }
     }
@@ -363,6 +378,11 @@ IContext *MainWindow::currentContextObject() const
 QStatusBar *MainWindow::statusBar() const
 {
     return m_modeStack->statusBar();
+}
+
+InfoBar *MainWindow::infoBar() const
+{
+    return m_modeStack->infoBar();
 }
 
 void MainWindow::registerDefaultContainers()
@@ -809,7 +829,9 @@ static IDocumentFactory *findDocumentFactory(const QList<IDocumentFactory*> &fil
     });
 }
 
-/*! Either opens \a fileNames with editors or loads a project.
+/*!
+ * \internal
+ * Either opens \a fileNames with editors or loads a project.
  *
  *  \a flags can be used to stop on first failure, indicate that a file name
  *  might include line numbers and/or switch mode to edit mode.
@@ -817,7 +839,7 @@ static IDocumentFactory *findDocumentFactory(const QList<IDocumentFactory*> &fil
  *  \a workingDirectory is used when files are opened by a remote client, since
  *  the file names are relative to the client working directory.
  *
- *  \returns the first opened document. Required to support the -block flag
+ *  Returns the first opened document. Required to support the \c -block flag
  *  for client mode.
  *
  *  \sa IPlugin::remoteArguments()

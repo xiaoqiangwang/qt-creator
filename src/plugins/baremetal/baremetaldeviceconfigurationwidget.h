@@ -31,7 +31,7 @@
 namespace BareMetal {
 namespace Internal {
 
-class GdbServerProviderChooser;
+class DebugServerProviderChooser;
 
 // BareMetalDeviceConfigurationWidget
 
@@ -41,14 +41,13 @@ class BareMetalDeviceConfigurationWidget final
     Q_OBJECT
 
 public:
-    explicit BareMetalDeviceConfigurationWidget(
-        const ProjectExplorer::IDevice::Ptr &deviceConfig, QWidget *parent = nullptr);
+    explicit BareMetalDeviceConfigurationWidget(const ProjectExplorer::IDevice::Ptr &deviceConfig);
 
 private:
-    void gdbServerProviderChanged();
+    void debugServerProviderChanged();
     void updateDeviceFromUi() final;
 
-    GdbServerProviderChooser *m_gdbServerProviderChooser = nullptr;
+    DebugServerProviderChooser *m_debugServerProviderChooser = nullptr;
 };
 
 } // namespace Internal

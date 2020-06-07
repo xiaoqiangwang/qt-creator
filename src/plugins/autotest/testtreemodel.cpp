@@ -27,6 +27,7 @@
 #include "autotestplugin.h"
 #include "testcodeparser.h"
 #include "testframeworkmanager.h"
+#include "testprojectsettings.h"
 #include "testsettings.h"
 #include "testtreeitem.h"
 #include "testtreemodel.h"
@@ -39,7 +40,8 @@
 #include <utils/qtcassert.h>
 
 namespace Autotest {
-namespace Internal {
+
+using namespace Internal;
 
 TestTreeModel::TestTreeModel(QObject *parent) :
     TreeModel<>(parent),
@@ -53,6 +55,7 @@ TestTreeModel::TestTreeModel(QObject *parent) :
             this, &TestTreeModel::sweep, Qt::QueuedConnection);
     connect(m_parser, &TestCodeParser::parsingFailed,
             this, &TestTreeModel::sweep, Qt::QueuedConnection);
+
     setupParsingConnections();
 }
 
@@ -178,7 +181,8 @@ QList<TestTreeItem *> TestTreeModel::testItemsByName(TestTreeItem *root, const Q
             }
             TestTreeItem *testCase = node->findFirstLevelChild([&testName](TestTreeItem *it) {
                 QTC_ASSERT(it, return false);
-                return it->type() == TestTreeItem::TestFunction && it->name() == testName;
+                return (it->type() == TestTreeItem::TestCase
+                        || it->type() == TestTreeItem::TestFunction) && it->name() == testName;
             }); // collect only actual tests, not special functions like init, cleanup etc.
             if (testCase)
                 result << testCase;
@@ -198,17 +202,45 @@ QList<TestTreeItem *> TestTreeModel::testItemsByName(const QString &testName)
     return result;
 }
 
-void TestTreeModel::syncTestFrameworks()
+void TestTreeModel::synchronizeTestFrameworks()
 {
-    // remove all currently registered
-    removeTestRootNodes();
+    ProjectExplorer::Project *project = ProjectExplorer::SessionManager::startupProject();
+    QList<Core::Id> sortedIds;
+    TestFrameworkManager *manager = TestFrameworkManager::instance();
+    const QVariant useGlobal = project ? project->namedSettings(Constants::SK_USE_GLOBAL)
+                                       : QVariant();
+    if (!useGlobal.isValid() || AutotestPlugin::projectSettings(project)->useGlobalSettings()) {
+        sortedIds = manager->sortedActiveFrameworkIds();
+    } else { // we've got custom project settings
+        const TestProjectSettings *settings = AutotestPlugin::projectSettings(project);
+        const QMap<Core::Id, bool> active = settings->activeFrameworks();
+        sortedIds = Utils::filtered(active.keys(), [active](const Core::Id &id) {
+            return active.value(id);
+        });
+    }
 
-    TestFrameworkManager *frameworkManager = TestFrameworkManager::instance();
-    QVector<Core::Id> sortedIds = frameworkManager->sortedActiveFrameworkIds();
-    for (const Core::Id &id : sortedIds)
-        rootItem()->appendChild(frameworkManager->rootNodeForTestFramework(id));
+    // pre-check to avoid further processing when frameworks are unchanged
+    Utils::TreeItem *invisibleRoot = rootItem();
+    QSet<Core::Id> newlyAdded;
+    QList<Utils::TreeItem *> oldFrameworkRoots;
+    for (Utils::TreeItem *oldFrameworkRoot : *invisibleRoot)
+        oldFrameworkRoots.append(oldFrameworkRoot);
+
+    for (Utils::TreeItem *oldFrameworkRoot : oldFrameworkRoots)
+        takeItem(oldFrameworkRoot);  // do NOT delete the ptr is still held by TestFrameworkManager
+
+    for (const Core::Id &id : sortedIds) {
+        TestTreeItem *frameworkRootNode = manager->rootNodeForTestFramework(id);
+        invisibleRoot->appendChild(frameworkRootNode);
+        if (!oldFrameworkRoots.removeOne(frameworkRootNode))
+            newlyAdded.insert(id);
+    }
+    for (Utils::TreeItem *oldFrameworkRoot : oldFrameworkRoots)
+        oldFrameworkRoot->removeChildren();
 
     m_parser->syncTestFrameworks(sortedIds);
+    if (!newlyAdded.isEmpty())
+        m_parser->updateTestTree(newlyAdded);
     emit updatedActiveFrameworks(sortedIds.size());
 }
 
@@ -583,13 +615,13 @@ int TestTreeModel::boostTestNamesCount() const
     return rootNode ? rootNode->childCount() : 0;
 }
 
-QMultiMap<QString, int> TestTreeModel::boostTestSuitesAndTests() const
+QMap<QString, int> TestTreeModel::boostTestSuitesAndTests() const
 {
-    QMultiMap<QString, int> result;
+    QMap<QString, int> result;
 
     if (TestTreeItem *rootNode = boostTestRootNode()) {
         rootNode->forFirstLevelChildren([&result](TestTreeItem *child) {
-            result.insert(child->name(), child->childCount());
+            result.insert(child->name() + '|' + child->proFile(), child->childCount());
         });
     }
     return result;
@@ -666,5 +698,4 @@ bool TestTreeSortFilterModel::filterAcceptsRow(int sourceRow, const QModelIndex 
     }
 }
 
-} // namespace Internal
 } // namespace Autotest

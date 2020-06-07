@@ -58,10 +58,13 @@ public:
     void updateFrame();
 
     void setHighlighted(bool b);
+    bool highlighted() const;
 
-    void setPosition(qreal position);
+    void setPosition(qreal frame);
 
     void commitPosition(const QPointF &point) override;
+
+    void itemDoubleClicked() override;
 
     TimelineKeyframeItem *asTimelineKeyframeItem() override;
 

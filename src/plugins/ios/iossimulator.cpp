@@ -50,28 +50,19 @@ IosSimulator::IosSimulator(Core::Id id)
     setupId(IDevice::AutoDetected, id);
     setType(Constants::IOS_SIMULATOR_TYPE);
     setMachineType(IDevice::Emulator);
-    setDisplayName(QCoreApplication::translate("Ios::Internal::IosSimulator", "iOS Simulator"));
+    setOsType(Utils::OsTypeMac);
+    setDefaultDisplayName(tr("iOS Simulator"));
+    setDisplayType(tr("iOS Simulator"));
     setDeviceState(DeviceReadyToUse);
 }
 
 IosSimulator::IosSimulator()
-    : m_lastPort(Constants::IOS_SIMULATOR_PORT_START)
-{
-    setupId(IDevice::AutoDetected, Constants::IOS_SIMULATOR_DEVICE_ID);
-    setType(Constants::IOS_SIMULATOR_TYPE);
-    setMachineType(IDevice::Emulator);
-    setDisplayName(QCoreApplication::translate("Ios::Internal::IosSimulator", "iOS Simulator"));
-    setDeviceState(DeviceReadyToUse);
-}
+    : IosSimulator(Constants::IOS_SIMULATOR_DEVICE_ID)
+{}
 
 IDevice::DeviceInfo IosSimulator::deviceInformation() const
 {
     return IDevice::DeviceInfo();
-}
-
-QString IosSimulator::displayType() const
-{
-    return QCoreApplication::translate("Ios::Internal::IosSimulator", "iOS Simulator");
 }
 
 IDeviceWidget *IosSimulator::createWidget()
@@ -109,11 +100,6 @@ Utils::Port IosSimulator::nextPort() const
 bool IosSimulator::canAutoDetectPorts() const
 {
     return true;
-}
-
-Utils::OsType IosSimulator::osType() const
-{
-    return Utils::OsTypeMac;
 }
 
 // IosDeviceType
@@ -255,8 +241,7 @@ QDebug operator <<(QDebug debug, const IosDeviceType &deviceType)
 IosSimulatorFactory::IosSimulatorFactory()
     : ProjectExplorer::IDeviceFactory(Constants::IOS_SIMULATOR_TYPE)
 {
-    setObjectName(QLatin1String("IosSimulatorFactory"));
-    setDisplayName(tr("iOS Simulator"));
+    setDisplayName(IosSimulator::tr("iOS Simulator"));
     setCombinedIcon(":/ios/images/iosdevicesmall.png",
                     ":/ios/images/iosdevice.png");
     setConstructionFunction([] { return ProjectExplorer::IDevice::Ptr(new IosSimulator()); });

@@ -5,11 +5,13 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(FeatureSummary)
 include(QtCreatorIDEBranding)
+include(QtCreatorTranslations)
 
 set(IDE_REVISION FALSE CACHE BOOL "Marks the presence of IDE revision string.")
 set(IDE_REVISION_STR "" CACHE STRING "The IDE revision string.")
+set(IDE_REVISION_URL "" CACHE STRING "The IDE revision Url string.")
 
-mark_as_advanced(IDE_REVISION IDE_REVISION_STR)
+mark_as_advanced(IDE_REVISION IDE_REVISION_STR IDE_REVISION_URL)
 
 project(QtCreator VERSION ${IDE_VERSION})
 
@@ -30,15 +32,17 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 if (WITH_TESTS)
-  set(_TEST_QT_COMPONENT Test)
-  set(_TEST_DEPENDS Qt5::Test)
+  set(QT_TEST_COMPONENT Test)
+  set(IMPLICIT_DEPENDS Qt5::Test)
 endif()
 
 find_package(Qt5
-  COMPONENTS Concurrent Core Network PrintSupport Qml Quick QuickWidgets
-    Sql Widgets ${_TEST_QT_COMPONENT}
+  COMPONENTS Concurrent Core Gui Network PrintSupport Qml Quick
+    QuickWidgets Sql Widgets Xml ${QT_TEST_COMPONENT}
   REQUIRED
 )
+
+find_package(Qt5 COMPONENTS LinguistTools)
 
 find_package(Threads)
 
@@ -98,6 +102,12 @@ endif()
 install(TARGETS OptionalSvg EXPORT QtCreator)
 
 find_package(Clang COMPONENTS libclang QUIET)
+# silence a lot of warnings from building against llvm
+# this would better fit inside a central libclang detection/include cmake file, but since we do not
+# have one put it temporary here
+if(MSVC AND TARGET libclang)
+    target_compile_options(libclang INTERFACE /wd4100 /wd4141 /wd4146 /wd4244 /wd4267 /wd4291)
+endif()
 find_package(LLVM QUIET)
 
 if (APPLE)
@@ -113,6 +123,10 @@ endif()
 
 include(QtCreatorAPI)
 
+if (WITH_TESTS)
+  enable_testing()
+endif()
+
 if (UNIX)
   add_subdirectory(bin)
 endif()
@@ -121,11 +135,15 @@ add_subdirectory(src)
 add_subdirectory(share)
 
 if (WITH_TESTS)
-  enable_testing()
   add_subdirectory(tests)
 endif()
 
 add_subdirectory(doc)
+
+# CMake will include in a cmake_install.cmake at the end the subdirectories
+# At this point all the previous install scripts have been included
+# Deployment is being done in cmake/CMakeLists.txt
+add_subdirectory(cmake)
 
 feature_summary(INCLUDE_QUIET_PACKAGES WHAT
   PACKAGES_FOUND PACKAGES_NOT_FOUND

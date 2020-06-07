@@ -77,7 +77,10 @@ QnxDeployQtLibrariesDialog::QnxDeployQtLibrariesDialog(const IDevice::ConstPtr &
     connect(m_uploadService, &AbstractRemoteLinuxDeployService::errorMessage,
             m_ui->deployLogWindow, &QPlainTextEdit::appendPlainText);
     connect(m_uploadService, &AbstractRemoteLinuxDeployService::warningMessage,
-            m_ui->deployLogWindow, &QPlainTextEdit::appendPlainText);
+            this, [this](const QString &message) {
+        if (!message.contains("stat:"))
+            m_ui->deployLogWindow->appendPlainText(message);
+    });
     connect(m_uploadService, &AbstractRemoteLinuxDeployService::stdOutData,
             m_ui->deployLogWindow, &QPlainTextEdit::appendPlainText);
     connect(m_uploadService, &AbstractRemoteLinuxDeployService::stdErrData,
@@ -166,12 +169,11 @@ void QnxDeployQtLibrariesDialog::updateProgress(const QString &progressMessage)
 {
     QTC_CHECK(m_state == Uploading);
 
-    if (!progressMessage.startsWith(QLatin1String("Uploading file")))
-        return;
-
-    ++m_progressCount;
-
-    m_ui->deployProgress->setValue(m_progressCount);
+    const int progress = progressMessage.count("sftp> put");
+    if (progress != 0) {
+        m_progressCount += progress;
+        m_ui->deployProgress->setValue(m_progressCount);
+    }
 }
 
 void QnxDeployQtLibrariesDialog::handleUploadFinished()
@@ -234,16 +236,16 @@ QList<DeployableFile> QnxDeployQtLibrariesDialog::gatherFiles()
     QTC_ASSERT(qtVersion, return result);
 
     if (Utils::HostOsInfo::isWindowsHost()) {
-        result.append(gatherFiles(qtVersion->qmakeProperty("QT_INSTALL_LIBS"),
-                                  QString(), QStringList() << QLatin1String("*.so.?")));
-        result.append(gatherFiles(qtVersion->qmakeProperty("QT_INSTALL_LIBS")
-                                  + QLatin1String("/fonts")));
+        result.append(gatherFiles(qtVersion->libraryPath().toString(),
+                                  QString(),
+                                  QStringList() << QLatin1String("*.so.?")));
+        result.append(gatherFiles(qtVersion->libraryPath().toString() + QLatin1String("/fonts")));
     } else {
-        result.append(gatherFiles(qtVersion->qmakeProperty("QT_INSTALL_LIBS")));
+        result.append(gatherFiles(qtVersion->libraryPath().toString()));
     }
 
-    result.append(gatherFiles(qtVersion->qmakeProperty("QT_INSTALL_PLUGINS")));
-    result.append(gatherFiles(qtVersion->qmakeProperty("QT_INSTALL_IMPORTS")));
+    result.append(gatherFiles(qtVersion->pluginPath().toString()));
+    result.append(gatherFiles(qtVersion->importsPath().toString()));
     result.append(gatherFiles(qtVersion->qmlPath().toString()));
 
     return result;

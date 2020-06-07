@@ -334,9 +334,9 @@ static QStringList environmentTemplatesPaths()
     return paths;
 }
 
-Utils::FilePathList &JsonWizardFactory::searchPaths()
+Utils::FilePaths &JsonWizardFactory::searchPaths()
 {
-    static Utils::FilePathList m_searchPaths = Utils::FilePathList()
+    static Utils::FilePaths m_searchPaths = Utils::FilePaths()
             << Utils::FilePath::fromString(Core::ICore::userResourcePath() + QLatin1Char('/') +
                                            QLatin1String(WIZARD_PATH))
             << Utils::FilePath::fromString(Core::ICore::resourcePath() + QLatin1Char('/') +
@@ -660,7 +660,7 @@ bool JsonWizardFactory::initialize(const QVariantMap &data, const QDir &baseDir,
             return false;
     }
 
-    WizardFlags flags = {};
+    WizardFlags flags;
     if (data.value(QLatin1String(PLATFORM_INDEPENDENT_KEY), false).toBool())
         flags |= PlatformIndependent;
     setFlags(flags);

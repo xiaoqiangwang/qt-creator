@@ -25,6 +25,8 @@
 
 #pragma once
 
+#include <cppcheck/cppcheckdiagnosticmanager.h>
+
 #include <utils/fileutils.h>
 
 #include <unordered_map>
@@ -35,14 +37,14 @@ namespace Internal {
 class Diagnostic;
 class CppcheckTextMark;
 
-class CppcheckTextMarkManager final
+class CppcheckTextMarkManager final : public CppcheckDiagnosticManager
 {
 public:
     explicit CppcheckTextMarkManager();
-    ~CppcheckTextMarkManager();
+    ~CppcheckTextMarkManager() override;
 
-    void add(const Diagnostic &diagnostic);
-    void clearFiles(const Utils::FilePathList &files);
+    void add(const Diagnostic &diagnostic) override;
+    void clearFiles(const Utils::FilePaths &files);
 
 private:
     using MarkPtr = std::unique_ptr<CppcheckTextMark>;

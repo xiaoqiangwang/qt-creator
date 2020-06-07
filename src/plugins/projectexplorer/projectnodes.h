@@ -42,6 +42,7 @@ namespace Utils { class MimeType; }
 
 namespace ProjectExplorer {
 
+class BuildSystem;
 class Project;
 
 // File types common for qt projects
@@ -56,6 +57,8 @@ enum class FileType : quint16 {
     Project,
     FileTypeSize
 };
+
+enum class ProductType { App, Lib, Other, None };
 
 enum ProjectAction {
     // Special value to indicate that the actions are handled by the parent
@@ -78,12 +81,13 @@ enum ProjectAction {
     // DeleteFile is a define on windows...
     EraseFile,
     Rename,
-    DuplicateFile,
     // hides actions that use the path(): Open containing folder, open terminal here and Find in Directory
     HidePathActions,
     HideFileActions,
     HideFolderActions,
 };
+
+enum class RemovedFilesFromProject { Ok, Wildcard, Error };
 
 class FileNode;
 class FolderNode;
@@ -121,6 +125,8 @@ public:
                                      // or node->parentProjectNode() for all other cases.
     const ProjectNode *managingProject() const; // see above.
 
+    Project *getProject() const;
+
     const Utils::FilePath &filePath() const;  // file system path
     int line() const;
     virtual QString displayName() const;
@@ -156,6 +162,9 @@ public:
     static FileType fileTypeForMimeType(const Utils::MimeType &mt);
     static FileType fileTypeForFileName(const Utils::FilePath &file);
 
+    QString path() const { return pathOrDirectory(false); }
+    QString directory() const { return pathOrDirectory(true); }
+
 protected:
     Node();
     Node(const Node &other) = delete;
@@ -164,6 +173,8 @@ protected:
     void setFilePath(const Utils::FilePath &filePath);
 
 private:
+    QString pathOrDirectory(bool dir) const;
+
     FolderNode *m_parentFolderNode = nullptr;
     Utils::FilePath m_filePath;
     int m_line = -1;
@@ -225,6 +236,8 @@ public:
     QList<FileNode *> fileNodes() const;
     FileNode *fileNode(const Utils::FilePath &file) const;
     QList<FolderNode *> folderNodes() const;
+    FolderNode *folderNode(const Utils::FilePath &directory) const;
+
     using FolderNodeFactory = std::function<std::unique_ptr<FolderNode>(const Utils::FilePath &)>;
     void addNestedNodes(std::vector<std::unique_ptr<FileNode>> &&files,
                         const Utils::FilePath &overrideBaseDir = Utils::FilePath(),
@@ -243,17 +256,27 @@ public:
     void setDisplayName(const QString &name);
     void setIcon(const QIcon &icon);
 
-    class LocationInfo {
+    class LocationInfo
+    {
     public:
-        LocationInfo(const QString &dn, const Utils::FilePath &p, const int l = -1) :
-            path(p), line(l), displayName(dn) { }
+        LocationInfo() = default;
+        LocationInfo(const QString &dn,
+                     const Utils::FilePath &p,
+                     const int l = 0,
+                     const unsigned int prio = 0)
+            : path(p)
+            , line(l)
+            , priority(prio)
+            , displayName(dn)
+        {}
 
         Utils::FilePath path;
         int line = -1;
+        unsigned int priority = 0;
         QString displayName;
     };
-    void setLocationInfo(const QList<LocationInfo> &info);
-    const QList<LocationInfo> locationInfo() const;
+    void setLocationInfo(const QVector<LocationInfo> &info);
+    const QVector<LocationInfo> locationInfo() const;
 
     QString addFileFilter() const;
     void setAddFileFilter(const QString &filter) { m_addFileFilter = filter; }
@@ -261,10 +284,12 @@ public:
     bool supportsAction(ProjectAction action, const Node *node) const override;
 
     virtual bool addFiles(const QStringList &filePaths, QStringList *notAdded = nullptr);
-    virtual bool removeFiles(const QStringList &filePaths, QStringList *notRemoved = nullptr);
+    virtual RemovedFilesFromProject removeFiles(const QStringList &filePaths,
+                                                QStringList *notRemoved = nullptr);
     virtual bool deleteFiles(const QStringList &filePaths);
     virtual bool canRenameFile(const QString &filePath, const QString &newFilePath);
     virtual bool renameFile(const QString &filePath, const QString &newFilePath);
+    virtual bool addDependencies(const QStringList &dependencies);
 
     class AddNewInformation
     {
@@ -297,7 +322,7 @@ protected:
     virtual void handleSubTreeChanged(FolderNode *node);
 
     std::vector<std::unique_ptr<Node>> m_nodes;
-    QList<LocationInfo> m_locations;
+    QVector<LocationInfo> m_locations;
 
 private:
     std::unique_ptr<Node> takeNode(Node *node);
@@ -335,12 +360,14 @@ public:
     bool isProjectNodeType() const override { return true; }
     bool showInSimpleTree() const override { return true; }
 
-    bool addFiles(const QStringList &filePaths, QStringList *notAdded = nullptr) override;
-    bool removeFiles(const QStringList &filePaths, QStringList *notRemoved = nullptr) override;
-    bool deleteFiles(const QStringList &filePaths) override;
-    bool canRenameFile(const QString &filePath, const QString &newFilePath) override;
-    bool renameFile(const QString &filePath, const QString &newFilePath) override;
-    bool supportsAction(ProjectAction action, const Node *node) const override;
+    bool addFiles(const QStringList &filePaths, QStringList *notAdded = nullptr) final;
+    RemovedFilesFromProject removeFiles(const QStringList &filePaths,
+                                        QStringList *notRemoved = nullptr) final;
+    bool deleteFiles(const QStringList &filePaths) final;
+    bool canRenameFile(const QString &filePath, const QString &newFilePath) final;
+    bool renameFile(const QString &filePath, const QString &newFilePath) final;
+    bool addDependencies(const QStringList &dependencies) final;
+    bool supportsAction(ProjectAction action, const Node *node) const final;
 
     // by default returns false
     virtual bool deploysFolder(const QString &folder) const;
@@ -357,15 +384,28 @@ public:
     virtual QVariant data(Core::Id role) const;
     virtual bool setData(Core::Id role, const QVariant &value) const;
 
-    bool isProduct() const { return m_isProduct; }
+    bool isProduct() const { return m_productType != ProductType::None; }
+    ProductType productType() const { return m_productType; }
+
+    // TODO: Currently used only for "Build for current run config" functionality, but we should
+    //       probably use it to centralize the node-specific "Build" functionality that
+    //       currently each project manager plugin adds to the context menu by itself.
+    //       The function should then move up to the Node class, so it can also serve the
+    //       "build single file" case.
+    virtual void build() {}
+
+    void setFallbackData(Core::Id key, const QVariant &value);
 
 protected:
-    void setIsProduct() { m_isProduct = true; }
+    void setProductType(ProductType type) { m_productType = type; }
 
     QString m_target;
 
 private:
-    bool m_isProduct = false;
+    BuildSystem *buildSystem() const;
+
+    QHash<Core::Id, QVariant> m_fallbackData; // Used in data(), unless overridden.
+    ProductType m_productType = ProductType::None;
 };
 
 class PROJECTEXPLORER_EXPORT ContainerNode : public FolderNode

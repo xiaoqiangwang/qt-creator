@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <QObject>
+#include "clangtoolssettings.h"
 
 #include <coreplugin/id.h>
 #include <projectexplorer/project.h>
@@ -39,12 +39,9 @@ class Diagnostic;
 class SuppressedDiagnostic
 {
 public:
-    SuppressedDiagnostic(const Utils::FilePath &filePath, const QString &description,
-                         const QString &contextKind, const QString &context, int uniquifier)
+    SuppressedDiagnostic(const Utils::FilePath &filePath, const QString &description, int uniquifier)
         : filePath(filePath)
         , description(description)
-        , contextKind(contextKind)
-        , context(context)
         , uniquifier(uniquifier)
     {
     }
@@ -53,16 +50,14 @@ public:
 
     Utils::FilePath filePath; // Relative for files in project, absolute otherwise.
     QString description;
-    QString contextKind;
-    QString context;
     int uniquifier;
 };
 
 inline bool operator==(const SuppressedDiagnostic &d1, const SuppressedDiagnostic &d2)
 {
-    return d1.filePath == d2.filePath && d1.description == d2.description
-            && d1.contextKind == d2.contextKind && d1.context == d2.context
-            && d1.uniquifier == d2.uniquifier;
+    return d1.filePath == d2.filePath
+        && d1.description == d2.description
+        && d1.uniquifier == d2.uniquifier;
 }
 
 using SuppressedDiagnosticsList = QList<SuppressedDiagnostic>;
@@ -75,14 +70,11 @@ public:
     ClangToolsProjectSettings(ProjectExplorer::Project *project);
     ~ClangToolsProjectSettings() override;
 
-    bool useGlobalSettings() const;
-    void setUseGlobalSettings(bool useGlobalSettings);
+    bool useGlobalSettings() const { return m_useGlobalSettings; }
+    void setUseGlobalSettings(bool useGlobalSettings) { m_useGlobalSettings = useGlobalSettings; }
 
-    Core::Id diagnosticConfig() const;
-    void setDiagnosticConfig(const Core::Id &diagnosticConfig);
-
-    bool buildBeforeAnalysis() const;
-    void setBuildBeforeAnalysis(bool build);
+    RunSettings runSettings() const { return m_runSettings; }
+    void setRunSettings(const RunSettings &settings) { m_runSettings = settings; }
 
     QSet<Utils::FilePath> selectedDirs() const { return m_selectedDirs; }
     void setSelectedDirs(const QSet<Utils::FilePath> &value) { m_selectedDirs = value; }
@@ -95,6 +87,9 @@ public:
     void removeSuppressedDiagnostic(const SuppressedDiagnostic &diag);
     void removeAllSuppressedDiagnostics();
 
+    using ClangToolsProjectSettingsPtr = QSharedPointer<ClangToolsProjectSettings>;
+    static ClangToolsProjectSettingsPtr getSettings(ProjectExplorer::Project *project);
+
 signals:
     void suppressedDiagnosticsChanged();
 
@@ -103,27 +98,18 @@ private:
     void store();
 
     ProjectExplorer::Project *m_project;
+
     bool m_useGlobalSettings = true;
-    Core::Id m_diagnosticConfig;
+
+    RunSettings m_runSettings;
+
     QSet<Utils::FilePath> m_selectedDirs;
     QSet<Utils::FilePath> m_selectedFiles;
+
     SuppressedDiagnosticsList m_suppressedDiagnostics;
-    bool m_buildBeforeAnalysis = true;
-};
-
-class ClangToolsProjectSettingsManager
-{
-public:
-    ClangToolsProjectSettingsManager();
-
-    static ClangToolsProjectSettings *getSettings(ProjectExplorer::Project *project);
-
-private:
-    static void handleProjectToBeRemoved(ProjectExplorer::Project *project);
-
-    using SettingsMap = QHash<ProjectExplorer::Project *, QSharedPointer<ClangToolsProjectSettings>>;
-    static SettingsMap m_settings;
 };
 
 } // namespace Internal
 } // namespace ClangTools
+
+Q_DECLARE_METATYPE(QSharedPointer<ClangTools::Internal::ClangToolsProjectSettings>)

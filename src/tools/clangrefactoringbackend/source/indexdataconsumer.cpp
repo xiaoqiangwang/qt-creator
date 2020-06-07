@@ -25,7 +25,6 @@
 
 #include "indexdataconsumer.h"
 #include "collectsymbolsaction.h"
-#include "filestatuspreprocessorcallbacks.h"
 
 #include <clang/AST/DeclVisitor.h>
 #include <clang/Basic/SourceLocation.h>
@@ -53,12 +52,12 @@ Utils::SmallString symbolName(const clang::NamedDecl *declaration)
 
 SourceLocationKind sourceLocationKind(clang::index::SymbolRoleSet roles)
 {
-    if (hasSymbolRole(clang::index::SymbolRole::Reference, roles))
-        return SourceLocationKind::DeclarationReference;
+    if (hasSymbolRole(clang::index::SymbolRole::Definition, roles))
+        return SourceLocationKind::Definition;
     else if (hasSymbolRole(clang::index::SymbolRole::Declaration, roles))
         return SourceLocationKind::Declaration;
-    else if (hasSymbolRole(clang::index::SymbolRole::Definition, roles))
-        return SourceLocationKind::Definition;
+    else if (hasSymbolRole(clang::index::SymbolRole::Reference, roles))
+        return SourceLocationKind::DeclarationReference;
 
     return SourceLocationKind::None;
 }
@@ -68,9 +67,9 @@ using SymbolKindAndTags = std::pair<SymbolKind, SymbolTags>;
 class IndexingDeclVisitor : public clang::ConstDeclVisitor<IndexingDeclVisitor, SymbolKindAndTags>
 {
 public:
-    SymbolKindAndTags VisitEnumDecl(const clang::EnumDecl *declaration)
+    SymbolKindAndTags VisitEnumDecl(const clang::EnumDecl * /*declaration*/)
     {
-        return {SymbolKind::Enumeration, {}};;
+        return {SymbolKind::Enumeration, {}};
     }
     SymbolKindAndTags VisitRecordDecl(const clang::RecordDecl *declaration)
     {
@@ -105,7 +104,7 @@ SymbolKindAndTags symbolKindAndTags(const clang::Decl *declaration)
 
 } // namespace
 
-bool IndexDataConsumer::skipSymbol(clang::FileID fileId, clang::index::SymbolRoleSet symbolRoles)
+bool IndexDataConsumer::skipSymbol(clang::FileID fileId)
 {
     return isAlreadyParsed(fileId, m_symbolSourcesManager)
            && !m_symbolSourcesManager.dependentFilesModified();
@@ -119,24 +118,23 @@ bool IndexDataConsumer::isAlreadyParsed(clang::FileID fileId, SourcesManager &so
     return sourcesManager.alreadyParsed(filePathId(fileEntry), fileEntry->getModificationTime());
 }
 
-void IndexDataConsumer::setPreprocessor(std::shared_ptr<clang::Preprocessor> preprocessor)
-{
-    preprocessor->addPPCallbacks(std::make_unique<FileStatusPreprocessorCallbacks>(
-        m_fileStatuses, m_filePathCache, m_sourceManager, m_filePathIndices));
-}
-
-bool IndexDataConsumer::handleDeclOccurence(const clang::Decl *declaration,
-                                            clang::index::SymbolRoleSet symbolRoles,
-                                            llvm::ArrayRef<clang::index::SymbolRelation> /*symbolRelations*/,
-                                            clang::SourceLocation sourceLocation,
-                                            IndexDataConsumer::ASTNodeInfo /*astNodeInfo*/)
+#if LLVM_VERSION_MAJOR >= 10
+    bool IndexDataConsumer::handleDeclOccurrence(
+#else
+    bool IndexDataConsumer::handleDeclOccurence(
+#endif
+        const clang::Decl *declaration,
+        clang::index::SymbolRoleSet symbolRoles,
+        llvm::ArrayRef<clang::index::SymbolRelation> /*symbolRelations*/,
+        clang::SourceLocation sourceLocation,
+        IndexDataConsumer::ASTNodeInfo /*astNodeInfo*/)
 {
     const auto *namedDeclaration = clang::dyn_cast<clang::NamedDecl>(declaration);
     if (namedDeclaration) {
         if (!namedDeclaration->getIdentifier())
             return true;
 
-        if (skipSymbol(m_sourceManager->getFileID(sourceLocation), symbolRoles))
+        if (skipSymbol(m_sourceManager->getFileID(sourceLocation)))
             return true;
 
         SymbolIndex globalId = toSymbolIndex(declaration->getCanonicalDecl());
@@ -182,10 +180,15 @@ SourceLocationKind macroSymbolType(clang::index::SymbolRoleSet roles)
 
 } // namespace
 
-bool IndexDataConsumer::handleMacroOccurence(const clang::IdentifierInfo *identifierInfo,
-                                             const clang::MacroInfo *macroInfo,
-                                             clang::index::SymbolRoleSet roles,
-                                             clang::SourceLocation sourceLocation)
+#if LLVM_VERSION_MAJOR >= 10
+bool IndexDataConsumer::handleMacroOccurrence(
+#else
+bool IndexDataConsumer::handleMacroOccurence(
+#endif
+        const clang::IdentifierInfo *identifierInfo,
+        const clang::MacroInfo *macroInfo,
+        clang::index::SymbolRoleSet roles,
+        clang::SourceLocation sourceLocation)
 {
     if (macroInfo && sourceLocation.isFileID()
         && !isAlreadyParsed(m_sourceManager->getFileID(sourceLocation), m_macroSourcesManager)

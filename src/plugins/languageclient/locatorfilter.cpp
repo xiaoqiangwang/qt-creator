@@ -56,24 +56,20 @@ DocumentLocatorFilter::DocumentLocatorFilter()
 
 void DocumentLocatorFilter::updateCurrentClient()
 {
-    Core::IEditor *editor = Core::EditorManager::currentEditor();
     resetSymbols();
     disconnect(m_resetSymbolsConnection);
 
-    if (Client *client = LanguageClientManager::clientForEditor(editor)) {
+    TextEditor::TextDocument *document = TextEditor::TextDocument::currentTextDocument();
+    if (Client *client = LanguageClientManager::clientForDocument(document)) {
         if (m_symbolCache != client->documentSymbolCache()) {
             disconnect(m_updateSymbolsConnection);
             m_symbolCache = client->documentSymbolCache();
-            m_updateSymbolsConnection = connect(m_symbolCache,
-                                                &DocumentSymbolCache::gotSymbols,
-                                                this,
-                                                &DocumentLocatorFilter::updateSymbols);
+            m_updateSymbolsConnection = connect(m_symbolCache, &DocumentSymbolCache::gotSymbols,
+                                                this, &DocumentLocatorFilter::updateSymbols);
         }
-        m_resetSymbolsConnection = connect(editor->document(),
-                                           &Core::IDocument::contentsChanged,
-                                           this,
-                                           &DocumentLocatorFilter::resetSymbols);
-        m_currentUri = DocumentUri::fromFileName(editor->document()->filePath());
+        m_resetSymbolsConnection = connect(document, &Core::IDocument::contentsChanged,
+                                           this, &DocumentLocatorFilter::resetSymbols);
+        m_currentUri = DocumentUri::fromFilePath(document->filePath());
     } else {
         disconnect(m_updateSymbolsConnection);
         m_symbolCache.clear();
@@ -192,7 +188,7 @@ void DocumentLocatorFilter::accept(Core::LocatorFilterEntry selection,
 {
     if (selection.internalData.canConvert<Utils::LineColumn>()) {
         auto lineColumn = qvariant_cast<Utils::LineColumn>(selection.internalData);
-        Core::EditorManager::openEditorAt(m_currentUri.toFileName().toString(),
+        Core::EditorManager::openEditorAt(m_currentUri.toFilePath().toString(),
                                           lineColumn.line + 1,
                                           lineColumn.column);
     } else if (selection.internalData.canConvert<Utils::Link>()) {

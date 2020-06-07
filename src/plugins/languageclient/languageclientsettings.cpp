@@ -37,6 +37,7 @@
 #include <projectexplorer/project.h>
 #include <projectexplorer/session.h>
 #include <utils/algorithm.h>
+#include <utils/utilsicons.h>
 #include <utils/delegates.h>
 #include <utils/fancylineedit.h>
 #include <utils/mimetypes/mimedatabase.h>
@@ -53,10 +54,12 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QListView>
+#include <QMimeData>
 #include <QPushButton>
 #include <QSettings>
 #include <QSortFilterProxyModel>
 #include <QStringListModel>
+#include <QToolButton>
 #include <QTreeView>
 
 constexpr char nameKey[] = "name";
@@ -69,6 +72,7 @@ constexpr char executableKey[] = "executable";
 constexpr char argumentsKey[] = "arguments";
 constexpr char settingsGroupKey[] = "LanguageClient";
 constexpr char clientsKey[] = "clients";
+constexpr char mimeType[] = "application/language.client.setting";
 
 namespace LanguageClient {
 
@@ -85,14 +89,25 @@ public:
     bool insertRows(int row, int count = 1, const QModelIndex &parent = QModelIndex()) final;
     bool setData(const QModelIndex &index, const QVariant &value, int role) final;
     Qt::ItemFlags flags(const QModelIndex &index) const final;
+    Qt::DropActions supportedDropActions() const override { return Qt::MoveAction; }
+    QStringList mimeTypes() const override { return {mimeType}; }
+    QMimeData *mimeData(const QModelIndexList &indexes) const override;
+    bool dropMimeData(const QMimeData *data,
+                      Qt::DropAction action,
+                      int row,
+                      int column,
+                      const QModelIndex &parent) override;
 
     void reset(const QList<BaseSettings *> &settings);
     QList<BaseSettings *> settings() const { return m_settings; }
+    void insertSettings(BaseSettings *settings);
+    void enableSetting(const QString &id);
     QList<BaseSettings *> removed() const { return m_removed; }
     BaseSettings *settingForIndex(const QModelIndex &index) const;
     QModelIndex indexForSetting(BaseSettings *setting) const;
 
 private:
+    static constexpr int idRole = Qt::UserRole + 1;
     QList<BaseSettings *> m_settings; // owned
     QList<BaseSettings *> m_removed;
 };
@@ -133,6 +148,8 @@ public:
     void finish() override;
 
     QList<BaseSettings *> settings() const;
+    void addSettings(BaseSettings *settings);
+    void enableSettings(const QString &id);
 
 private:
     LanguageClientSettingsModel m_model;
@@ -149,6 +166,10 @@ LanguageClientSettingsPageWidget::LanguageClientSettingsPageWidget(LanguageClien
     m_view->setHeaderHidden(true);
     m_view->setSelectionMode(QAbstractItemView::SingleSelection);
     m_view->setSelectionBehavior(QAbstractItemView::SelectItems);
+    m_view->setDragEnabled(true);
+    m_view->viewport()->setAcceptDrops(true);
+    m_view->setDropIndicatorShown(true);
+    m_view->setDragDropMode(QAbstractItemView::InternalMove);
     connect(m_view->selectionModel(), &QItemSelectionModel::currentChanged,
             this, &LanguageClientSettingsPageWidget::currentChanged);
     auto buttonLayout = new QVBoxLayout();
@@ -220,8 +241,10 @@ void LanguageClientSettingsPageWidget::addItem()
 void LanguageClientSettingsPageWidget::deleteItem()
 {
     auto index = m_view->currentIndex();
-    if (index.isValid())
-        m_settings.removeRows(index.row());
+    if (!index.isValid())
+        return;
+
+    m_settings.removeRows(index.row());
 }
 
 LanguageClientSettingsPage::LanguageClientSettingsPage()
@@ -231,8 +254,7 @@ LanguageClientSettingsPage::LanguageClientSettingsPage()
     setCategory(Constants::LANGUAGECLIENT_SETTINGS_CATEGORY);
     setDisplayCategory(QCoreApplication::translate("LanguageClient",
                                                    Constants::LANGUAGECLIENT_SETTINGS_TR));
-    setCategoryIcon(Utils::Icon({{":/languageclient/images/settingscategory_languageclient.png",
-                    Utils::Theme::PanelTextColorDark}}, Utils::Icon::Tint));
+    setCategoryIconPath(":/languageclient/images/settingscategory_languageclient.png");
 }
 
 LanguageClientSettingsPage::~LanguageClientSettingsPage()
@@ -285,6 +307,16 @@ QList<BaseSettings *> LanguageClientSettingsPage::settings() const
     return m_model.settings();
 }
 
+void LanguageClientSettingsPage::addSettings(BaseSettings *settings)
+{
+    m_model.insertSettings(settings);
+}
+
+void LanguageClientSettingsPage::enableSettings(const QString &id)
+{
+    m_model.enableSetting(id);
+}
+
 LanguageClientSettingsModel::~LanguageClientSettingsModel()
 {
     qDeleteAll(m_settings);
@@ -299,6 +331,8 @@ QVariant LanguageClientSettingsModel::data(const QModelIndex &index, int role) c
         return Utils::globalMacroExpander()->expand(setting->m_name);
     else if (role == Qt::CheckStateRole)
         return setting->m_enabled ? Qt::Checked : Qt::Unchecked;
+    else if (role == idRole)
+        return setting->m_id;
     return QVariant();
 }
 
@@ -338,9 +372,55 @@ bool LanguageClientSettingsModel::setData(const QModelIndex &index, const QVaria
     return true;
 }
 
-Qt::ItemFlags LanguageClientSettingsModel::flags(const QModelIndex &/*index*/) const
+Qt::ItemFlags LanguageClientSettingsModel::flags(const QModelIndex &index) const
 {
-    return Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemIsUserCheckable;
+    const Qt::ItemFlags dragndropFlags = index.isValid() ? Qt::ItemIsDragEnabled
+                                                         : Qt::ItemIsDropEnabled;
+    return Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemIsUserCheckable | dragndropFlags;
+}
+
+QMimeData *LanguageClientSettingsModel::mimeData(const QModelIndexList &indexes) const
+{
+    QTC_ASSERT(indexes.count() == 1, return nullptr);
+
+    QMimeData *mimeData = new QMimeData;
+    QByteArray encodedData;
+
+    QDataStream stream(&encodedData, QIODevice::WriteOnly);
+
+    for (const QModelIndex &index : indexes) {
+        if (index.isValid())
+            stream << data(index, idRole).toString();
+    }
+
+    mimeData->setData(mimeType, indexes.first().data(idRole).toString().toUtf8());
+    return mimeData;
+}
+
+bool LanguageClientSettingsModel::dropMimeData(
+    const QMimeData *data, Qt::DropAction action, int row, int column, const QModelIndex &parent)
+{
+    if (!canDropMimeData(data, action, row, column, parent))
+        return false;
+
+    if (action == Qt::IgnoreAction)
+        return true;
+
+    const QString id = QString::fromUtf8(data->data(mimeType));
+    auto setting = Utils::findOrDefault(m_settings, [id](const BaseSettings *setting) {
+        return setting->m_id == id;
+    });
+    if (!setting)
+        return false;
+
+    if (row == -1)
+        row = parent.isValid() ? parent.row() : rowCount(QModelIndex());
+
+    beginInsertRows(parent, row, row);
+    m_settings.insert(row, setting->copy());
+    endInsertRows();
+
+    return true;
 }
 
 void LanguageClientSettingsModel::reset(const QList<BaseSettings *> &settings)
@@ -351,6 +431,25 @@ void LanguageClientSettingsModel::reset(const QList<BaseSettings *> &settings)
     m_removed.clear();
     m_settings = Utils::transform(settings, [](const BaseSettings *other) { return other->copy(); });
     endResetModel();
+}
+
+void LanguageClientSettingsModel::insertSettings(BaseSettings *settings)
+{
+    int row = rowCount();
+    beginInsertRows(QModelIndex(), row, row);
+    m_settings.insert(row, settings);
+    endInsertRows();
+}
+
+void LanguageClientSettingsModel::enableSetting(const QString &id)
+{
+    BaseSettings *setting = Utils::findOrDefault(m_settings, Utils::equal(&BaseSettings::m_id, id));
+    if (!setting)
+        return;
+    setting->m_enabled = true;
+    const QModelIndex &index = indexForSetting(setting);
+    if (index.isValid())
+        emit dataChanged(index, index, {Qt::CheckStateRole});
 }
 
 BaseSettings *LanguageClientSettingsModel::settingForIndex(const QModelIndex &index) const
@@ -430,6 +529,7 @@ void BaseSettings::fromMap(const QVariantMap &map)
         map.value(startupBehaviorKey, BaseSettings::RequiresFile).toInt());
     m_languageFilter.mimeTypes = map[mimeTypeKey].toStringList();
     m_languageFilter.filePattern = map[filePatternKey].toStringList();
+    m_languageFilter.filePattern.removeAll({}); // remove empty entries
 }
 
 static LanguageClientSettingsPage &settingsPage()
@@ -459,6 +559,16 @@ QList<BaseSettings *> LanguageClientSettings::fromSettings(QSettings *settingsIn
 QList<BaseSettings *> LanguageClientSettings::currentPageSettings()
 {
     return settingsPage().settings();
+}
+
+void LanguageClientSettings::addSettings(BaseSettings *settings)
+{
+    settingsPage().addSettings(settings);
+}
+
+void LanguageClientSettings::enableSettings(const QString &id)
+{
+    settingsPage().enableSettings(id);
 }
 
 void LanguageClientSettings::toSettings(QSettings *settings,
@@ -522,6 +632,13 @@ void StdIOSettings::fromMap(const QVariantMap &map)
 QString StdIOSettings::arguments() const
 {
     return Utils::globalMacroExpander()->expand(m_arguments);
+}
+
+Utils::CommandLine StdIOSettings::command() const
+{
+    return Utils::CommandLine(Utils::FilePath::fromUserInput(m_executable),
+                              arguments(),
+                              Utils::CommandLine::Raw);
 }
 
 BaseClientInterface *StdIOSettings::createInterface() const
@@ -725,7 +842,6 @@ public:
         connect(filter, &QLineEdit::textChanged, proxy, &QSortFilterProxyModel::setFilterWildcard);
         listView->setModel(proxy);
 
-        setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
         setModal(true);
     }
 

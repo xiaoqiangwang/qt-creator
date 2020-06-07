@@ -30,7 +30,7 @@
 namespace Bookmarks {
 namespace Internal {
 
-class BookmarksPlugin : public ExtensionSystem::IPlugin
+class BookmarksPlugin final : public ExtensionSystem::IPlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QtCreatorPlugin" FILE "Bookmarks.json")
@@ -38,7 +38,6 @@ class BookmarksPlugin : public ExtensionSystem::IPlugin
     ~BookmarksPlugin() final;
 
     bool initialize(const QStringList &arguments, QString *errorMessage) final;
-    void extensionsInitialized() final {}
 
     class BookmarksPluginPrivate *d = nullptr;
 };

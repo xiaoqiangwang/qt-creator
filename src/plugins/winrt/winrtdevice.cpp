@@ -40,7 +40,6 @@
 #include <utils/portlist.h>
 
 #include <QFileInfo>
-#include <QCoreApplication>
 #include <QIcon>
 #include <QLoggingCategory>
 #include <QWizard>
@@ -56,19 +55,17 @@ using namespace Utils;
 namespace WinRt {
 namespace Internal {
 
-Q_LOGGING_CATEGORY(winrtDeviceLog, "qtc.winrt.deviceParser", QtWarningMsg)
+static Q_LOGGING_CATEGORY(winrtDeviceLog, "qtc.winrt.deviceParser", QtWarningMsg)
 
 WinRtDevice::WinRtDevice()
 {
+    setDisplayType(displayNameForType(type()));
+    setOsType(OsTypeWindows);
+
     Utils::PortList portList;
     portList.addRange(Utils::Port(ProjectExplorer::Constants::DESKTOP_PORT_START),
                       Utils::Port(ProjectExplorer::Constants::DESKTOP_PORT_END));
     setFreePorts(portList);
-}
-
-QString WinRtDevice::displayType() const
-{
-    return displayNameForType(type());
 }
 
 IDeviceWidget *WinRtDevice::createWidget()
@@ -99,11 +96,6 @@ QVariantMap WinRtDevice::toMap() const
     QVariantMap map = IDevice::toMap();
     map.insert(QStringLiteral("WinRtRunnerDeviceId"), m_deviceId);
     return map;
-}
-
-Utils::OsType WinRtDevice::osType() const
-{
-    return Utils::OsTypeWindows;
 }
 
 QString WinRtDevice::displayNameForType(Core::Id type)
@@ -144,10 +136,9 @@ WinRtDeviceFactory::WinRtDeviceFactory(Core::Id deviceType)
 void WinRtDeviceFactory::autoDetect()
 {
     qCDebug(winrtDeviceLog) << __FUNCTION__;
-    MessageManager::write(tr("Running Windows Runtime device detection."));
     const QString runnerFilePath = findRunnerFilePath();
     if (runnerFilePath.isEmpty()) {
-        MessageManager::write(tr("No winrtrunner.exe found."));
+        qCDebug(winrtDeviceLog) << "No winrtrunner.exe found.";
         return;
     }
 
@@ -159,11 +150,9 @@ void WinRtDeviceFactory::autoDetect()
                 this, &WinRtDeviceFactory::onProcessFinished);
     }
 
-    const QString args = QStringLiteral("--list-devices");
-    m_process->setCommand(CommandLine(FilePath::fromString(runnerFilePath), args));
-    qCDebug(winrtDeviceLog) << __FUNCTION__ << "Starting process" << runnerFilePath
-                            << "with arguments" << args;
-    MessageManager::write(runnerFilePath + QLatin1Char(' ') + args);
+    const CommandLine cmd{runnerFilePath, {"--list-devices"}};
+    m_process->setCommand(cmd);
+    qCDebug(winrtDeviceLog) << __FUNCTION__ << "Starting process" << cmd.toUserOutput();
     m_process->start();
     qCDebug(winrtDeviceLog) << __FUNCTION__ << "Process started";
 }
@@ -233,7 +222,7 @@ QString WinRtDeviceFactory::findRunnerFilePath() const
     BaseQtVersion *qt = nullptr;
     for (BaseQtVersion *v : winrtVersions) {
         if (!qt || qt->qtVersion() < v->qtVersion()) {
-            QFileInfo fi(v->binPath().toString() + winRtRunnerExe);
+            QFileInfo fi(v->hostBinPath().toString() + winRtRunnerExe);
             if (fi.isFile() && fi.isExecutable()) {
                 qt = v;
                 filePath = fi.absoluteFilePath();
@@ -358,18 +347,18 @@ void WinRtDeviceFactory::parseRunnerOutput(const QByteArray &output) const
             device->setDeviceId(deviceId);
             device->setType(deviceType);
             device->setMachineType(machineType);
-            device->setDisplayName(name);
+            device->setDefaultDisplayName(name);
             deviceManager->addDevice(ProjectExplorer::IDevice::ConstPtr(device));
             qCDebug(winrtDeviceLog) << __FUNCTION__ << "Added device" << name << "(internal name:"
                                     << internalName << ")";
         }
     }
-    QString message = tr("Found %n Windows Runtime devices.", 0, numFound);
+    QString message = tr("Found %n Windows Runtime devices.", nullptr, numFound);
     if (const int numNew = numFound - numSkipped) {
         message += QLatin1Char(' ');
-        message += tr("%n of them are new.", 0, numNew);
+        message += tr("%n of them are new.", nullptr, numNew);
     }
-    MessageManager::write(message);
+    qCDebug(winrtDeviceLog) << message;
 }
 
 } // Internal

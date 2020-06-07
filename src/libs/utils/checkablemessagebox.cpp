@@ -62,6 +62,7 @@ public:
         sizePolicy.setHeightForWidth(pixmapLabel->sizePolicy().hasHeightForWidth());
         pixmapLabel->setSizePolicy(sizePolicy);
         pixmapLabel->setVisible(false);
+        pixmapLabel->setFocusPolicy(Qt::NoFocus);
 
         auto pixmapSpacer =
             new QSpacerItem(0, 5, QSizePolicy::Minimum, QSizePolicy::MinimumExpanding);
@@ -71,6 +72,7 @@ public:
         messageLabel->setWordWrap(true);
         messageLabel->setOpenExternalLinks(true);
         messageLabel->setTextInteractionFlags(Qt::LinksAccessibleByKeyboard|Qt::LinksAccessibleByMouse);
+        messageLabel->setFocusPolicy(Qt::NoFocus);
 
         auto checkBoxRightSpacer =
             new QSpacerItem(1, 1, QSizePolicy::Expanding, QSizePolicy::Minimum);
@@ -116,7 +118,6 @@ CheckableMessageBox::CheckableMessageBox(QWidget *parent) :
     d(new CheckableMessageBoxPrivate(this))
 {
     setModal(true);
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     connect(d->buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(d->buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(d->buttonBox, &QDialogButtonBox::clicked,

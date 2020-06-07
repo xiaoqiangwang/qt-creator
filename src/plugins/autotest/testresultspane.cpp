@@ -45,7 +45,11 @@
 #include <coreplugin/icore.h>
 #include <projectexplorer/buildmanager.h>
 #include <projectexplorer/projectexplorer.h>
+#include <texteditor/fontsettings.h>
 #include <texteditor/texteditor.h>
+#include <texteditor/texteditorsettings.h>
+#include <utils/qtcassert.h>
+#include <utils/stylehelper.h>
 #include <utils/theme/theme.h>
 #include <utils/utilsicons.h>
 
@@ -60,6 +64,8 @@
 #include <QStackedWidget>
 #include <QToolButton>
 #include <QVBoxLayout>
+
+using namespace Core;
 
 namespace Autotest {
 namespace Internal {
@@ -80,14 +86,14 @@ void ResultsTreeView::keyPressEvent(QKeyEvent *event)
 }
 
 TestResultsPane::TestResultsPane(QObject *parent) :
-    Core::IOutputPane(parent),
-    m_context(new Core::IContext(this))
+    IOutputPane(parent),
+    m_context(new IContext(this))
 {
     m_outputWidget = new QStackedWidget;
     QWidget *visualOutputWidget = new QWidget;
     m_outputWidget->addWidget(visualOutputWidget);
     QVBoxLayout *outputLayout = new QVBoxLayout;
-    outputLayout->setMargin(0);
+    outputLayout->setContentsMargins(0, 0, 0, 0);
     outputLayout->setSpacing(0);
     visualOutputWidget->setLayout(outputLayout);
 
@@ -100,7 +106,7 @@ TestResultsPane::TestResultsPane(QObject *parent) :
     m_summaryWidget->setPalette(pal);
     m_summaryWidget->setAutoFillBackground(true);
     QHBoxLayout *layout = new QHBoxLayout;
-    layout->setMargin(6);
+    layout->setContentsMargins(6, 6, 6, 6);
     m_summaryWidget->setLayout(layout);
     m_summaryLabel = new QLabel;
     m_summaryLabel->setPalette(pal);
@@ -123,20 +129,18 @@ TestResultsPane::TestResultsPane(QObject *parent) :
     TestResultDelegate *trd = new TestResultDelegate(this);
     m_treeView->setItemDelegate(trd);
 
-    outputLayout->addWidget(Core::ItemViewFind::createSearchableWrapper(m_treeView));
+    outputLayout->addWidget(ItemViewFind::createSearchableWrapper(m_treeView));
 
     m_textOutput = new QPlainTextEdit;
     m_textOutput->setPalette(pal);
-    QFont font("monospace");
-    font.setStyleHint(QFont::TypeWriter);
-    m_textOutput->setFont(font);
+    m_textOutput->setFont(TextEditor::TextEditorSettings::fontSettings().font());
     m_textOutput->setWordWrapMode(QTextOption::WordWrap);
     m_textOutput->setReadOnly(true);
     m_outputWidget->addWidget(m_textOutput);
 
     auto agg = new Aggregation::Aggregate;
     agg->add(m_textOutput);
-    agg->add(new Core::BaseTextFind(m_textOutput));
+    agg->add(new BaseTextFind(m_textOutput));
 
     createToolButtons();
 
@@ -176,13 +180,13 @@ void TestResultsPane::createToolButtons()
     });
 
     m_runAll = new QToolButton(m_treeView);
-    m_runAll->setDefaultAction(Core::ActionManager::command(Constants::ACTION_RUN_ALL_ID)->action());
+    m_runAll->setDefaultAction(ActionManager::command(Constants::ACTION_RUN_ALL_ID)->action());
 
     m_runSelected = new QToolButton(m_treeView);
-    m_runSelected->setDefaultAction(Core::ActionManager::command(Constants::ACTION_RUN_SELECTED_ID)->action());
+    m_runSelected->setDefaultAction(ActionManager::command(Constants::ACTION_RUN_SELECTED_ID)->action());
 
     m_runFile = new QToolButton(m_treeView);
-    m_runFile->setDefaultAction(Core::ActionManager::command(Constants::ACTION_RUN_FILE_ID)->action());
+    m_runFile->setDefaultAction(ActionManager::command(Constants::ACTION_RUN_FILE_ID)->action());
 
     m_stopTestRun = new QToolButton(m_treeView);
     m_stopTestRun->setIcon(Utils::Icons::STOP_SMALL_TOOLBAR.icon());
@@ -236,9 +240,56 @@ void TestResultsPane::addTestResult(const TestResultPtr &result)
     navigateStateChanged();
 }
 
-void TestResultsPane::addOutput(const QByteArray &output)
+static void checkAndFineTuneColors(QTextCharFormat *format)
 {
-    m_textOutput->appendPlainText(QString::fromUtf8(TestOutputReader::chopLineBreak(output)));
+    QTC_ASSERT(format, return);
+    const QColor bgColor = format->background().color();
+    QColor fgColor = format->foreground().color();
+
+    if (Utils::StyleHelper::isReadableOn(bgColor, fgColor))
+        return;
+
+    int h, s, v;
+    fgColor.getHsv(&h, &s, &v);
+    // adjust the color value to ensure better readability
+    if (Utils::StyleHelper::luminance(bgColor) < .5)
+        v = v + 64;
+    else
+        v = v - 64;
+
+    fgColor.setHsv(h, s, v);
+    if (!Utils::StyleHelper::isReadableOn(bgColor, fgColor)) {
+        s = (s + 128) % 255;    // adjust the saturation to ensure better readability
+        fgColor.setHsv(h, s, v);
+        if (!Utils::StyleHelper::isReadableOn(bgColor, fgColor))
+            return;
+    }
+
+    format->setForeground(fgColor);
+}
+
+void TestResultsPane::addOutputLine(const QByteArray &outputLine, OutputChannel channel)
+{
+    if (!QTC_GUARD(!outputLine.contains('\n'))) {
+        for (auto line : outputLine.split('\n'))
+            addOutputLine(line, channel);
+        return;
+    }
+
+    const Utils::FormattedText formattedText
+            = Utils::FormattedText{QString::fromUtf8(outputLine), m_defaultFormat};
+    QList<Utils::FormattedText> formatted = channel == OutputChannel::StdOut
+            ? m_stdOutHandler.parseText(formattedText)
+            : m_stdErrHandler.parseText(formattedText);
+
+    QTextCursor cursor = m_textOutput->textCursor();
+    cursor.beginEditBlock();
+    for (auto formattedText : formatted) {
+        checkAndFineTuneColors(&formattedText.format);
+        cursor.insertText(formattedText.text, formattedText.format);
+    }
+    cursor.insertText("\n");
+    cursor.endEditBlock();
 }
 
 QWidget *TestResultsPane::outputWidget(QWidget *parent)
@@ -279,6 +330,14 @@ void TestResultsPane::clearContents()
     connect(m_treeView->verticalScrollBar(), &QScrollBar::rangeChanged,
             this, &TestResultsPane::onScrollBarRangeChanged, Qt::UniqueConnection);
     m_textOutput->clear();
+    m_defaultFormat.setBackground(Utils::creatorTheme()->palette().color(
+                                      m_textOutput->backgroundRole()));
+    m_defaultFormat.setForeground(Utils::creatorTheme()->palette().color(
+                                      m_textOutput->foregroundRole()));
+
+    // in case they had been forgotten to reset
+    m_stdErrHandler.endFormatScope();
+    m_stdOutHandler.endFormatScope();
     clearMarks();
 }
 
@@ -402,7 +461,7 @@ void TestResultsPane::onItemActivated(const QModelIndex &index)
 
     const TestResult *testResult = m_filterModel->testResult(index);
     if (testResult && !testResult->fileName().isEmpty())
-        Core::EditorManager::openEditorAt(testResult->fileName(), testResult->line(), 0);
+        EditorManager::openEditorAt(testResult->fileName(), testResult->line(), 0);
 }
 
 void TestResultsPane::onRunAllTriggered()
@@ -530,7 +589,7 @@ void TestResultsPane::onTestRunFinished()
                this, &TestResultsPane::onScrollBarRangeChanged);
     if (AutotestPlugin::settings()->popupOnFinish
             && (!AutotestPlugin::settings()->popupOnFail || hasFailedTests(m_model))) {
-        popup(Core::IOutputPane::NoModeSwitch);
+        popup(IOutputPane::NoModeSwitch);
     }
     createMarks();
 }
@@ -608,14 +667,14 @@ void TestResultsPane::onCopyWholeTriggered()
 
 void TestResultsPane::onSaveWholeTriggered()
 {
-    const QString fileName = QFileDialog::getSaveFileName(Core::ICore::dialogParent(),
+    const QString fileName = QFileDialog::getSaveFileName(ICore::dialogParent(),
                                                           tr("Save Output To"));
     if (fileName.isEmpty())
         return;
 
     Utils::FileSaver saver(fileName, QIODevice::Text);
     if (!saver.write(getWholeOutput().toUtf8()) || !saver.finalize()) {
-        QMessageBox::critical(Core::ICore::dialogParent(), tr("Error"),
+        QMessageBox::critical(ICore::dialogParent(), tr("Error"),
                               tr("Failed to write \"%1\".\n\n%2").arg(fileName)
                               .arg(saver.errorString()));
     }
@@ -692,7 +751,7 @@ void TestResultsPane::showTestResult(const QModelIndex &index)
 {
     QModelIndex mapped = m_filterModel->mapFromSource(index);
     if (mapped.isValid()) {
-        popup(Core::IOutputPane::NoModeSwitch);
+        popup(IOutputPane::NoModeSwitch);
         m_treeView->setCurrentIndex(mapped);
     }
 }

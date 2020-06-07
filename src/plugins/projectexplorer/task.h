@@ -45,6 +45,8 @@ class TaskHub;
 // Documentation inside.
 class PROJECTEXPLORER_EXPORT Task
 {
+    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::Task)
+
 public:
     enum TaskType : char {
         Unknown,
@@ -77,7 +79,7 @@ public:
     Options options = AddTextMark | FlashWorthy;
     QString description;
     Utils::FilePath file;
-    Utils::FilePathList fileCandidates;
+    Utils::FilePaths fileCandidates;
     int line = -1;
     int movedLine = -1; // contains a line number if the line was moved in the editor
     Core::Id category;
@@ -100,6 +102,30 @@ private:
     static unsigned int s_nextId;
 
     friend class TaskHub;
+};
+
+class PROJECTEXPLORER_EXPORT CompileTask : public Task
+{
+public:
+    CompileTask(TaskType type,
+                 const QString &description,
+                 const Utils::FilePath &file = {},
+                 int line = -1);
+};
+
+class PROJECTEXPLORER_EXPORT BuildSystemTask : public Task
+{
+public:
+    BuildSystemTask(TaskType type,
+                    const QString &description,
+                    const Utils::FilePath &file = {},
+                    int line = -1);
+};
+
+class PROJECTEXPLORER_EXPORT DeploymentTask : public Task
+{
+public:
+    DeploymentTask(TaskType type, const QString &description);
 };
 
 using Tasks = QVector<Task>;

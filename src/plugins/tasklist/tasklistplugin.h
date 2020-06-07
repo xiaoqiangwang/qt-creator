@@ -33,7 +33,7 @@ namespace Utils { class FilePath; }
 namespace TaskList {
 namespace Internal {
 
-class TaskListPlugin : public ExtensionSystem::IPlugin
+class TaskListPlugin final : public ExtensionSystem::IPlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QtCreatorPlugin" FILE "TaskList.json")
@@ -43,7 +43,6 @@ public:
     ~TaskListPlugin() final;
 
     bool initialize(const QStringList &arguments, QString *errorMessage) override;
-    void extensionsInitialized() override {}
 
     static bool loadFile(QString *errorString, const Utils::FilePath &fileName);
 

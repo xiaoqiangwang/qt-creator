@@ -1,5 +1,6 @@
 add_subdirectory(3rdparty)
 
+add_subdirectory(advanceddockingsystem)
 add_subdirectory(aggregation)
 add_subdirectory(extensionsystem)
 add_subdirectory(utils)
@@ -16,6 +17,4 @@ add_subdirectory(sqlite)
 add_subdirectory(clangsupport)
 add_subdirectory(tracing)
 
-if (WIN32)
-  add_subdirectory(qtcreatorcdbext)
-endif()
+add_subdirectory(qtcreatorcdbext)

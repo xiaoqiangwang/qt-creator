@@ -95,14 +95,10 @@ Utils::FilePath QnxQtVersion::qnxTarget() const
 
 QString QnxQtVersion::cpuDir() const
 {
-    ensureMkSpecParsed();
-    return m_cpuDir;
-}
-
-void QnxQtVersion::parseMkSpec(ProFileEvaluator *evaluator) const
-{
-    m_cpuDir = evaluator->value(QLatin1String("QNX_CPUDIR"));
-    BaseQtVersion::parseMkSpec(evaluator);
+    const Abis abis = qtAbis();
+    if (abis.empty())
+        return QString();
+    return QnxUtils::cpuDirFromAbi(abis.at(0));
 }
 
 QVariantMap QnxQtVersion::toMap() const
@@ -130,7 +126,7 @@ void QnxQtVersion::addToEnvironment(const ProjectExplorer::Kit *k, Utils::Enviro
     updateEnvironment();
     env.modify(m_qnxEnv);
 
-    env.prependOrSetLibrarySearchPath(qmakeProperty("QT_INSTALL_LIBS", PropertyVariantDev));
+    env.prependOrSetLibrarySearchPath(libraryPath().toString());
 }
 
 Utils::Environment QnxQtVersion::qmakeRunEnvironment() const
@@ -184,7 +180,7 @@ void QnxQtVersion::updateEnvironment() const
     }
 }
 
-QList<Utils::EnvironmentItem> QnxQtVersion::environment() const
+Utils::EnvironmentItems QnxQtVersion::environment() const
 {
     return QnxUtils::qnxEnvironment(sdpPath());
 }

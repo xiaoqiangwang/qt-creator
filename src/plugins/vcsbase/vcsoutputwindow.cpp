@@ -37,6 +37,7 @@
 #include <texteditor/fontsettings.h>
 #include <texteditor/texteditorsettings.h>
 #include <utils/theme/theme.h>
+#include <vcsbase/vcsoutputformatter.h>
 
 #include <QAction>
 #include <QContextMenuEvent>
@@ -101,6 +102,7 @@ public:
     void appendLines(const QString &s, const QString &repository = QString());
     void appendLinesWithStyle(const QString &s, VcsOutputWindow::MessageStyle style,
                               const QString &repository = QString());
+    VcsOutputFormatter *formatter();
 
 protected:
     void contextMenuEvent(QContextMenuEvent *event) override;
@@ -110,7 +112,7 @@ private:
     QString identifierUnderCursor(const QPoint &pos, QString *repository = nullptr) const;
 
     Utils::OutputFormat m_format;
-    OutputFormatter *m_formatter = nullptr;
+    VcsOutputFormatter *m_formatter = nullptr;
 };
 
 OutputWindowPlainTextEdit::OutputWindowPlainTextEdit(QWidget *parent) :
@@ -119,9 +121,9 @@ OutputWindowPlainTextEdit::OutputWindowPlainTextEdit(QWidget *parent) :
     setReadOnly(true);
     setUndoRedoEnabled(false);
     setFrameStyle(QFrame::NoFrame);
-    m_formatter = new OutputFormatter;
+    m_formatter = new VcsOutputFormatter;
     m_formatter->setBoldFontEnabled(false);
-    m_formatter->setPlainTextEdit(this);
+    setFormatter(m_formatter);
     auto agg = new Aggregation::Aggregate;
     agg->add(this);
     agg->add(new Core::BaseTextFind(this));
@@ -173,10 +175,17 @@ QString OutputWindowPlainTextEdit::identifierUnderCursor(const QPoint &widgetPos
 
 void OutputWindowPlainTextEdit::contextMenuEvent(QContextMenuEvent *event)
 {
-    QMenu *menu = createStandardContextMenu();
+    const QString href = anchorAt(event->pos());
+    QMenu *menu = href.isEmpty() ? createStandardContextMenu(event->pos()) : new QMenu;
     // Add 'open file'
     QString repository;
     const QString token = identifierUnderCursor(event->pos(), &repository);
+    if (!repository.isEmpty()) {
+        if (VcsOutputFormatter *f = formatter()) {
+            if (!href.isEmpty())
+                f->fillLinkContextMenu(menu, repository, href);
+        }
+    }
     QAction *openAction = nullptr;
     if (!token.isEmpty()) {
         // Check for a file, expand via repository if relative
@@ -190,9 +199,12 @@ void OutputWindowPlainTextEdit::contextMenuEvent(QContextMenuEvent *event)
             openAction->setData(fi.absoluteFilePath());
         }
     }
-    // Add 'clear'
-    menu->addSeparator();
-    QAction *clearAction = menu->addAction(VcsOutputWindow::tr("Clear"));
+    QAction *clearAction = nullptr;
+    if (href.isEmpty()) {
+        // Add 'clear'
+        menu->addSeparator();
+        clearAction = menu->addAction(VcsOutputWindow::tr("Clear"));
+    }
 
     // Run
     QAction *action = menu->exec(event->globalPos());
@@ -244,6 +256,11 @@ void OutputWindowPlainTextEdit::appendLinesWithStyle(const QString &s,
     } else {
         appendLines(s, repository);
     }
+}
+
+VcsOutputFormatter *OutputWindowPlainTextEdit::formatter()
+{
+    return m_formatter;
 }
 
 void OutputWindowPlainTextEdit::setFormat(VcsOutputWindow::MessageStyle style)
@@ -304,6 +321,8 @@ VcsOutputWindow::VcsOutputWindow()
     connect(this, &IOutputPane::resetZoom, &d->widget, &Core::OutputWindow::resetZoom);
     connect(TextEditor::TextEditorSettings::instance(), &TextEditor::TextEditorSettings::behaviorSettingsChanged,
             this, updateBehaviorSettings);
+    connect(d->widget.formatter(), &VcsOutputFormatter::referenceClicked,
+            VcsOutputWindow::instance(), &VcsOutputWindow::referenceClicked);
 }
 
 static QString filterPasswordFromUrls(const QString &input)
@@ -451,12 +470,10 @@ static inline QString formatArguments(const QStringList &args)
     return rc;
 }
 
-QString VcsOutputWindow::msgExecutionLogEntry(const QString &workingDir,
-                                              const FilePath &executable,
-                                              const QStringList &arguments)
+QString VcsOutputWindow::msgExecutionLogEntry(const QString &workingDir, const CommandLine &command)
 {
-    const QString args = formatArguments(arguments);
-    const QString nativeExecutable = QtcProcess::quoteArg(executable.toUserOutput());
+    const QString args = formatArguments(command.splitArguments());
+    const QString nativeExecutable = QtcProcess::quoteArg(command.executable().toUserOutput());
     if (workingDir.isEmpty())
         return tr("Running: %1 %2").arg(nativeExecutable, args) + '\n';
     return tr("Running in %1: %2 %3").
@@ -468,11 +485,9 @@ void VcsOutputWindow::appendShellCommandLine(const QString &text)
     append(filterPasswordFromUrls(text), Command, true);
 }
 
-void VcsOutputWindow::appendCommand(const QString &workingDirectory,
-                                    const FilePath &binary,
-                                    const QStringList &args)
+void VcsOutputWindow::appendCommand(const QString &workingDirectory, const CommandLine &command)
 {
-    appendShellCommandLine(msgExecutionLogEntry(workingDirectory, binary, args));
+    appendShellCommandLine(msgExecutionLogEntry(workingDirectory, command));
 }
 
 void VcsOutputWindow::appendMessage(const QString &text)

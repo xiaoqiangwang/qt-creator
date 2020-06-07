@@ -29,6 +29,7 @@
 
 namespace QmlDesigner {
 
+class AbstractProperty;
 class ModelNode;
 class BindingProperty;
 class SignalHandlerProperty;
@@ -53,14 +54,17 @@ public:
     ConnectionView *connectionView() const;
 
     QStringList getSignalsForRow(int row) const;
+    QStringList getflowActionTriggerForRow(int row) const;
     ModelNode getTargetNodeForConnection(const ModelNode &connection) const;
 
     void addConnection();
 
     void bindingPropertyChanged(const BindingProperty &bindingProperty);
     void variantPropertyChanged(const VariantProperty &variantProperty);
+    void abstractPropertyChanged(const AbstractProperty &abstractProperty);
 
     void deleteConnectionByRow(int currentRow);
+    void removeRowFromTable(const SignalHandlerProperty &property);
 
 protected:
     void addModelNode(const ModelNode &modelNode);

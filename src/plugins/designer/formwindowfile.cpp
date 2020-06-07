@@ -84,7 +84,7 @@ Core::IDocument::OpenResult FormWindowFile::open(QString *errorString, const QSt
     Utils::TextFileFormat::ReadResult readResult = read(absfileName, &contents, errorString);
     if (readResult == Utils::TextFileFormat::ReadEncodingError)
         return OpenResult::CannotHandle;
-    else if (readResult != Utils::TextFileFormat::ReadSuccess)
+    if (readResult != Utils::TextFileFormat::ReadSuccess)
         return OpenResult::ReadError;
 
     form->setFileName(absfileName);
@@ -286,7 +286,7 @@ void FormWindowFile::slotFormWindowRemoved(QDesignerFormWindowInterface *w)
     // as calls to isDirty() are triggered at arbitrary times
     // while building.
     if (w == m_formWindow)
-        m_formWindow = 0;
+        m_formWindow = nullptr;
 }
 
 } // namespace Internal

@@ -53,6 +53,8 @@ struct HandleItemStyleOption
     double lineWidth = 1.0;
     QColor color = QColor(200, 0, 0);
     QColor selectionColor = QColor(200, 200, 200);
+    QColor activeColor = QColor(0, 200, 0);
+    QColor hoverColor = QColor(200, 0, 200);
 };
 
 struct KeyframeItemStyleOption
@@ -60,6 +62,9 @@ struct KeyframeItemStyleOption
     double size = 10.0;
     QColor color = QColor(200, 200, 0);
     QColor selectionColor = QColor(200, 200, 200);
+    QColor lockedColor = QColor(50, 50, 50);
+    QColor unifiedColor = QColor(250, 50, 250);
+    QColor splitColor = QColor(0, 250, 0);
 };
 
 struct CurveItemStyleOption
@@ -68,6 +73,8 @@ struct CurveItemStyleOption
     QColor color = QColor(0, 200, 0);
     QColor selectionColor = QColor(200, 200, 200);
     QColor easingCurveColor = QColor(200, 0, 200);
+    QColor lockedColor = QColor(50, 50, 50);
+    QColor hoverColor = QColor(200, 0, 200);
 };
 
 struct PlayheadStyleOption
@@ -90,8 +97,9 @@ struct Shortcuts
 
     Shortcut insertKeyframe = Shortcut(Qt::MiddleButton, Qt::NoModifier);
 
-    Shortcut deleteKeyframe = Utils::HostOsInfo::isMacHost() ?
-            Shortcut(Qt::NoModifier, Qt::Key_Backspace) : Shortcut(Qt::NoModifier, Qt::Key_Delete);
+    Shortcut deleteKeyframe = Utils::HostOsInfo::isMacHost()
+                                  ? Shortcut(Qt::NoModifier, Qt::Key_Backspace)
+                                  : Shortcut(Qt::NoModifier, Qt::Key_Delete);
 };
 
 struct CurveEditorStyle

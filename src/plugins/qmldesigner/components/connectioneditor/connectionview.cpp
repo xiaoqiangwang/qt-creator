@@ -34,6 +34,7 @@
 #include <bindingproperty.h>
 #include <nodeabstractproperty.h>
 #include <variantproperty.h>
+#include <signalhandlerproperty.h>
 
 namespace QmlDesigner {
 
@@ -107,6 +108,8 @@ void ConnectionView::propertiesAboutToBeRemoved(const QList<AbstractProperty> & 
             dynamicPropertiesModel()->bindingRemoved(property.toBindingProperty());
         } else if (property.isVariantProperty()) {
             //### dynamicPropertiesModel->bindingRemoved(property.toVariantProperty());
+        } else if (property.isSignalHandlerProperty()) {
+            connectionModel()->removeRowFromTable(property.toSignalHandlerProperty());
         }
     }
 }
@@ -137,6 +140,13 @@ void ConnectionView::bindingPropertiesChanged(const QList<BindingProperty> &prop
 
         connectionModel()->bindingPropertyChanged(bindingProperty);
     }
+}
+
+void ConnectionView::signalHandlerPropertiesChanged(const QVector<SignalHandlerProperty> &propertyList,
+                                                    AbstractView::PropertyChangeFlags /*propertyChange*/)
+{
+    for (const SignalHandlerProperty &signalHandlerProperty : propertyList)
+        connectionModel()->abstractPropertyChanged(signalHandlerProperty);
 }
 
 void ConnectionView::selectedNodesChanged(const QList<ModelNode> & selectedNodeList,
@@ -170,6 +180,11 @@ WidgetInfo ConnectionView::widgetInfo()
 bool ConnectionView::hasWidget() const
 {
     return true;
+}
+
+bool ConnectionView::isWidgetEnabled()
+{
+    return widgetInfo().widget->isEnabled();
 }
 
 QTableView *ConnectionView::connectionTableView() const

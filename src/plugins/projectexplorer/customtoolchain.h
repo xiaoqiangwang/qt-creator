@@ -65,7 +65,6 @@ public:
         QString displayName; ///< A translateable name to show in the user interface
     };
 
-    QString typeDisplayName() const override;
     Abi targetAbi() const override;
     void setTargetAbi(const Abi &);
 
@@ -74,13 +73,15 @@ public:
     MacroInspectionRunner createMacroInspectionRunner() const override;
     Macros predefinedMacros(const QStringList &cxxflags) const override;
     Utils::LanguageExtensions languageExtensions(const QStringList &cxxflags) const override;
-    WarningFlags warningFlags(const QStringList &cxxflags) const override;
+    Utils::WarningFlags warningFlags(const QStringList &cxxflags) const override;
     const Macros &rawPredefinedMacros() const;
     void setPredefinedMacros(const Macros &macros);
 
-    BuiltInHeaderPathsRunner createBuiltInHeaderPathsRunner() const override;
+    BuiltInHeaderPathsRunner createBuiltInHeaderPathsRunner(
+            const Utils::Environment &) const override;
     HeaderPaths builtInHeaderPaths(const QStringList &cxxFlags,
-                                   const Utils::FilePath &) const override;
+                                   const Utils::FilePath &,
+                                   const Utils::Environment &env) const override;
     void addToEnvironment(Utils::Environment &env) const override;
     QStringList suggestedMkspecList() const override;
     IOutputParser *outputParser() const override;

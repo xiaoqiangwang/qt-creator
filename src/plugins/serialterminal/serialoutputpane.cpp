@@ -142,7 +142,7 @@ SerialOutputPane::SerialOutputPane(Settings &settings) :
     createToolButtons();
 
     auto layout = new QVBoxLayout;
-    layout->setMargin(0);
+    layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
 
     m_tabWidget->setDocumentMode(true);
@@ -157,7 +157,7 @@ SerialOutputPane::SerialOutputPane(Settings &settings) :
             this, &SerialOutputPane::contextMenuRequested);
 
     auto inputLayout = new QHBoxLayout;
-    layout->setMargin(0);
+    layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(2);
 
     m_inputLine->setPlaceholderText(tr("Type text and hit Enter to send."));
@@ -302,10 +302,10 @@ void SerialOutputPane::createNewOutputWindow(SerialControl *rc)
     Utils::OutputFormatter *formatter = rc->outputFormatter();
 
     // Create new
-    static uint counter = 0;
+    static int counter = 0;
     Core::Id contextId = Core::Id(Constants::C_SERIAL_OUTPUT).withSuffix(counter++);
     Core::Context context(contextId);
-    Core::OutputWindow *ow = new Core::OutputWindow(context, QString(), m_tabWidget);
+    auto ow = new Core::OutputWindow(context, QString(), m_tabWidget);
     using TextEditor::TextEditorSettings;
     auto fontSettingsChanged = [ow] {
         ow->setBaseFont(TextEditorSettings::fontSettings().font());
@@ -367,7 +367,7 @@ void SerialOutputPane::createToolButtons()
 
     // Reset button
     m_resetButton = new QToolButton;
-    m_resetButton->setIcon(Utils::Icons::RELOAD.icon());
+    m_resetButton->setIcon(Utils::Icons::RELOAD_TOOLBAR.icon());
     m_resetButton->setToolTip(tr("Reset Board"));
     m_resetButton->setEnabled(false);
 
@@ -694,7 +694,7 @@ void SerialOutputPane::connectControl()
         current->setBaudRate(m_devicesModel->baudRate(m_baudRateSelection->currentIndex()));
         // Gray out old and connect
         if (index != -1) {
-            auto& tab = m_serialControlTabs[index];
+            auto &tab = m_serialControlTabs[index];
             handleOldOutput(tab.window);
             tab.window->scrollToBottom();
         }

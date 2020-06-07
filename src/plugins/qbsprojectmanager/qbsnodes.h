@@ -25,98 +25,66 @@
 
 #pragma once
 
+#include <projectexplorer/buildsystem.h>
 #include <projectexplorer/projectnodes.h>
 
-#include <qbs.h>
+#include <QJsonObject>
 
 namespace QbsProjectManager {
 namespace Internal {
 
-class QbsNodeTreeBuilder;
 class QbsProject;
-
-// --------------------------------------------------------------------
-// QbsGroupNode:
-// --------------------------------------------------------------------
+class QbsBuildSystem;
 
 class QbsGroupNode : public ProjectExplorer::ProjectNode
 {
 public:
-    QbsGroupNode(const qbs::GroupData &grp, const QString &productPath);
+    QbsGroupNode(const QJsonObject &grp);
 
     bool showInSimpleTree() const final { return false; }
-    bool supportsAction(ProjectExplorer::ProjectAction action, const Node *node) const final;
-    bool addFiles(const QStringList &filePaths, QStringList *notAdded = nullptr) override;
-    bool removeFiles(const QStringList &filePaths, QStringList *notRemoved = nullptr) override;
-    bool renameFile(const QString &filePath, const QString &newFilePath) override;
+    QJsonObject groupData() const { return m_groupData; }
 
 private:
+    friend class QbsBuildSystem;
     AddNewInformation addNewInformation(const QStringList &files, Node *context) const override;
+    QVariant data(Core::Id role) const override;
 
-    qbs::GroupData m_qbsGroupData;
-    QString m_productPath;
+    const QJsonObject m_groupData;
 };
-
-// --------------------------------------------------------------------
-// QbsProductNode:
-// --------------------------------------------------------------------
 
 class QbsProductNode : public ProjectExplorer::ProjectNode
 {
 public:
-    explicit QbsProductNode(const qbs::ProductData &prd);
+    explicit QbsProductNode(const QJsonObject &prd);
 
-    bool supportsAction(ProjectExplorer::ProjectAction action, const Node *node) const final;
-    bool addFiles(const QStringList &filePaths, QStringList *notAdded = nullptr) override;
-    bool removeFiles(const QStringList &filePaths, QStringList *notRemoved = nullptr) override;
-    bool renameFile(const QString &filePath, const QString &newFilePath) override;
+    void build() override;
     QStringList targetApplications() const override;
 
+    QString fullDisplayName() const;
     QString buildKey() const override;
 
-    const qbs::ProductData qbsProductData() const { return m_qbsProductData; }
+    static QString getBuildKey(const QJsonObject &product);
+
+    const QJsonObject productData() const { return m_productData; }
+    QJsonObject mainGroup() const;
     QVariant data(Core::Id role) const override;
 
 private:
-    const qbs::ProductData m_qbsProductData;
+    const QJsonObject m_productData;
 };
-
-// ---------------------------------------------------------------------------
-// QbsProjectNode:
-// ---------------------------------------------------------------------------
 
 class QbsProjectNode : public ProjectExplorer::ProjectNode
 {
 public:
-    explicit QbsProjectNode(const Utils::FilePath &projectDirectory);
+    explicit QbsProjectNode(const QJsonObject &projectData);
 
-    virtual QbsProject *project() const;
-    const qbs::Project qbsProject() const;
-    const qbs::ProjectData qbsProjectData() const { return m_projectData; }
-
-    void setProjectData(const qbs::ProjectData &data); // FIXME: Needed?
+    const QJsonObject projectData() const { return m_projectData; }
 
 private:
-    qbs::ProjectData m_projectData;
-
-    friend class QbsNodeTreeBuilder;
+    const QJsonObject m_projectData;
 };
 
-// --------------------------------------------------------------------
-// QbsRootProjectNode:
-// --------------------------------------------------------------------
-
-class QbsRootProjectNode : public QbsProjectNode
-{
-public:
-    explicit QbsRootProjectNode(QbsProject *project);
-
-    QbsProject *project() const  override { return m_project; }
-
-private:
-    QbsProject *const m_project;
-};
-
+const QbsProductNode *parentQbsProductNode(const ProjectExplorer::Node *node);
 
 } // namespace Internal
 } // namespace QbsProjectManager

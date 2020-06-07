@@ -30,14 +30,6 @@
 namespace Android {
 namespace Internal {
 
-enum AndroidQemuStatus {
-    AndroidQemuStarting,
-    AndroidQemuFailedToStart,
-    AndroidQemuFinished,
-    AndroidQemuCrashed,
-    AndroidQemuUserReason
-};
-
 #ifdef Q_OS_WIN32
 #define ANDROID_BAT_SUFFIX ".bat"
 #else
@@ -48,7 +40,7 @@ enum AndroidQemuStatus {
 
 namespace Constants {
 const char ANDROID_SETTINGS_ID[] = "BB.Android Configurations";
-const char ANDROID_TOOLCHAIN_ID[] = "Qt4ProjectManager.ToolChain.Android";
+const char ANDROID_TOOLCHAIN_TYPEID[] = "Qt4ProjectManager.ToolChain.Android";
 const char ANDROIDQT[] = "Qt4ProjectManager.QtVersion.Android";
 
 const char ANDROID_AMSTARTARGS[] = "Android.AmStartArgs";
@@ -90,7 +82,8 @@ const char AndroidManifest[] = "Android.Manifest"; // QStringList
 
 const char AndroidNdkPlatform[] = "AndroidNdkPlatform"; //QString
 const char NdkLocation[] = "NdkLocation"; // FileName
-const char AndroidABI[] = "AndroidABI"; // QString
+const char SdkLocation[] = "SdkLocation"; // FileName
+const char AndroidABIs[] = "AndroidABIs"; // QString
 
 } // namespace Constants;
 } // namespace Android

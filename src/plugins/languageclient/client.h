@@ -27,11 +27,13 @@
 
 #include "documentsymbolcache.h"
 #include "dynamiccapabilities.h"
+#include "languageclient_global.h"
 #include "languageclientcompletionassist.h"
+#include "languageclientformatter.h"
 #include "languageclientfunctionhint.h"
+#include "languageclienthoverhandler.h"
 #include "languageclientquickfix.h"
 #include "languageclientsettings.h"
-#include "languageclienthoverhandler.h"
 
 #include <coreplugin/id.h>
 #include <coreplugin/messagemanager.h>
@@ -44,6 +46,8 @@
 #include <languageserverprotocol/messages.h>
 #include <languageserverprotocol/shutdownmessages.h>
 #include <languageserverprotocol/textsynchronization.h>
+
+#include <texteditor/semantichighlighter.h>
 
 #include <QBuffer>
 #include <QHash>
@@ -65,7 +69,7 @@ namespace LanguageClient {
 class BaseClientInterface;
 class TextMark;
 
-class Client : public QObject
+class LANGUAGECLIENT_EXPORT Client : public QObject
 {
     Q_OBJECT
 
@@ -93,10 +97,12 @@ public:
     bool reachable() const { return m_state == Initialized; }
 
     // document synchronization
-    bool openDocument(Core::IDocument *document);
-    void closeDocument(const LanguageServerProtocol::DidCloseTextDocumentParams &params);
-    bool documentOpen(const Core::IDocument *document) const;
-    void documentContentsSaved(Core::IDocument *document);
+    void openDocument(TextEditor::TextDocument *document);
+    void closeDocument(TextEditor::TextDocument *document);
+    void activateDocument(TextEditor::TextDocument *document);
+    void deactivateDocument(TextEditor::TextDocument *document);
+    bool documentOpen(const TextEditor::TextDocument *document) const;
+    void documentContentsSaved(TextEditor::TextDocument *document);
     void documentWillSave(Core::IDocument *document);
     void documentContentsChanged(TextEditor::TextDocument *document,
                                  int position,
@@ -106,7 +112,6 @@ public:
     void unregisterCapabilities(const QList<LanguageServerProtocol::Unregistration> &unregistrations);
     bool findLinkAt(LanguageServerProtocol::GotoDefinitionRequest &request);
     bool findUsages(LanguageServerProtocol::FindReferencesRequest &request);
-    void requestDocumentSymbols(TextEditor::TextDocument *document);
     void cursorPositionChanged(TextEditor::TextEditorWidget *widget);
 
     void requestCodeActions(const LanguageServerProtocol::DocumentUri &uri,
@@ -115,6 +120,9 @@ public:
     void handleCodeActionResponse(const LanguageServerProtocol::CodeActionRequest::Response &response,
                                   const LanguageServerProtocol::DocumentUri &uri);
     void executeCommand(const LanguageServerProtocol::Command &command);
+
+    void formatFile(const TextEditor::TextDocument *document);
+    void formatRange(const TextEditor::TextDocument *document, const QTextCursor &cursor);
 
     // workspace control
     void setCurrentProject(ProjectExplorer::Project *project);
@@ -128,7 +136,7 @@ public:
     void cancelRequest(const LanguageServerProtocol::MessageId &id);
 
     void setSupportedLanguage(const LanguageFilter &filter);
-    bool isSupportedDocument(const Core::IDocument *document) const;
+    bool isSupportedDocument(const TextEditor::TextDocument *document) const;
     bool isSupportedFile(const Utils::FilePath &filePath, const QString &mimeType) const;
     bool isSupportedUri(const LanguageServerProtocol::DocumentUri &uri) const;
 
@@ -153,11 +161,15 @@ public:
              Core::MessageManager::PrintToOutputPaneFlag flag = Core::MessageManager::NoModeSwitch)
     { log(responseError.toString(), flag); }
 
+    void showDiagnostics(Core::IDocument *doc);
+    void hideDiagnostics(TextEditor::TextDocument *doc);
+
     const LanguageServerProtocol::ServerCapabilities &capabilities() const;
     const DynamicCapabilities &dynamicCapabilities() const;
     const BaseClientInterface *clientInterface() const;
     DocumentSymbolCache *documentSymbolCache();
     HoverHandler *hoverHandler();
+    void rehighlight();
 
 signals:
     void initialized(LanguageServerProtocol::ServerCapabilities capabilities);
@@ -174,8 +186,9 @@ private:
                       const LanguageServerProtocol::IContent *content);
 
     void handleDiagnostics(const LanguageServerProtocol::PublishDiagnosticsParams &params);
+    void handleSemanticHighlight(const LanguageServerProtocol::SemanticHighlightingParams &params);
 
-    void intializeCallback(const LanguageServerProtocol::InitializeRequest::Response &initResponse);
+    void initializeCallback(const LanguageServerProtocol::InitializeRequest::Response &initResponse);
     void shutDownCallback(const LanguageServerProtocol::ShutdownRequest::Response &shutdownResponse);
     bool sendWorkspceFolderChanges() const;
     void log(const LanguageServerProtocol::ShowMessageParams &message,
@@ -186,6 +199,7 @@ private:
 
     void showDiagnostics(const LanguageServerProtocol::DocumentUri &uri);
     void removeDiagnostics(const LanguageServerProtocol::DocumentUri &uri);
+    void resetAssistProviders(TextEditor::TextDocument *document);
 
     using ContentHandler = std::function<void(const QByteArray &, QTextCodec *, QString &,
                                               LanguageServerProtocol::ResponseHandlers,
@@ -196,20 +210,26 @@ private:
     QHash<QByteArray, ContentHandler> m_contentHandler;
     QString m_displayName;
     LanguageFilter m_languagFilter;
-    QMap<Utils::FilePath, QString> m_openedDocument;
+    QMap<TextEditor::TextDocument *, QString> m_openedDocument;
     Core::Id m_id;
     LanguageServerProtocol::ServerCapabilities m_serverCapabilities;
     DynamicCapabilities m_dynamicCapabilities;
-    LanguageClientCompletionAssistProvider m_completionProvider;
-    FunctionHintAssistProvider m_functionHintProvider;
-    LanguageClientQuickFixProvider m_quickFixProvider;
-    QMap<TextEditor::TextDocument *, QPointer<TextEditor::CompletionAssistProvider>> m_resetAssistProvider;
+    struct AssistProviders
+    {
+        QPointer<TextEditor::CompletionAssistProvider> completionAssistProvider;
+        QPointer<TextEditor::CompletionAssistProvider> functionHintProvider;
+        QPointer<TextEditor::IAssistProvider> quickFixAssistProvider;
+    };
+
+    AssistProviders m_clientProviders;
+    QMap<TextEditor::TextDocument *, AssistProviders> m_resetAssistProvider;
     QHash<LanguageServerProtocol::DocumentUri, LanguageServerProtocol::MessageId> m_highlightRequests;
     int m_restartsLeft = 5;
     QScopedPointer<BaseClientInterface> m_clientInterface;
-    QMap<LanguageServerProtocol::DocumentUri, QList<TextMark *>> m_diagnostics;
+    QMap<LanguageServerProtocol::DocumentUri, QList<LanguageServerProtocol::Diagnostic>> m_diagnostics;
     DocumentSymbolCache m_documentSymbolCache;
     HoverHandler m_hoverHandler;
+    QHash<LanguageServerProtocol::DocumentUri, TextEditor::HighlightingResults> m_highlights;
     const ProjectExplorer::Project *m_project = nullptr;
 };
 

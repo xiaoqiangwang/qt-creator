@@ -47,6 +47,8 @@
 #include <limits>
 #include <memory>
 
+using namespace Utils;
+
 namespace ProjectExplorer {
 namespace Internal {
 
@@ -410,20 +412,20 @@ public:
         setupId(AutoDetected, Core::Id::fromString(QUuid::createUuid().toString()));
         setType(testTypeId());
         setMachineType(Hardware);
+        setOsType(HostOsInfo::hostOs());
+        setDisplayType("blubb");
     }
 
     static Core::Id testTypeId() { return "TestType"; }
 private:
-    QString displayType() const override { return QLatin1String("blubb"); }
     IDeviceWidget *createWidget() override { return nullptr; }
     DeviceProcessSignalOperation::Ptr signalOperation() const override
     {
         return DeviceProcessSignalOperation::Ptr();
     }
-    Utils::OsType osType() const override { return Utils::HostOsInfo::hostOs(); }
 };
 
-class TestDeviceFactory : public IDeviceFactory
+class TestDeviceFactory final : public IDeviceFactory
 {
 public:
     TestDeviceFactory() : IDeviceFactory(TestDevice::testTypeId())

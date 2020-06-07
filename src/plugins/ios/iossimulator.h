@@ -62,19 +62,19 @@ public:
 
 QDebug operator <<(QDebug debug, const IosDeviceType &deviceType);
 
-class IosSimulator : public ProjectExplorer::IDevice
+class IosSimulator final : public ProjectExplorer::IDevice
 {
+    Q_DECLARE_TR_FUNCTIONS(Ios::Internal::IosSimulator)
+
 public:
     using ConstPtr = QSharedPointer<const IosSimulator>;
     using Ptr = QSharedPointer<IosSimulator>;
     ProjectExplorer::IDevice::DeviceInfo deviceInformation() const override;
 
-    QString displayType() const override;
     ProjectExplorer::IDeviceWidget *createWidget() override;
     ProjectExplorer::DeviceProcessSignalOperation::Ptr signalOperation() const override;
     Utils::Port nextPort() const;
     bool canAutoDetectPorts() const override;
-    Utils::OsType osType() const override;
 
 protected:
     friend class IosSimulatorFactory;
@@ -86,9 +86,8 @@ private:
     mutable quint16 m_lastPort;
 };
 
-class IosSimulatorFactory : public ProjectExplorer::IDeviceFactory
+class IosSimulatorFactory final : public ProjectExplorer::IDeviceFactory
 {
-    Q_OBJECT
 public:
     IosSimulatorFactory();
 };

@@ -30,14 +30,13 @@
 #include "qmltimeline.h"
 
 #include <bindingproperty.h>
+#include <theme.h>
 #include <variantproperty.h>
 
 namespace QmlDesigner {
 
 AnimationCurveEditorModel::AnimationCurveEditorModel(double minTime, double maxTime)
-    : CurveEditorModel()
-    , m_minTime(minTime)
-    , m_maxTime(maxTime)
+    : CurveEditorModel(minTime, maxTime)
 {}
 
 AnimationCurveEditorModel::~AnimationCurveEditorModel() {}
@@ -66,8 +65,8 @@ DesignTools::CurveEditorStyle AnimationCurveEditorModel::style() const
     out.timeAxisHeight = 60;
     out.timeOffsetLeft = 10;
     out.timeOffsetRight = 10;
-    out.rangeBarColor = QColor(50, 50, 255);
-    out.rangeBarCapsColor = QColor(50, 50, 255);
+    out.rangeBarColor = Theme::instance()->qmlDesignerBackgroundColorDarkAlternate();
+    out.rangeBarCapsColor = Theme::getColor(Theme::QmlDesigner_HighlightColor);
     out.valueAxisWidth = 60;
     out.valueOffsetTop = 10;
     out.valueOffsetBottom = 10;
@@ -94,26 +93,18 @@ void AnimationCurveEditorModel::setTimeline(const QmlTimeline &timeline)
     m_maxTime = timeline.endKeyframe();
 
     std::vector<DesignTools::TreeItem *> items;
-    for (auto &&target : timeline.allTargets())
+    for (auto &&target : timeline.allTargets()) {
         if (DesignTools::TreeItem *item = createTopLevelItem(timeline, target))
             items.push_back(item);
+    }
 
     reset(items);
 }
 
-void AnimationCurveEditorModel::setMinimumTime(double time)
-{
-    m_minTime = time;
-}
-
-void AnimationCurveEditorModel::setMaximumTime(double time)
-{
-    m_maxTime = time;
-}
-
 DesignTools::ValueType typeFrom(const QmlTimelineKeyframeGroup &group)
 {
-    if (group.valueType() == TypeName("double") || group.valueType() == TypeName("real"))
+    if (group.valueType() == TypeName("double") || group.valueType() == TypeName("real")
+        || group.valueType() == TypeName("float"))
         return DesignTools::ValueType::Double;
 
     if (group.valueType() == TypeName("boolean") || group.valueType() == TypeName("bool"))
@@ -138,7 +129,16 @@ DesignTools::TreeItem *AnimationCurveEditorModel::createTopLevelItem(const QmlTi
             DesignTools::AnimationCurve curve = createAnimationCurve(grp);
             if (curve.isValid()) {
                 QString name = QString::fromUtf8(grp.propertyName());
-                nodeItem->addChild(new DesignTools::PropertyTreeItem(name, curve, typeFrom(grp)));
+                auto propertyItem = new DesignTools::PropertyTreeItem(name, curve, typeFrom(grp));
+
+                ModelNode target = grp.modelNode();
+                if (target.hasAuxiliaryData("locked"))
+                    propertyItem->setLocked(true);
+
+                if (target.hasAuxiliaryData("pinned"))
+                    propertyItem->setPinned(true);
+
+                nodeItem->addChild(propertyItem);
             }
         }
     }
@@ -204,8 +204,16 @@ std::vector<DesignTools::Keyframe> resolveSmallCurves(
     for (auto &&frame : frames) {
         if (frame.hasData() && !out.empty()) {
             QEasingCurve curve = frame.data().toEasingCurve();
+            // One-segment-curve: Since (0,0) is implicit => 3
             if (curve.toCubicSpline().count() == 3) {
                 DesignTools::Keyframe &previous = out.back();
+#if 0
+                // Do not resolve when two adjacent keyframes have the same value.
+                if (qFuzzyCompare(previous.position().y(), frame.position().y())) {
+                    out.push_back(frame);
+                    continue;
+                }
+#endif
                 DesignTools::AnimationCurve acurve(curve, previous.position(), frame.position());
                 previous.setRightHandle(acurve.keyframeAt(0).rightHandle());
                 out.push_back(acurve.keyframeAt(1));
@@ -222,6 +230,19 @@ DesignTools::AnimationCurve AnimationCurveEditorModel::createDoubleCurve(
 {
     std::vector<DesignTools::Keyframe> keyframes = createKeyframes(group.keyframePositions());
     keyframes = resolveSmallCurves(keyframes);
+
+    QString str;
+    ModelNode target = group.modelNode();
+    if (target.hasAuxiliaryData("unified"))
+        str = target.auxiliaryData("unified").toString();
+
+    if (str.size() == static_cast<int>(keyframes.size())) {
+        for (int i = 0; i < str.size(); ++i) {
+            if (str.at(i) == '1')
+                keyframes[i].setUnified(true);
+        }
+    }
+
     return DesignTools::AnimationCurve(keyframes);
 }
 

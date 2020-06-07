@@ -105,7 +105,7 @@ QmlJSOutlineWidget::QmlJSOutlineWidget(QWidget *parent)
 
     auto layout = new QVBoxLayout;
 
-    layout->setMargin(0);
+    layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
     layout->addWidget(Core::ItemViewFind::createSearchableWrapper(m_treeView));
 
@@ -206,7 +206,7 @@ void QmlJSOutlineWidget::updateTextCursor(const QModelIndex &index)
         if (!m_editor->isOutlineCursorChangesBlocked()) {
             QModelIndex sourceIndex = m_filterModel->mapToSource(index);
 
-            AST::SourceLocation location
+            SourceLocation location
                     = m_editor->qmlJsEditorDocument()->outlineModel()->sourceLocation(sourceIndex);
 
             if (!location.isValid())

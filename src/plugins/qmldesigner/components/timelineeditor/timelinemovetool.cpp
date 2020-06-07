@@ -32,6 +32,7 @@
 
 #include <exception.h>
 
+#include <QApplication>
 #include <QGraphicsScene>
 #include <QGraphicsSceneMouseEvent>
 
@@ -67,44 +68,60 @@ TimelineMoveTool::TimelineMoveTool(TimelineGraphicsScene *scene, TimelineToolDel
 void TimelineMoveTool::mousePressEvent(TimelineMovableAbstractItem *item,
                                        QGraphicsSceneMouseEvent *event)
 {
-    Q_UNUSED(item);
-    Q_UNUSED(event);
+    Q_UNUSED(item)
+
+    if (auto *current = currentItem()->asTimelineKeyframeItem()) {
+        const qreal sourceFrame = qRound(current->mapFromSceneToFrame(current->rect().center().x()));
+        const qreal targetFrame = qRound(current->mapFromSceneToFrame(event->scenePos().x()));
+        m_pressKeyframeDelta = targetFrame - sourceFrame;
+    }
 }
 
 void TimelineMoveTool::mouseMoveEvent(TimelineMovableAbstractItem *item,
                                       QGraphicsSceneMouseEvent *event)
 {
-    Q_UNUSED(item);
+    Q_UNUSED(item)
 
     if (!currentItem())
         return;
 
     if (auto *current = currentItem()->asTimelineKeyframeItem()) {
+        // prevent dragging if deselecting a keyframe (Ctrl+click and drag a selected keyframe)
+        if (!current->highlighted())
+            return;
+
         const qreal sourceFrame = qRound(current->mapFromSceneToFrame(current->rect().center().x()));
-        const qreal targetFrame = qRound(current->mapFromSceneToFrame(event->scenePos().x()));
-        qreal deltaFrame = targetFrame - sourceFrame;
+        qreal targetFrame = qRound(current->mapFromSceneToFrame(event->scenePos().x()));
+        qreal deltaFrame = targetFrame - sourceFrame - m_pressKeyframeDelta;
 
         const qreal minFrame = scene()->startFrame();
         const qreal maxFrame = scene()->endFrame();
 
-        auto bbox = scene()->selectionBounds().united(current->rect());
+        auto bbox = scene()->selectionBounds().adjusted(TimelineConstants::keyFrameSize / 2, 0,
+                                                        -TimelineConstants::keyFrameSize / 2, 0);
+        double firstFrame = std::round(current->mapFromSceneToFrame(bbox.left()));
+        double lastFrame = std::round(current->mapFromSceneToFrame(bbox.right()));
 
-        double firstFrame = std::round(current->mapFromSceneToFrame(bbox.center().x()));
-        double lastFrame = std::round(current->mapFromSceneToFrame(bbox.center().x()));
-
-        if ((lastFrame + deltaFrame) > maxFrame)
+        if (lastFrame + deltaFrame > maxFrame)
             deltaFrame = maxFrame - lastFrame;
-
-        if ((firstFrame + deltaFrame) <= minFrame)
+        else if (firstFrame + deltaFrame < minFrame)
             deltaFrame = minFrame - firstFrame;
 
-        current->setPosition(sourceFrame + deltaFrame);
+        targetFrame = sourceFrame + deltaFrame;
 
-        for (auto *keyframe : scene()->selectedKeyframes()) {
-            if (keyframe != current) {
-                qreal pos = std::round(current->mapFromSceneToFrame(keyframe->rect().center().x()));
-                keyframe->setPosition(pos + deltaFrame);
-            }
+        if (QApplication::keyboardModifiers() & Qt::ShiftModifier) { // keyframe snapping
+            qreal snappedTargetFrame = scene()->snap(targetFrame);
+            deltaFrame += snappedTargetFrame - targetFrame;
+            targetFrame = snappedTargetFrame;
+        }
+
+        scene()->statusBarMessageChanged(tr(TimelineConstants::statusBarKeyframe)
+                                         .arg(targetFrame));
+
+        const QList<TimelineKeyframeItem *> selectedKeyframes = scene()->selectedKeyframes();
+        for (auto *keyframe : selectedKeyframes) {
+            qreal pos = std::round(keyframe->mapFromSceneToFrame(keyframe->rect().center().x()));
+            keyframe->setPosition(pos + deltaFrame);
         }
 
     } else {
@@ -116,38 +133,44 @@ void TimelineMoveTool::mouseMoveEvent(TimelineMovableAbstractItem *item,
 void TimelineMoveTool::mouseReleaseEvent(TimelineMovableAbstractItem *item,
                                          QGraphicsSceneMouseEvent *event)
 {
-    Q_UNUSED(item);
-    Q_UNUSED(event);
+    Q_UNUSED(item)
 
     if (auto *current = currentItem()) {
         if (current->asTimelineFrameHandle()) {
-            double mousePos = event->pos().x();
+            double mousePos = event->scenePos().x();
             double start = current->mapFromFrameToScene(scene()->startFrame());
             double end = current->mapFromFrameToScene(scene()->endFrame());
 
-            if (mousePos < start) {
-                scene()->setCurrentFrame(scene()->startFrame());
-                scene()->statusBarMessageChanged(QObject::tr("Frame %1").arg(scene()->startFrame()));
-                return;
-            } else if (mousePos > end) {
-                scene()->setCurrentFrame(scene()->endFrame());
-                scene()->statusBarMessageChanged(QObject::tr("Frame %1").arg(scene()->endFrame()));
+            double limitFrame = -999999.;
+            if (mousePos < start)
+                limitFrame = scene()->startFrame();
+            else if (mousePos > end)
+                limitFrame = scene()->endFrame();
+
+            if (limitFrame > -999999.) {
+                scene()->setCurrentFrame(limitFrame);
+                scene()->statusBarMessageChanged(
+                            tr(TimelineConstants::statusBarPlayheadFrame).arg(limitFrame));
                 return;
             }
         }
 
-        scene()->timelineView()->executeInTransaction("TimelineMoveTool::mouseReleaseEvent", [this, current](){
+        scene()->timelineView()->executeInTransaction("TimelineMoveTool::mouseReleaseEvent",
+                                                      [this, current]() {
             current->commitPosition(mapToItem(current, current->rect().center()));
 
             if (current->asTimelineKeyframeItem()) {
                 double frame = std::round(
                             current->mapFromSceneToFrame(current->rect().center().x()));
 
-                scene()->statusBarMessageChanged(QObject::tr("Frame %1").arg(frame));
+                scene()->statusBarMessageChanged(
+                            tr(TimelineConstants::statusBarKeyframe).arg(frame));
 
-                for (auto keyframe : scene()->selectedKeyframes())
+                const auto selectedKeyframes = scene()->selectedKeyframes();
+                for (auto keyframe : selectedKeyframes) {
                     if (keyframe != current)
                         keyframe->commitPosition(mapToItem(current, keyframe->rect().center()));
+                }
             }
         });
     }
@@ -156,18 +179,18 @@ void TimelineMoveTool::mouseReleaseEvent(TimelineMovableAbstractItem *item,
 void TimelineMoveTool::mouseDoubleClickEvent(TimelineMovableAbstractItem *item,
                                              QGraphicsSceneMouseEvent *event)
 {
-    Q_UNUSED(item);
-    Q_UNUSED(event);
+    Q_UNUSED(item)
+    Q_UNUSED(event)
 }
 
 void TimelineMoveTool::keyPressEvent(QKeyEvent *keyEvent)
 {
-    Q_UNUSED(keyEvent);
+    Q_UNUSED(keyEvent)
 }
 
 void TimelineMoveTool::keyReleaseEvent(QKeyEvent *keyEvent)
 {
-    Q_UNUSED(keyEvent);
+    Q_UNUSED(keyEvent)
 }
 
 } // namespace QmlDesigner

@@ -46,19 +46,20 @@ public:
     // The environment including the user's modifications.
     Utils::Environment environment() const;
 
+    // Environment including modifiers, but without explicit user changes.
+    Utils::Environment modifiedBaseEnvironment() const;
+
     int baseEnvironmentBase() const;
     void setBaseEnvironmentBase(int base);
 
-    QList<Utils::EnvironmentItem> userEnvironmentChanges() const { return m_userChanges; }
-    void setUserEnvironmentChanges(const QList<Utils::EnvironmentItem> &diff);
+    Utils::EnvironmentItems userEnvironmentChanges() const { return m_userChanges; }
+    void setUserEnvironmentChanges(const Utils::EnvironmentItems &diff);
 
     void addSupportedBaseEnvironment(const QString &displayName,
                                      const std::function<Utils::Environment()> &getter);
     void addPreferredBaseEnvironment(const QString &displayName,
                                      const std::function<Utils::Environment()> &getter);
 
-    // The environment the user chose as base for his modifications.
-    Utils::Environment currentUnmodifiedBaseEnvironment() const;
     QString currentDisplayName() const;
 
     const QStringList displayNames() const;
@@ -70,7 +71,7 @@ public:
 
 signals:
     void baseEnvironmentChanged();
-    void userEnvironmentChangesChanged(const QList<Utils::EnvironmentItem> &diff);
+    void userEnvironmentChangesChanged(const Utils::EnvironmentItems &diff);
     void environmentChanged();
 
 protected:
@@ -88,7 +89,7 @@ private:
         QString displayName;
     };
 
-    QList<Utils::EnvironmentItem> m_userChanges;
+    Utils::EnvironmentItems m_userChanges;
     QList<EnvironmentModifier> m_modifiers;
     QList<BaseEnvironment> m_baseEnvironments;
     int m_base = -1;

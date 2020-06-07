@@ -43,7 +43,7 @@ static const char TaskCategory[] = "Task.Category.ExtraCompiler.QScxmlc";
 
 QScxmlcGenerator::QScxmlcGenerator(const Project *project,
                                    const Utils::FilePath &source,
-                                   const Utils::FilePathList &targets, QObject *parent) :
+                                   const Utils::FilePaths &targets, QObject *parent) :
     ProcessExtraCompiler(project, source, targets, parent),
     m_tmpdir("qscxmlgenerator")
 {
@@ -114,7 +114,7 @@ bool QScxmlcGenerator::prepareToRun(const QByteArray &sourceContents)
 
 FileNameToContentsHash QScxmlcGenerator::handleProcessFinished(QProcess *process)
 {
-    Q_UNUSED(process);
+    Q_UNUSED(process)
     const Utils::FilePath wd = workingDirectory();
     FileNameToContentsHash result;
     forEachTarget([&](const Utils::FilePath &target) {
@@ -144,7 +144,7 @@ QString QScxmlcGeneratorFactory::sourceTag() const
 
 ExtraCompiler *QScxmlcGeneratorFactory::create(
         const Project *project, const Utils::FilePath &source,
-        const Utils::FilePathList &targets)
+        const Utils::FilePaths &targets)
 {
     annouceCreation(project, source, targets);
 

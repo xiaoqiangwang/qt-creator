@@ -22,6 +22,8 @@ QtcPlugin {
         "dynamiccapabilities.h",
         "languageclient.qrc",
         "languageclient_global.h",
+        "languageclientformatter.cpp",
+        "languageclientformatter.h",
         "languageclienthoverhandler.cpp",
         "languageclienthoverhandler.h",
         "languageclientfunctionhint.cpp",
@@ -44,5 +46,9 @@ QtcPlugin {
         "languageclientutils.h",
         "locatorfilter.cpp",
         "locatorfilter.h",
+        "lsplogger.cpp",
+        "lsplogger.h",
+        "semantichighlightsupport.cpp",
+        "semantichighlightsupport.h",
     ]
 }

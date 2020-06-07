@@ -91,8 +91,6 @@ public:
 
     void openAnimationCurveEditor();
 
-    void updateCurve(DesignTools::PropertyTreeItem *item);
-
 protected:
     void resizeEvent(QResizeEvent *event) override;
 
@@ -105,7 +103,7 @@ private:
 
     QList<QObject *> m_grp;
 
-    AnimationCurveDialog m_dialog;
+    AnimationCurveDialog *m_dialog = nullptr;
 
     AnimationCurveEditorModel *m_curveModel = nullptr;
 

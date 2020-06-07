@@ -49,6 +49,7 @@ public:
         Default       = 0x00, // Plain text, non case sensitive, for initialization
         RegExp        = 0x01,
         CaseSensitive = 0x02,
+        Inverted      = 0x04,
     };
     Q_DECLARE_FLAGS(FilterModeFlags, FilterModeFlag)
 
@@ -65,8 +66,6 @@ public:
     void grayOutOldContent();
     void clear();
 
-    void showEvent(QShowEvent *) override;
-
     void scrollToBottom();
 
     void setMaxCharCount(int count);
@@ -78,7 +77,11 @@ public:
     void resetZoom() { setFontZoom(0); }
     void setWheelZoomEnabled(bool enabled);
 
-    void updateFilterProperties(const QString &filterText, Qt::CaseSensitivity caseSensitivity, bool regexp);
+    void updateFilterProperties(
+            const QString &filterText,
+            Qt::CaseSensitivity caseSensitivity,
+            bool regexp,
+            bool isInverted);
 
 signals:
     void wheelZoom();
@@ -89,14 +92,16 @@ public slots:
 protected:
     bool isScrollbarAtBottom() const;
 
+private:
+    QMimeData *createMimeDataFromSelection() const override;
+    void keyPressEvent(QKeyEvent *ev) override;
     void mousePressEvent(QMouseEvent *e) override;
     void mouseReleaseEvent(QMouseEvent *e) override;
     void mouseMoveEvent(QMouseEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
-    void keyPressEvent(QKeyEvent *ev) override;
+    void showEvent(QShowEvent *) override;
     void wheelEvent(QWheelEvent *e) override;
 
-private:
     using QPlainTextEdit::setFont; // call setBaseFont instead, which respects the zoom factor
     QTimer m_scrollTimer;
     QElapsedTimer m_lastMessage;
@@ -104,7 +109,7 @@ private:
     QString doNewlineEnforcement(const QString &out);
     void filterNewContent();
 
-    Internal::OutputWindowPrivate *d;
+    Internal::OutputWindowPrivate *d = nullptr;
 };
 
 } // namespace Core

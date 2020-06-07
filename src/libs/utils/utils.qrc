@@ -142,8 +142,14 @@
         <file>images/Desktop.png</file>
         <file>images/interrupt_small.png</file>
         <file>images/interrupt_small@2x.png</file>
+        <file>images/run_file.png</file>
+        <file>images/run_file@2x.png</file>
         <file>images/run_small.png</file>
         <file>images/run_small@2x.png</file>
+        <file>images/runselected_boxes.png</file>
+        <file>images/runselected_boxes@2x.png</file>
+        <file>images/runselected_tickmarks.png</file>
+        <file>images/runselected_tickmarks@2x.png</file>
         <file>images/stop_small.png</file>
         <file>images/stop_small@2x.png</file>
         <file>images/boundingrect.png</file>
@@ -223,6 +229,12 @@
         <file>images/toggleprogressdetails@2x.png</file>
         <file>images/unknownfile.png</file>
         <file>images/dir.png</file>
+        <file>images/online.png</file>
+        <file>images/online@2x.png</file>
+        <file>images/download_arrow.png</file>
+        <file>images/download_arrow@2x.png</file>
+        <file>images/download_base.png</file>
+        <file>images/download_base@2x.png</file>
         <file alias="mimetypes/freedesktop.org.xml" compression-algorithm="best">../3rdparty/xdg/freedesktop.org.xml</file>
     </qresource>
     <qresource prefix="/codemodel">

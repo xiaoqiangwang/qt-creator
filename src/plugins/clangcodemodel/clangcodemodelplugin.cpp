@@ -60,22 +60,22 @@ static void addProjectPanelWidget()
     auto panelFactory = new ProjectExplorer::ProjectPanelFactory();
     panelFactory->setPriority(60);
     panelFactory->setDisplayName(ClangProjectSettingsWidget::tr("Clang Code Model"));
-    panelFactory->setCreateWidgetFunction([](ProjectExplorer::Project *project) {
-        return new ClangProjectSettingsWidget(project);
-    });
+    panelFactory->setCreateWidgetFunction(
+        [&](ProjectExplorer::Project *project) { return new ClangProjectSettingsWidget(project); });
     ProjectExplorer::ProjectPanelFactory::registerFactory(panelFactory);
 }
 
-void ClangCodeModelPlugin::generateCompilationDB() {
+void ClangCodeModelPlugin::generateCompilationDB()
+{
     using namespace CppTools;
 
-    ProjectExplorer::Project *project = ProjectExplorer::SessionManager::startupProject();
-    if (!project || !project->activeTarget())
+    ProjectExplorer::Target *target = ProjectExplorer::SessionManager::startupTarget();
+    if (!target)
         return;
 
     QFuture<Utils::GenerateCompilationDbResult> task
             = QtConcurrent::run(&Utils::generateCompilationDB,
-                                CppModelManager::instance()->projectInfo(project));
+                                CppModelManager::instance()->projectInfo(target->project()));
     Core::ProgressManager::addTask(task, tr("Generating Compilation DB"), "generate compilation db");
     m_generatorWatcher.setFuture(task);
 }
@@ -96,8 +96,8 @@ ClangCodeModelPlugin::~ClangCodeModelPlugin()
 
 bool ClangCodeModelPlugin::initialize(const QStringList &arguments, QString *errorMessage)
 {
-    Q_UNUSED(arguments);
-    Q_UNUSED(errorMessage);
+    Q_UNUSED(arguments)
+    Q_UNUSED(errorMessage)
 
     ProjectExplorer::TaskHub::addCategory(Constants::TASK_CATEGORY_DIAGNOSTICS,
                                           tr("Clang Code Model"));
@@ -182,10 +182,6 @@ void ClangCodeModelPlugin::createCompilationDBButton()
             return;
         m_generateCompilationDBAction->setParameter(project->displayName());
     });
-}
-
-void ClangCodeModelPlugin::extensionsInitialized()
-{
 }
 
 // For e.g. creation of profile-guided optimization builds.

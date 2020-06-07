@@ -38,6 +38,9 @@
 #include <QLibraryInfo>
 #include <QTest>
 
+using namespace ProjectExplorer;
+using namespace Utils;
+
 namespace QmlProfiler {
 namespace Internal {
 
@@ -45,8 +48,8 @@ class DummyProject : public ProjectExplorer::Project
 {
     Q_OBJECT
 public:
-    DummyProject(const Utils::FilePath &file) :
-        ProjectExplorer::Project(QString(), file, {})
+    DummyProject(const Utils::FilePath &file)
+        : ProjectExplorer::Project(QString(), file)
     {
         auto fileNode
                 = std::make_unique<ProjectExplorer::FileNode>(file, ProjectExplorer::FileType::Source);
@@ -65,18 +68,12 @@ public:
     bool needsConfiguration() const final { return false; }
 };
 
-class DummyBuildConfigurationFactory : public ProjectExplorer::BuildConfigurationFactory
+class DummyBuildConfigurationFactory : public BuildConfigurationFactory
 {
 public:
-    QList<ProjectExplorer::BuildInfo> availableBuilds(const ProjectExplorer::Target *) const final
+    DummyBuildConfigurationFactory()
     {
-        return {};
-    }
-
-    QList<ProjectExplorer::BuildInfo> availableSetups(const ProjectExplorer::Kit *,
-                                                      const QString &) const final
-    {
-        return {};
+        setBuildGenerator([](const Kit *, const FilePath &, bool) { return QList<BuildInfo>{}; });
     }
 };
 
@@ -91,7 +88,7 @@ QmlProfilerDetailsRewriterTest::QmlProfilerDetailsRewriterTest(QObject *parent) 
 void QmlProfilerDetailsRewriterTest::testMissingModelManager()
 {
     DummyBuildConfigurationFactory factory;
-    Q_UNUSED(factory);
+    Q_UNUSED(factory)
 
     seedRewriter();
     delete m_modelManager;
@@ -101,8 +98,8 @@ void QmlProfilerDetailsRewriterTest::testMissingModelManager()
     QVERIFY(!m_rewriterDone);
     auto rewriteConnection = connect(&m_rewriter, &QmlProfilerDetailsRewriter::rewriteDetailsString,
             this, [&](int typeId, const QString &string) {
-        Q_UNUSED(typeId);
-        Q_UNUSED(string);
+        Q_UNUSED(typeId)
+        Q_UNUSED(string)
         QFAIL("found nonexisting file in nonexisting model manager");
     });
     m_rewriter.requestDetailsForLocation(44, QmlEventLocation("Test.qml", 12, 12));
@@ -115,7 +112,7 @@ void QmlProfilerDetailsRewriterTest::testMissingModelManager()
 void QmlProfilerDetailsRewriterTest::testRequestDetailsForLocation()
 {
     DummyBuildConfigurationFactory factory;
-    Q_UNUSED(factory);
+    Q_UNUSED(factory)
 
     seedRewriter();
     QVERIFY(!m_rewriterDone);
@@ -166,7 +163,7 @@ void QmlProfilerDetailsRewriterTest::testRequestDetailsForLocation()
 void QmlProfilerDetailsRewriterTest::testGetLocalFile()
 {
     DummyBuildConfigurationFactory factory;
-    Q_UNUSED(factory);
+    Q_UNUSED(factory)
 
     seedRewriter();
     QCOMPARE(m_rewriter.getLocalFile("notthere.qml"), QString());
@@ -225,13 +222,7 @@ void QmlProfilerDetailsRewriterTest::seedRewriter()
     DummyProject *project = new DummyProject(Utils::FilePath::fromString(filename));
     ProjectExplorer::SessionManager::addProject(project);
 
-    {
-        // Make sure the uniqe_ptr gets deleted before the project.
-        // Otherwise we'll get a double free because the target is also parented to the project
-        // and unique_ptr doesn't know anything about QObject parent/child relationships.
-        std::unique_ptr<ProjectExplorer::Target> target = project->createTarget(kit.get());
-        m_rewriter.populateFileFinder(target.get());
-    }
+    m_rewriter.populateFileFinder(project->addTargetForKit(kit.get()));
 
     ProjectExplorer::SessionManager::removeProject(project);
 }

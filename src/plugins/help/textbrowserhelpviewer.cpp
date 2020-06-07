@@ -400,8 +400,6 @@ void TextBrowserHelpWidget::contextMenuEvent(QContextMenuEvent *event)
         copyAnchorAction = menu.addAction(tr("Copy Link"));
     } else if (!textCursor().selectedText().isEmpty()) {
         connect(menu.addAction(tr("Copy")), &QAction::triggered, this, &QTextEdit::copy);
-    } else {
-        connect(menu.addAction(tr("Reload")), &QAction::triggered, this, &QTextBrowser::reload);
     }
 
     if (copyAnchorAction == menu.exec(event->globalPos()))
@@ -458,20 +456,4 @@ void TextBrowserHelpWidget::resizeEvent(QResizeEvent *e)
     const int topTextPosition = cursorForPosition({width() / 2, 0}).position();
     QTextBrowser::resizeEvent(e);
     scrollToTextPosition(topTextPosition);
-}
-
-void TextBrowserHelpWidget::setSource(const QUrl &name)
-{
-    QTextBrowser::setSource(name);
-
-    QTextCursor cursor(document());
-    while (!cursor.atEnd()) {
-        QTextBlockFormat fmt = cursor.blockFormat();
-        if (fmt.hasProperty(QTextFormat::LineHeightType) && fmt.lineHeightType() == QTextBlockFormat::FixedHeight) {
-           fmt.setProperty(QTextFormat::LineHeightType, QTextBlockFormat::MinimumHeight);
-           cursor.setBlockFormat(fmt);
-        }
-        if (!cursor.movePosition(QTextCursor::NextBlock))
-            break;
-    }
 }

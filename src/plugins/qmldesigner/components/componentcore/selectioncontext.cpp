@@ -46,6 +46,11 @@ ModelNode SelectionContext::targetNode() const
     return m_targetNode;
 }
 
+ModelNode SelectionContext::rootNode() const
+{
+    return view()->rootModelNode();
+}
+
 bool SelectionContext::singleNodeIsSelected() const
 {
     return view()->hasSingleSelectedModelNode();
@@ -73,7 +78,8 @@ QList<ModelNode> SelectionContext::selectedModelNodes() const
 
 bool SelectionContext::hasSingleSelectedModelNode() const
 {
-    return view()->hasSelectedModelNodes();
+    return view()->hasSingleSelectedModelNode()
+            && firstSelectedModelNode().isValid();
 }
 
 AbstractView *SelectionContext::view() const

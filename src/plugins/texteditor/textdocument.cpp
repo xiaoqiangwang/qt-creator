@@ -103,6 +103,7 @@ public:
     CompletionAssistProvider *m_functionHintAssistProvider = nullptr;
     IAssistProvider *m_quickFixProvider = nullptr;
     QScopedPointer<Indenter> m_indenter;
+    QScopedPointer<Formatter> m_formatter;
 
     bool m_fileIsReadOnly = false;
     int m_autoSaveRevision = -1;
@@ -169,35 +170,82 @@ QTextCursor TextDocumentPrivate::indentOrUnindent(const QTextCursor &textCursor,
         cursor.removeSelectedText();
     } else {
         // Indent or unindent at cursor position
+        int maxTargetColumn = -1;
+
+        class BlockIndenter
+        {
+        public:
+            BlockIndenter(const QTextBlock &_block,
+                          const int column,
+                          const TabSettings &_tabSettings)
+                : block(_block)
+                , text(block.text())
+                , tabSettings(_tabSettings)
+            {
+                indentPosition = tabSettings.positionAtColumn(text, column, nullptr, true);
+                spaces = tabSettings.spacesLeftFromPosition(text, indentPosition);
+            }
+
+            void indent(const int targetColumn) const
+            {
+                const int startColumn = tabSettings.columnAt(text, indentPosition - spaces);
+                QTextCursor cursor(block);
+                cursor.setPosition(block.position() + indentPosition);
+                cursor.setPosition(block.position() + indentPosition - spaces, QTextCursor::KeepAnchor);
+                cursor.removeSelectedText();
+                cursor.insertText(tabSettings.indentationString(startColumn, targetColumn, 0, block));
+            }
+
+            int targetColumn(bool doIndent) const
+            {
+                const int optimumTargetColumn
+                    = tabSettings.indentedColumn(tabSettings.columnAt(block.text(), indentPosition),
+                                                 doIndent);
+                const int minimumTargetColumn = tabSettings.columnAt(text, indentPosition - spaces);
+                return std::max(optimumTargetColumn, minimumTargetColumn);
+            }
+
+            const QTextBlock &textBlock() { return block; }
+
+        private:
+            QTextBlock block;
+            const QString text;
+            int indentPosition;
+            int spaces;
+            const TabSettings &tabSettings;
+        };
+
+        std::vector<BlockIndenter> blocks;
+
         for (QTextBlock block = startBlock; block != endBlock; block = block.next()) {
             QString text = block.text();
 
-            int blockColumn = tabSettings.columnAt(text, text.size());
+            const int blockColumn = tabSettings.columnAt(text, text.size());
             if (blockColumn < column) {
                 cursor.setPosition(block.position() + text.size());
                 cursor.insertText(tabSettings.indentationString(blockColumn, column, 0, block));
                 text = block.text();
             }
 
-            int indentPosition = tabSettings.positionAtColumn(text, column, nullptr, true);
-            int spaces = tabSettings.spacesLeftFromPosition(text, indentPosition);
-            int startColumn = tabSettings.columnAt(text, indentPosition - spaces);
-            int targetColumn = tabSettings.indentedColumn(
-                        tabSettings.columnAt(text, indentPosition), doIndent);
-            cursor.setPosition(block.position() + indentPosition);
-            cursor.setPosition(block.position() + indentPosition - spaces, QTextCursor::KeepAnchor);
-            cursor.removeSelectedText();
-            cursor.insertText(tabSettings.indentationString(startColumn, targetColumn, 0, block));
+            blocks.emplace_back(BlockIndenter(block, column, tabSettings));
+            maxTargetColumn = std::max(maxTargetColumn, blocks.back().targetColumn(doIndent));
         }
+        for (const BlockIndenter &blockIndenter : blocks)
+            blockIndenter.indent(maxTargetColumn);
+
         // Preserve initial anchor of block selection
         if (blockSelection) {
-            end = cursor.position();
-            if (offset) {
-                *offset = tabSettings.columnAt(cursor.block().text(), cursor.positionInBlock())
-                    - column;
-            }
-            cursor.setPosition(start);
-            cursor.setPosition(end, QTextCursor::KeepAnchor);
+            if (offset)
+                *offset = maxTargetColumn - column;
+            startBlock = pos < anchor ? blocks.front().textBlock() : blocks.back().textBlock();
+            start = startBlock.position()
+                    + tabSettings.positionAtColumn(startBlock.text(), maxTargetColumn);
+            endBlock = pos > anchor ? blocks.front().textBlock() : blocks.back().textBlock();
+            end = endBlock.position()
+                  + tabSettings.positionAtColumn(endBlock.text(), maxTargetColumn);
+
+            cursor.setPosition(end);
+            cursor.setPosition(start, QTextCursor::KeepAnchor);
         }
     }
 
@@ -300,9 +348,9 @@ TextDocument *TextDocument::currentTextDocument()
     return qobject_cast<TextDocument *>(EditorManager::currentDocument());
 }
 
-TextDocument *TextDocument::textDocumentForFileName(const Utils::FilePath &fileName)
+TextDocument *TextDocument::textDocumentForFilePath(const Utils::FilePath &filePath)
 {
-    return qobject_cast<TextDocument *>(DocumentModel::documentForFilePath(fileName.toString()));
+    return qobject_cast<TextDocument *>(DocumentModel::documentForFilePath(filePath.toString()));
 }
 
 QString TextDocument::plainText() const
@@ -446,7 +494,7 @@ void TextDocument::autoReindent(const QTextCursor &cursor, int currentCursorPosi
 
 void TextDocument::autoFormatOrIndent(const QTextCursor &cursor)
 {
-    d->m_indenter->formatOrIndent(cursor, tabSettings());
+    d->m_indenter->autoIndent(cursor, tabSettings());
 }
 
 QTextCursor TextDocument::indent(const QTextCursor &cursor, bool blockSelection, int column,
@@ -461,6 +509,25 @@ QTextCursor TextDocument::unindent(const QTextCursor &cursor, bool blockSelectio
     return d->indentOrUnindent(cursor, false, tabSettings(), blockSelection, column, offset);
 }
 
+void TextDocument::setFormatter(Formatter *formatter)
+{
+    d->m_formatter.reset(formatter);
+}
+
+void TextDocument::autoFormat(const QTextCursor &cursor)
+{
+    using namespace Utils::Text;
+    if (!d->m_formatter)
+        return;
+    if (QFutureWatcher<Replacements> *watcher = d->m_formatter->format(cursor, tabSettings())) {
+        connect(watcher, &QFutureWatcher<Replacements>::finished, this, [this, watcher]() {
+            if (!watcher->isCanceled())
+                Utils::Text::applyReplacements(document(), watcher->result());
+            delete watcher;
+        });
+    }
+}
+
 const ExtraEncodingSettings &TextDocument::extraEncodingSettings() const
 {
     return d->m_extraEncodingSettings;
@@ -470,7 +537,7 @@ void TextDocument::setIndenter(Indenter *indenter)
 {
     // clear out existing code formatter data
     for (QTextBlock it = document()->begin(); it.isValid(); it = it.next()) {
-        TextBlockUserData *userData = TextDocumentLayout::testUserData(it);
+        TextBlockUserData *userData = TextDocumentLayout::textUserData(it);
         if (userData)
             userData->setCodeFormatterData(nullptr);
     }
@@ -941,7 +1008,7 @@ TextMarks TextDocument::marksAt(int line) const
     QTextBlock block = d->m_document.findBlockByNumber(blockNumber);
 
     if (block.isValid()) {
-        if (TextBlockUserData *userData = TextDocumentLayout::testUserData(block))
+        if (TextBlockUserData *userData = TextDocumentLayout::textUserData(block))
             return userData->marks();
     }
     return TextMarks();
@@ -1022,7 +1089,7 @@ void TextDocument::updateMark(TextMark *mark)
 void TextDocument::moveMark(TextMark *mark, int previousLine)
 {
     QTextBlock block = d->m_document.findBlockByNumber(previousLine - 1);
-    if (TextBlockUserData *data = TextDocumentLayout::testUserData(block)) {
+    if (TextBlockUserData *data = TextDocumentLayout::textUserData(block)) {
         if (!data->removeMark(mark))
             qDebug() << "Could not find mark" << mark << "on line" << previousLine;
     }

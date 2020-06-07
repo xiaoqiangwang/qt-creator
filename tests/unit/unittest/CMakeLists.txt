@@ -8,6 +8,10 @@ if (NOT Googletest_FOUND)
   return()
 endif()
 
+if (MSVC)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
+endif()
+
 add_qtc_test(unittest GTEST
   INCLUDES
     BEFORE "../mockup"
@@ -18,8 +22,6 @@ add_qtc_test(unittest GTEST
     clangrefactoringbackend_lib clangbackend_lib clangpchmanagerbackend_lib
     CPlusPlus Sqlite Utils
   DEFINES
-    QT_NO_CAST_TO_ASCII  QT_RESTRICTED_CAST_FROM_ASCII
-    QT_USE_FAST_OPERATOR_PLUS QT_USE_FAST_CONCATENATION
     UNIT_TESTS
     DONT_CHECK_MESSAGE_COUNTER
     QTC_RESOURCE_DIR="${PROJECT_SOURCE_DIR}/share/qtcreator"
@@ -29,7 +31,7 @@ add_qtc_test(unittest GTEST
   SOURCES
     builddependenciesprovider-test.cpp
     builddependenciesstorage-test.cpp
-    directorypathcompressor-test.cpp
+    clangindexingsettingsmanager-test.cpp
     clangpathwatcher-test.cpp
     clangqueryexamplehighlightmarker-test.cpp
     clangqueryhighlightmarker-test.cpp
@@ -81,7 +83,6 @@ add_qtc_test(unittest GTEST
     mockgeneratedfiles.h
     mockmodifiedtimechecker.h
     mockmutex.h
-    mockfilesystem.h
     mockpchcreator.h
     mockpchmanagerclient.h
     mockpchmanagernotifier.h
@@ -126,6 +127,7 @@ add_qtc_test(unittest GTEST
     pchtaskqueue-test.cpp
     pchtasksmerger-test.cpp
     precompiledheaderstorage-test.cpp
+    preprocessormacrocollector-test.cpp
     processcreator-test.cpp
     processevents-utilities.cpp processevents-utilities.h
     processormanager-test.cpp
@@ -153,6 +155,7 @@ add_qtc_test(unittest GTEST
     symbolquery-test.cpp
     symbolsfindfilter-test.cpp
     symbolstorage-test.cpp
+    task.cpp
     taskscheduler-test.cpp
     testenvironment.h
     tokenprocessor-test.cpp
@@ -269,7 +272,7 @@ if (TARGET clangTooling)
     mockrefactoringserver.h
   )
   target_link_libraries(unittest
-    PRIVATE clangTooling clangIndex clangQuery clangToolingRefactor)
+    PRIVATE clangTooling clangIndex clangQuery)
 endif()
 
 if (TARGET clangFormat)
@@ -393,10 +396,13 @@ extend_qtc_target(unittest
   SOURCES_PREFIX "${ClangPchManagerSourcesDir}"
   DEFINES CLANGPCHMANAGER_STATIC_LIB
   SOURCES
+    clangindexingprojectsettings.cpp clangindexingprojectsettings.h
+    clangindexingsettingsmanager.cpp clangindexingsettingsmanager.h
     pchmanagerclient.h pchmanagerclient.cpp
     pchmanagernotifierinterface.h pchmanagernotifierinterface.cpp
     pchmanagerconnectionclient.h pchmanagerconnectionclient.cpp
     clangpchmanager_global.h
+    preprocessormacrocollector.cpp preprocessormacrocollector.h
     projectupdater.h projectupdater.cpp
     pchmanagerprojectupdater.h pchmanagerprojectupdater.cpp
     progressmanager.h

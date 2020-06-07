@@ -38,10 +38,6 @@
 
 #include <functional>
 
-QT_BEGIN_NAMESPACE
-class QStyle;
-QT_END_NAMESPACE
-
 namespace Utils {
 class Environment;
 class FilePath;
@@ -147,9 +143,6 @@ public:
 
     Kit *kit() const { return m_kit; }
 
-    virtual void setPalette(const QPalette &p);
-    virtual void setStyle(QStyle *s);
-
 signals:
     void dirty();
 
@@ -167,7 +160,7 @@ public:
     static KitManager *instance();
     ~KitManager() override;
 
-    static QList<Kit *> kits(const Kit::Predicate &predicate = Kit::Predicate());
+    static const QList<Kit *> kits();
     static Kit *kit(const Kit::Predicate &predicate);
     static Kit *kit(Core::Id id);
     static Kit *defaultKit();
@@ -179,9 +172,6 @@ public:
     static Kit *registerKit(const std::function<void(Kit *)> &init, Core::Id id = {});
     static void deregisterKit(Kit *k);
     static void setDefaultKit(Kit *k);
-
-    static QSet<Core::Id> supportedPlatforms();
-    static QSet<Core::Id> availableFeatures(Core::Id platformId);
 
     static QList<Kit *> sortKits(const QList<Kit *> &kits); // Avoid sorting whenever possible!
 
@@ -210,6 +200,8 @@ private:
 
     static void registerKitAspect(KitAspect *ki);
     static void deregisterKitAspect(KitAspect *ki);
+
+    static void setBinaryForKit(const Utils::FilePath &binary);
 
     // Make sure the this is only called after all
     // KitAspects are registered!

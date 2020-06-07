@@ -29,7 +29,6 @@
 #include <utils/theme/theme.h>
 
 namespace Autotest {
-namespace Internal {
 
 TestResult::TestResult(const QString &id, const QString &name)
     : m_id(id)
@@ -118,6 +117,8 @@ QString TestResult::resultToString(const ResultType type)
         return QString("FATAL");
     case ResultType::MessageSystem:
         return QString("SYSTEM");
+    case ResultType::MessageError:
+        return QString("ERROR");
     case ResultType::BlacklistedPass:
         return QString("BPASS");
     case ResultType::BlacklistedFail:
@@ -160,6 +161,7 @@ QColor TestResult::colorForType(const ResultType type)
         return creatorTheme->color(Utils::Theme::OutputPanes_TestWarnTextColor);
     case ResultType::MessageFatal:
     case ResultType::MessageSystem:
+    case ResultType::MessageError:
         return creatorTheme->color(Utils::Theme::OutputPanes_TestFatalTextColor);
     case ResultType::BlacklistedPass:
     case ResultType::BlacklistedFail:
@@ -189,5 +191,4 @@ TestResult *TestResult::createIntermediateResultFor(const TestResult *other)
     return intermediate;
 }
 
-} // namespace Internal
 } // namespace Autotest

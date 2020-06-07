@@ -26,7 +26,6 @@ Project {
             name: "General"
             files: [
                 "addlibrarywizard.cpp", "addlibrarywizard.h",
-                "desktopqmakerunconfiguration.cpp", "desktopqmakerunconfiguration.h",
                 "externaleditors.cpp", "externaleditors.h",
                 "librarydetailscontroller.cpp", "librarydetailscontroller.h",
                 "librarydetailswidget.ui",
@@ -42,18 +41,16 @@ Project {
                 "qmakeparsernodes.cpp", "qmakeparsernodes.h",
                 "qmakeprojectimporter.cpp", "qmakeprojectimporter.h",
                 "qmakesettings.cpp", "qmakesettings.h",
-                "qmakestep.cpp", "qmakestep.h", "qmakestep.ui",
+                "qmakestep.cpp", "qmakestep.h",
                 "qmakebuildconfiguration.cpp", "qmakebuildconfiguration.h",
                 "qmakenodes.cpp", "qmakenodes.h",
                 "qmakenodetreebuilder.cpp", "qmakenodetreebuilder.h",
                 "qmakeproject.cpp", "qmakeproject.h",
-                "qmakeprojectconfigwidget.cpp", "qmakeprojectconfigwidget.h",
                 "qmakeprojectmanager.cpp", "qmakeprojectmanager.h",
                 "qmakeprojectmanager.qrc",
                 "qmakeprojectmanager_global.h",
                 "qmakeprojectmanagerconstants.h",
                 "qmakeprojectmanagerplugin.cpp", "qmakeprojectmanagerplugin.h",
-                "qtmodulesinfo.cpp", "qtmodulesinfo.h",
             ]
         }
 
@@ -77,13 +74,10 @@ Project {
             name: "Wizards"
             prefix: "wizards/"
             files: [
-                "filespage.cpp", "filespage.h",
-                "modulespage.cpp", "modulespage.h",
                 "qtprojectparameters.cpp", "qtprojectparameters.h",
                 "qtwizard.cpp", "qtwizard.h",
                 "subdirsprojectwizard.cpp", "subdirsprojectwizard.h",
                 "subdirsprojectwizarddialog.cpp", "subdirsprojectwizarddialog.h",
-                "simpleprojectwizard.cpp", "simpleprojectwizard.h",
                 "wizards.qrc"
             ]
         }

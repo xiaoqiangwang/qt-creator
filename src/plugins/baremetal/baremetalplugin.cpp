@@ -25,14 +25,13 @@
 ****************************************************************************/
 
 #include "baremetalconstants.h"
-#include "baremetalcustomrunconfiguration.h"
 #include "baremetaldebugsupport.h"
 #include "baremetaldevice.h"
 #include "baremetalplugin.h"
 #include "baremetalrunconfiguration.h"
 
-#include "gdbserverprovidermanager.h"
-#include "gdbserverproviderssettingspage.h"
+#include "debugserverprovidermanager.h"
+#include "debugserverproviderssettingspage.h"
 
 #include "iarewtoolchain.h"
 #include "keiltoolchain.h"
@@ -45,10 +44,25 @@
 #include <coreplugin/icontext.h>
 #include <coreplugin/icore.h>
 
+#include <projectexplorer/deployconfiguration.h>
+
 using namespace ProjectExplorer;
 
 namespace BareMetal {
 namespace Internal {
+
+class BareMetalDeployConfigurationFactory : public DeployConfigurationFactory
+{
+public:
+    BareMetalDeployConfigurationFactory()
+    {
+        setConfigBaseId("BareMetal.DeployConfiguration");
+        setDefaultDisplayName(QCoreApplication::translate("BareMetalDeployConfiguration",
+                                                          "Deploy to BareMetal Device"));
+        addSupportedTargetDeviceType(Constants::BareMetalOsType);
+    }
+};
+
 
 // BareMetalPluginPrivate
 
@@ -61,8 +75,15 @@ public:
     BareMetalDeviceFactory deviceFactory;
     BareMetalRunConfigurationFactory runConfigurationFactory;
     BareMetalCustomRunConfigurationFactory customRunConfigurationFactory;
-    GdbServerProvidersSettingsPage gdbServerProviderSettinsPage;
-    GdbServerProviderManager gdbServerProviderManager;
+    DebugServerProvidersSettingsPage debugServerProviderSettinsPage;
+    DebugServerProviderManager debugServerProviderManager;
+    BareMetalDeployConfigurationFactory deployConfigurationFactory;
+
+    RunWorkerFactory runWorkerFactory{
+        RunWorkerFactory::make<BareMetalDebugSupport>(),
+        {ProjectExplorer::Constants::NORMAL_RUN_MODE, ProjectExplorer::Constants::DEBUG_RUN_MODE},
+        {runConfigurationFactory.id(), customRunConfigurationFactory.id()}
+    };
 };
 
 // BareMetalPlugin
@@ -78,25 +99,12 @@ bool BareMetalPlugin::initialize(const QStringList &arguments, QString *errorStr
     Q_UNUSED(errorString)
 
     d = new BareMetalPluginPrivate;
-
-    auto constraint = [](RunConfiguration *runConfig) {
-        const QByteArray idStr = runConfig->id().name();
-        const bool res = idStr.startsWith(BareMetalRunConfiguration::IdPrefix)
-                || idStr == BareMetalCustomRunConfiguration::Id;
-        return res;
-    };
-
-    RunControl::registerWorker<BareMetalDebugSupport>
-            (ProjectExplorer::Constants::NORMAL_RUN_MODE, constraint);
-    RunControl::registerWorker<BareMetalDebugSupport>
-            (ProjectExplorer::Constants::DEBUG_RUN_MODE, constraint);
-
     return true;
 }
 
 void BareMetalPlugin::extensionsInitialized()
 {
-    GdbServerProviderManager::instance()->restoreProviders();
+    DebugServerProviderManager::instance()->restoreProviders();
 }
 
 } // namespace Internal

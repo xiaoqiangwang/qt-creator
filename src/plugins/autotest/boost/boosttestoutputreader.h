@@ -31,7 +31,6 @@ namespace Autotest {
 namespace Internal {
 
 class BoostTestResult;
-class TestTreeItem;
 enum class LogLevel;
 enum class ReportLevel;
 
@@ -43,8 +42,8 @@ public:
                           QProcess *testApplication, const QString &buildDirectory,
                           const QString &projectFile, LogLevel log, ReportLevel report);
 protected:
-    void processOutputLine(const QByteArray &outputLineWithNewLine) override;
-    void processStdError(const QByteArray &output) override;
+    void processOutputLine(const QByteArray &outputLine) override;
+    void processStdError(const QByteArray &outputLine) override;
     TestResultPtr createDefaultResult() const override;
 
 private:

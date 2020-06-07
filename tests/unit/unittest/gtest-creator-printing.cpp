@@ -37,6 +37,9 @@
 #include <clangcodemodelservermessages.h>
 #include <clangpathwatcher.h>
 #include <clangrefactoringmessages.h>
+#include <coreplugin/find/searchresultitem.h>
+#include <coreplugin/locator/ilocatorfilter.h>
+#include <cpptools/usages.h>
 #include <filepath.h>
 #include <filepathcaching.h>
 #include <filepathview.h>
@@ -46,6 +49,8 @@
 #include <pchpaths.h>
 #include <pchtask.h>
 #include <precompiledheadersupdatedmessage.h>
+#include <projectexplorer/headerpath.h>
+#include <projectexplorer/projectmacro.h>
 #include <projectpartartefact.h>
 #include <projectpartentry.h>
 #include <projectpartpch.h>
@@ -58,11 +63,13 @@
 #include <toolchainargumentscache.h>
 #include <tooltipinfo.h>
 #include <usedmacro.h>
+#include <utils/link.h>
 #include <cpptools/usages.h>
 #include <projectexplorer/projectmacro.h>
 #include <projectexplorer/headerpath.h>
 #include <coreplugin/find/searchresultitem.h>
 #include <coreplugin/locator/ilocatorfilter.h>
+#include <clangtools/clangtoolsdiagnostic.h>
 
 namespace {
 ClangBackEnd::FilePathCaching *filePathCache = nullptr;
@@ -176,6 +183,12 @@ namespace Utils {
 std::ostream &operator<<(std::ostream &out, const LineColumn &lineColumn)
 {
     return out << "(" << lineColumn.line << ", " << lineColumn.column << ")";
+}
+
+std::ostream &operator<<(std::ostream &out, const Link &link)
+{
+    return out << "(" << link.targetFileName << ", " << link.targetLine << ", " << link.targetColumn
+               << ", " << link.linkTextStart << ", " << link.linkTextEnd << ")";
 }
 
 const char * toText(Utils::Language language)
@@ -1295,6 +1308,38 @@ std::ostream &operator<<(std::ostream &out, const Usage &usage)
     return out << "(" << usage.path << ", " << usage.line << ", " << usage.column <<")";
 }
 } // namespace CppTools
+
+namespace Debugger {
+std::ostream &operator<<(std::ostream &out, const DiagnosticLocation &loc)
+{
+    return out << "(" << loc.filePath << ", " << loc.line << ", " << loc.column << ")";
+}
+} // namespace Debugger
+
+namespace ClangTools {
+namespace Internal {
+std::ostream &operator<<(std::ostream &out, const ExplainingStep &step)
+{
+    return out << "("
+               << step.message << ", "
+               << step.location << ", "
+               << step.ranges << ", "
+               << step.isFixIt
+               << ")";
+}
+
+std::ostream &operator<<(std::ostream &out, const Diagnostic &diag) {
+    return out << "("
+               << diag.description << ", "
+               << diag.category << ", "
+               << diag.type << ", "
+               << diag.location << ", "
+               << diag.explainingSteps << ", "
+               << diag.hasFixits
+               << ")";
+}
+} // namespace Internal
+} // namespace ClangTools
 
 void setFilePathCache(ClangBackEnd::FilePathCaching *cache)
 {

@@ -32,6 +32,8 @@
 #include "project.h"
 #include "target.h"
 
+#include <coreplugin/variablechooser.h>
+
 #include <utils/algorithm.h>
 #include <utils/qtcassert.h>
 #include <utils/runextensions.h>
@@ -124,6 +126,7 @@ static QList<BuildStepFactory *> g_buildStepFactories;
 BuildStep::BuildStep(BuildStepList *bsl, Core::Id id) :
     ProjectConfiguration(bsl, id)
 {
+    QTC_CHECK(bsl->target() && bsl->target() == this->target());
     Utils::MacroExpander *expander = macroExpander();
     expander->setDisplayName(tr("Build Step"));
     expander->setAccumulating(true);
@@ -146,14 +149,21 @@ BuildStepConfigWidget *BuildStep::createConfigWidget()
 {
     auto widget = new BuildStepConfigWidget(this);
 
-    auto formLayout = new QFormLayout(widget);
-    formLayout->setMargin(0);
-    formLayout->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-
-    for (ProjectConfigurationAspect *aspect : m_aspects) {
-        if (aspect->isVisible())
-            aspect->addToConfigurationLayout(formLayout);
+    {
+        LayoutBuilder builder(widget);
+        for (ProjectConfigurationAspect *aspect : m_aspects) {
+            if (aspect->isVisible())
+                aspect->addToLayout(builder.startNewRow());
+        }
     }
+
+    connect(buildConfiguration(), &BuildConfiguration::buildDirectoryChanged,
+            widget, &BuildStepConfigWidget::recreateSummary);
+
+    widget->setSummaryUpdater(m_summaryUpdater);
+
+    if (m_addMacroExpander)
+        Core::VariableChooser::addSupportForChildWidgets(widget, macroExpander());
 
     return widget;
 }
@@ -194,25 +204,17 @@ ProjectConfiguration *BuildStep::projectConfiguration() const
     return static_cast<ProjectConfiguration *>(parent()->parent());
 }
 
-Target *BuildStep::target() const
+BuildSystem *BuildStep::buildSystem() const
 {
-    return qobject_cast<Target *>(parent()->parent()->parent());
-}
-
-Project *BuildStep::project() const
-{
-    return target()->project();
+    if (auto bc = buildConfiguration())
+        return bc->buildSystem();
+    return target()->buildSystem();
 }
 
 void BuildStep::reportRunResult(QFutureInterface<bool> &fi, bool success)
 {
     fi.reportResult(success);
     fi.reportFinished();
-}
-
-bool BuildStep::isActive() const
-{
-    return projectConfiguration()->isActive();
 }
 
 bool BuildStep::widgetExpandedByDefault() const
@@ -227,7 +229,7 @@ void BuildStep::setWidgetExpandedByDefault(bool widgetExpandedByDefault)
 
 QVariant BuildStep::data(Core::Id id) const
 {
-    Q_UNUSED(id);
+    Q_UNUSED(id)
     return {};
 }
 
@@ -267,12 +269,27 @@ void BuildStep::doCancel()
                << "neeeds to implement the doCancel() function");
 }
 
+void BuildStep::addMacroExpander()
+{
+    m_addMacroExpander = true;
+}
+
+void BuildStep::setSummaryUpdater(const std::function<QString ()> &summaryUpdater)
+{
+    m_summaryUpdater = summaryUpdater;
+}
+
 void BuildStep::setEnabled(bool b)
 {
     if (m_enabled == b)
         return;
     m_enabled = b;
     emit enabledChanged();
+}
+
+BuildStepList *BuildStep::stepList() const
+{
+    return qobject_cast<BuildStepList *>(parent());
 }
 
 bool BuildStep::enabled() const
@@ -412,6 +429,10 @@ BuildStepConfigWidget::BuildStepConfigWidget(BuildStep *step)
     m_summaryText = "<b>" + m_displayName + "</b>";
     connect(m_step, &ProjectConfiguration::displayNameChanged,
             this, &BuildStepConfigWidget::updateSummary);
+    for (auto aspect : step->aspects()) {
+        connect(aspect, &ProjectConfigurationAspect::changed,
+                this, &BuildStepConfigWidget::recreateSummary);
+    }
 }
 
 QString BuildStepConfigWidget::summaryText() const
@@ -435,6 +456,18 @@ void BuildStepConfigWidget::setSummaryText(const QString &summaryText)
         m_summaryText = summaryText;
         emit updateSummary();
     }
+}
+
+void BuildStepConfigWidget::setSummaryUpdater(const std::function<QString()> &summaryUpdater)
+{
+    m_summaryUpdater = summaryUpdater;
+    recreateSummary();
+}
+
+void BuildStepConfigWidget::recreateSummary()
+{
+    if (m_summaryUpdater)
+        setSummaryText(m_summaryUpdater());
 }
 
 } // ProjectExplorer

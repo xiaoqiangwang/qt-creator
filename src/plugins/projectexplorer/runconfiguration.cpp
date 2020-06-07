@@ -25,17 +25,20 @@
 
 #include "runconfiguration.h"
 
-#include "project.h"
-#include "runcontrol.h"
-#include "target.h"
-#include "toolchain.h"
 #include "abi.h"
 #include "buildconfiguration.h"
+#include "buildsystem.h"
 #include "environmentaspect.h"
 #include "kitinformation.h"
-#include "runconfigurationaspects.h"
-#include "session.h"
 #include "kitinformation.h"
+#include "project.h"
+#include "projectexplorer.h"
+#include "projectnodes.h"
+#include "runconfigurationaspects.h"
+#include "runcontrol.h"
+#include "session.h"
+#include "target.h"
+#include "toolchain.h"
 
 #include <utils/algorithm.h>
 #include <utils/checkablemessagebox.h>
@@ -61,21 +64,27 @@ using namespace ProjectExplorer::Internal;
 
 namespace ProjectExplorer {
 
+const char BUILD_KEY[] = "ProjectExplorer.RunConfiguration.BuildKey";
+
 ///////////////////////////////////////////////////////////////////////
 //
 // ISettingsAspect
 //
 ///////////////////////////////////////////////////////////////////////
 
-ISettingsAspect::ISettingsAspect(const ConfigWidgetCreator &creator)
-    : m_configWidgetCreator(creator)
-{}
+ISettingsAspect::ISettingsAspect() = default;
 
 QWidget *ISettingsAspect::createConfigWidget() const
 {
     QTC_ASSERT(m_configWidgetCreator, return nullptr);
     return m_configWidgetCreator();
 }
+
+void ISettingsAspect::setConfigWidgetCreator(const ConfigWidgetCreator &configWidgetCreator)
+{
+    m_configWidgetCreator = configWidgetCreator;
+}
+
 
 ///////////////////////////////////////////////////////////////////////
 //
@@ -145,14 +154,9 @@ void GlobalOrProjectAspect::resetProjectToGlobalSettings()
     necessary data as the RunControl may continue to exist after the RunConfiguration
     has been destroyed.
 
-    A RunConfiguration disables itself when the project is parsing or has no parsing
+    A RunConfiguration disables itself if the project has no parsing
     data available. The disabledReason() method can be used to get a user-facing string
     describing why the RunConfiguration considers itself unfit for use.
-
-    Override updateEnabledState() to change the enabled state handling. Override
-    disabledReasons() to provide better/more descriptions to the user.
-
-    Connect signals that may change enabled state of your RunConfiguration to updateEnabledState.
 */
 
 static std::vector<RunConfiguration::AspectFactory> theAspectFactories;
@@ -160,19 +164,8 @@ static std::vector<RunConfiguration::AspectFactory> theAspectFactories;
 RunConfiguration::RunConfiguration(Target *target, Core::Id id)
     : ProjectConfiguration(target, id)
 {
-    connect(target->project(), &Project::parsingStarted,
-            this, [this]() { updateEnabledState(); });
-    connect(target->project(), &Project::parsingFinished,
-            this, [this]() { updateEnabledState(); });
-
-    connect(target, &Target::addedRunConfiguration,
-            this, [this](const RunConfiguration *rc) {
-        if (rc == this)
-            updateEnabledState();
-    });
-
-    connect(this, &RunConfiguration::enabledChanged,
-            this, &RunConfiguration::requestRunActionsUpdate);
+    QTC_CHECK(target && target == this->target());
+    connect(target, &Target::parsingFinished, this, &RunConfiguration::update);
 
     Utils::MacroExpander *expander = macroExpander();
     expander->setDisplayName(tr("Run Settings"));
@@ -184,7 +177,7 @@ RunConfiguration::RunConfiguration(Target *target, Core::Id id)
     expander->registerPrefix("CurrentRun:Env", tr("Variables in the current run environment"),
                              [this](const QString &var) {
         const auto envAspect = aspect<EnvironmentAspect>();
-        return envAspect ? envAspect->environment().value(var) : QString();
+        return envAspect ? envAspect->environment().expandedValueForKey(var) : QString();
     });
 
     expander->registerVariable(Constants::VAR_CURRENTRUN_WORKINGDIR,
@@ -198,55 +191,40 @@ RunConfiguration::RunConfiguration(Target *target, Core::Id id)
             QCoreApplication::translate("ProjectExplorer", "The currently active run configuration's name."),
             [this] { return displayName(); }, false);
 
-    for (const AspectFactory &factory : theAspectFactories)
-        m_aspects.append(factory(target));
-
-    m_executableGetter = [this] {
+    m_commandLineGetter = [this] {
+        FilePath executable;
         if (const auto executableAspect = aspect<ExecutableAspect>())
-            return executableAspect->executable();
-        return FilePath();
+            executable = executableAspect->executable();
+        QString arguments;
+        if (const auto argumentsAspect = aspect<ArgumentsAspect>())
+            arguments = argumentsAspect->arguments(macroExpander());
+        return CommandLine{executable, arguments, CommandLine::Raw};
     };
 }
 
 RunConfiguration::~RunConfiguration() = default;
 
-bool RunConfiguration::isActive() const
-{
-    return target()->isActive() && target()->activeRunConfiguration() == this;
-}
-
-void RunConfiguration::setEnabled(bool enabled)
-{
-    if (enabled == m_isEnabled)
-        return;
-    m_isEnabled = enabled;
-    emit enabledChanged();
-}
-
 QString RunConfiguration::disabledReason() const
 {
-    if (target()->project()->isParsing())
-        return tr("The Project is currently being parsed.");
-    if (!target()->project()->hasParsingData()) {
-        QString msg = tr("The project could not be fully parsed.");
-        const FilePath projectFilePath = buildTargetInfo().projectFilePath;
-        if (!projectFilePath.exists())
-            msg += '\n' + tr("The project file \"%1\" does not exist.").arg(projectFilePath.toString());
-        return msg;
-    }
-    return QString();
+    BuildSystem *bs = activeBuildSystem();
+    return bs ? bs->disabledReason(m_buildKey) : tr("No build system active");
+}
+
+bool RunConfiguration::isEnabled() const
+{
+    BuildSystem *bs = activeBuildSystem();
+    return bs && bs->hasParsingData();
 }
 
 QWidget *RunConfiguration::createConfigurationWidget()
 {
     auto widget = new QWidget;
-    auto formLayout = new QFormLayout(widget);
-    formLayout->setMargin(0);
-    formLayout->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-
-    for (ProjectConfigurationAspect *aspect : m_aspects) {
-        if (aspect->isVisible())
-            aspect->addToConfigurationLayout(formLayout);
+    {
+        LayoutBuilder builder(widget);
+        for (ProjectConfigurationAspect *aspect : m_aspects) {
+            if (aspect->isVisible())
+                aspect->addToLayout(builder.startNewRow());
+        }
     }
 
     Core::VariableChooser::addSupportForChildWidgets(widget, macroExpander());
@@ -257,66 +235,39 @@ QWidget *RunConfiguration::createConfigurationWidget()
     return detailsWidget;
 }
 
-void RunConfiguration::updateEnabledState()
-{
-    Project *p = target()->project();
-
-    setEnabled(!p->isParsing() && p->hasParsingData());
-}
-
 void RunConfiguration::addAspectFactory(const AspectFactory &aspectFactory)
 {
     theAspectFactories.push_back(aspectFactory);
 }
 
-/*!
- * Returns the RunConfiguration of the currently active target
- * of the startup project, if such exists, or \c nullptr otherwise.
- */
-
-RunConfiguration *RunConfiguration::startupRunConfiguration()
+QMap<Core::Id, QVariantMap> RunConfiguration::aspectData() const
 {
-    if (Project *pro = SessionManager::startupProject()) {
-        if (const Target *target = pro->activeTarget())
-            return target->activeRunConfiguration();
-    }
-    return nullptr;
+    QMap<Core::Id, QVariantMap> data;
+    for (ProjectConfigurationAspect *aspect : m_aspects)
+        aspect->toMap(data[aspect->id()]);
+    return data;
 }
 
-bool RunConfiguration::isConfigured() const
+BuildSystem *RunConfiguration::activeBuildSystem() const
 {
-    return true;
+    return target()->buildSystem();
 }
 
-RunConfiguration::ConfigurationState RunConfiguration::ensureConfigured(QString *errorMessage)
+void RunConfiguration::setUpdater(const Updater &updater)
 {
-    if (isConfigured())
-        return Configured;
-    if (errorMessage)
-        *errorMessage = tr("Unknown error.");
-    return UnConfigured;
+    m_updater = updater;
 }
 
-BuildConfiguration *RunConfiguration::activeBuildConfiguration() const
+Task RunConfiguration::createConfigurationIssue(const QString &description) const
 {
-    if (!target())
-        return nullptr;
-    return target()->activeBuildConfiguration();
-}
-
-Target *RunConfiguration::target() const
-{
-    return static_cast<Target *>(parent());
-}
-
-Project *RunConfiguration::project() const
-{
-    return target()->project();
+    return BuildSystemTask(Task::Error, description);
 }
 
 QVariantMap RunConfiguration::toMap() const
 {
     QVariantMap map = ProjectConfiguration::toMap();
+
+    map.insert(BUILD_KEY, m_buildKey);
 
     // FIXME: Remove this id mangling, e.g. by using a separate entry for the build key.
     if (!m_buildKey.isEmpty()) {
@@ -327,19 +278,41 @@ QVariantMap RunConfiguration::toMap() const
     return map;
 }
 
-void RunConfiguration::setExecutableGetter(const RunConfiguration::ExecutableGetter &exeGetter)
+void RunConfiguration::setCommandLineGetter(const CommandLineGetter &cmdGetter)
 {
-    m_executableGetter = exeGetter;
+    m_commandLineGetter = cmdGetter;
 }
 
-FilePath RunConfiguration::executable() const
+CommandLine RunConfiguration::commandLine() const
 {
-    return m_executableGetter();
+    return m_commandLineGetter();
+}
+
+void RunConfiguration::update()
+{
+    if (m_updater)
+        m_updater();
+
+    emit enabledChanged();
+
+    const bool isActive = target()->isActive() && target()->activeRunConfiguration() == this;
+
+    if (isActive && project() == SessionManager::startupProject())
+        ProjectExplorerPlugin::updateRunActions();
 }
 
 BuildTargetInfo RunConfiguration::buildTargetInfo() const
 {
-    return target()->buildTarget(m_buildKey);
+    BuildSystem *bs = target()->buildSystem();
+    QTC_ASSERT(bs, return {});
+    return bs->buildTarget(m_buildKey);
+}
+
+ProjectNode *RunConfiguration::productNode() const
+{
+    return project()->rootProjectNode()->findProjectNode([this](const ProjectNode *candidate) {
+        return candidate->buildKey() == buildKey();
+    });
 }
 
 bool RunConfiguration::fromMap(const QVariantMap &map)
@@ -347,9 +320,18 @@ bool RunConfiguration::fromMap(const QVariantMap &map)
     if (!ProjectConfiguration::fromMap(map))
         return false;
 
-    // FIXME: Remove this id mangling, e.g. by using a separate entry for the build key.
-    const Core::Id mangledId = Core::Id::fromSetting(map.value(settingsIdKey()));
-    m_buildKey = mangledId.suffixAfter(id());
+    m_buildKey = map.value(BUILD_KEY).toString();
+
+    if (m_buildKey.isEmpty()) {
+        const Core::Id mangledId = Core::Id::fromSetting(map.value(settingsIdKey()));
+        m_buildKey = mangledId.suffixAfter(id());
+
+        // Hack for cmake projects 4.10 -> 4.11.
+        const QString magicSeparator = "///::///";
+        const int magicIndex = m_buildKey.indexOf(magicSeparator);
+        if (magicIndex != -1)
+            m_buildKey = m_buildKey.mid(magicIndex + magicSeparator.length());
+    }
 
     return  true;
 }
@@ -392,23 +374,13 @@ bool RunConfiguration::fromMap(const QVariantMap &map)
 Runnable RunConfiguration::runnable() const
 {
     Runnable r;
-    r.executable = executable().toString();
-    if (auto argumentsAspect = aspect<ArgumentsAspect>())
-        r.commandLineArguments = argumentsAspect->arguments(macroExpander());
+    r.setCommandLine(commandLine());
     if (auto workingDirectoryAspect = aspect<WorkingDirectoryAspect>())
         r.workingDirectory = workingDirectoryAspect->workingDirectory(macroExpander()).toString();
     if (auto environmentAspect = aspect<EnvironmentAspect>())
         r.environment = environmentAspect->environment();
     return r;
 }
-
-OutputFormatter *RunConfiguration::createOutputFormatter() const
-{
-    if (m_outputFormatterCreator)
-        return m_outputFormatterCreator(project());
-    return new OutputFormatter();
-}
-
 
 /*!
     \class ProjectExplorer::IRunConfigurationFactory
@@ -544,19 +516,31 @@ bool RunConfigurationFactory::canHandle(Target *target) const
     return true;
 }
 
+RunConfiguration *RunConfigurationFactory::create(Target *target) const
+{
+    QTC_ASSERT(m_creator, return nullptr);
+    RunConfiguration *rc = m_creator(target);
+    QTC_ASSERT(rc, return nullptr);
+
+    // Add the universal aspects.
+    for (const RunConfiguration::AspectFactory &factory : theAspectFactories)
+        rc->m_aspects.append(factory(target));
+
+    rc->acquaintAspects();
+    return rc;
+}
+
 RunConfiguration *RunConfigurationCreationInfo::create(Target *target) const
 {
     QTC_ASSERT(factory->canHandle(target), return nullptr);
     QTC_ASSERT(id == factory->runConfigurationBaseId(), return nullptr);
-    QTC_ASSERT(factory->m_creator, return nullptr);
 
-    RunConfiguration *rc = factory->m_creator(target);
+    RunConfiguration *rc = factory->create(target);
     if (!rc)
         return nullptr;
 
-    rc->acquaintAspects();
     rc->m_buildKey = buildKey;
-    rc->doAdditionalSetup(*this);
+    rc->update();
     rc->setDisplayName(displayName);
 
     return rc;
@@ -568,11 +552,11 @@ RunConfiguration *RunConfigurationFactory::restore(Target *parent, const QVarian
         if (factory->canHandle(parent)) {
             const Core::Id id = idFromMap(map);
             if (id.name().startsWith(factory->m_runConfigBaseId.name())) {
-                QTC_ASSERT(factory->m_creator, continue);
-                RunConfiguration *rc = factory->m_creator(parent);
-                rc->acquaintAspects();
-                if (rc->fromMap(map))
+                RunConfiguration *rc = factory->create(parent);
+                if (rc->fromMap(map)) {
+                    rc->update();
                     return rc;
+                }
                 delete rc;
                 return nullptr;
             }

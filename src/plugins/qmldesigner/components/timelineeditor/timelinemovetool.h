@@ -27,6 +27,7 @@
 
 #include "timelineabstracttool.h"
 
+#include <QCoreApplication>
 #include <QPointF>
 
 QT_FORWARD_DECLARE_CLASS(QGraphicsRectItem)
@@ -37,6 +38,8 @@ class TimelineMovableAbstractItem;
 
 class TimelineMoveTool : public TimelineAbstractTool
 {
+    Q_DECLARE_TR_FUNCTIONS(TimelineMoveTool)
+
 public:
     explicit TimelineMoveTool(TimelineGraphicsScene *scene, TimelineToolDelegate *delegate);
     void mousePressEvent(TimelineMovableAbstractItem *item,
@@ -49,6 +52,9 @@ public:
 
     void keyPressEvent(QKeyEvent *keyEvent) override;
     void keyReleaseEvent(QKeyEvent *keyEvent) override;
+
+private:
+    qreal m_pressKeyframeDelta = 0.;
 };
 
 } // namespace QmlDesigner
