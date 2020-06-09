@@ -175,6 +175,12 @@ ReferenceContext::ReferenceContext(const ContextPtr &context)
 const Value *ReferenceContext::lookupReference(const Value *value)
 {
     const Reference *reference = value_cast<Reference>(value);
+    // qt creators crashes immediately after load a qml file
+    // this happens only on macOS with various version of qt-creator (4.5 - 4.7) and qt (5.9 - 5.11)
+    // See https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=226224
+    // and the proposed hack https://svnweb.freebsd.org/changeset/ports/467236
+    qDebug(); // some form of synchronisation happens here, preventing a crash
+
     if (!reference)
         return value;
 
