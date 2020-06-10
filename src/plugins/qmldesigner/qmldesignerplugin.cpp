@@ -176,8 +176,6 @@ QmlDesignerPlugin::~QmlDesignerPlugin()
 ////////////////////////////////////////////////////
 bool QmlDesignerPlugin::initialize(const QStringList & /*arguments*/, QString *errorMessage/* = 0*/) // =0;
 {
-    if (!Utils::HostOsInfo::canCreateOpenGLContext(errorMessage))
-        return false;
     d = new QmlDesignerPluginPrivate;
     return true;
 }
@@ -195,9 +193,14 @@ bool QmlDesignerPlugin::delayedInitialize()
 
     d->viewManager.registerViewTakingOwnership(new QmlDesigner::Internal::ConnectionView);
     if (DesignerSettings::getValue(DesignerSettingsKey::ENABLE_TIMELINEVIEW).toBool()) {
-        auto timelineView = new QmlDesigner::TimelineView;
-        d->viewManager.registerViewTakingOwnership(timelineView);
-        timelineView->registerActions();
+        QString errorMessage;
+        if (Utils::HostOsInfo::canCreateOpenGLContext(&errorMessage)) {
+            auto timelineView = new QmlDesigner::TimelineView;
+            d->viewManager.registerViewTakingOwnership(timelineView);
+            timelineView->registerActions();
+        } else {
+            qCWarning(qmldesignerLog) << "TimelineView disabled because no opengl available";
+        }
     }
 
     d->viewManager.registerFormEditorToolTakingOwnership(new QmlDesigner::SourceTool);
