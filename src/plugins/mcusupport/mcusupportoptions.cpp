@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 BlackBerry Limited. All rights reserved.
-** Contact: BlackBerry (qt@blackberry.com)
+** Copyright (C) 2020 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of Qt Creator.
 **
@@ -61,26 +61,28 @@
 namespace McuSupport {
 namespace Internal {
 
-static const int KIT_VERSION = 5; // Bumps up whenever details in Kit creation change
+static const int KIT_VERSION = 6; // Bumps up whenever details in Kit creation change
 
-static QString packagePathFromSettings(const QString &settingsKey, const QString &defaultPath = {})
+static QString packagePathFromSettings(const QString &settingsKey,
+                                       QSettings::Scope scope = QSettings::UserScope,
+                                       const QString &defaultPath = {})
 {
-    QSettings *s = Core::ICore::settings();
+    QSettings *s = Core::ICore::settings(scope);
     s->beginGroup(Constants::SETTINGS_GROUP);
     const QString path = s->value(QLatin1String(Constants::SETTINGS_KEY_PACKAGE_PREFIX)
                                   + settingsKey, defaultPath).toString();
     s->endGroup();
-    return path;
+    return Utils::FilePath::fromFileInfo(path).toString();
 }
 
 McuPackage::McuPackage(const QString &label, const QString &defaultPath,
                        const QString &detectionPath, const QString &settingsKey)
     : m_label(label)
-    , m_defaultPath(defaultPath)
+    , m_defaultPath(packagePathFromSettings(settingsKey, QSettings::SystemScope, defaultPath))
     , m_detectionPath(detectionPath)
     , m_settingsKey(settingsKey)
 {
-    m_path = packagePathFromSettings(settingsKey, defaultPath);
+    m_path = packagePathFromSettings(settingsKey, QSettings::UserScope, m_defaultPath);
 }
 
 QString McuPackage::path() const
@@ -91,6 +93,11 @@ QString McuPackage::path() const
 QString McuPackage::label() const
 {
     return m_label;
+}
+
+QString McuPackage::defaultPath() const
+{
+    return m_defaultPath;
 }
 
 QString McuPackage::detectionPath() const
@@ -105,6 +112,12 @@ QWidget *McuPackage::widget()
 
     m_widget = new QWidget;
     m_fileChooser = new Utils::PathChooser;
+    m_fileChooser->lineEdit()->setButtonIcon(Utils::FancyLineEdit::Right,
+                                             Utils::Icons::RESET.icon());
+    m_fileChooser->lineEdit()->setButtonVisible(Utils::FancyLineEdit::Right, true);
+    connect(m_fileChooser->lineEdit(), &Utils::FancyLineEdit::rightButtonClicked, [&](){
+        m_fileChooser->setPath(m_defaultPath);
+    });
 
     auto layout = new QGridLayout(m_widget);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -167,12 +180,13 @@ bool McuPackage::addToPath() const
 
 void McuPackage::writeToSettings() const
 {
-    if (m_path.compare(m_defaultPath) == 0)
-        return;
-    QSettings *s = Core::ICore::settings();
-    s->beginGroup(Constants::SETTINGS_GROUP);
-    s->setValue(QLatin1String(Constants::SETTINGS_KEY_PACKAGE_PREFIX) + m_settingsKey, m_path);
-    s->endGroup();
+    const QString key = QLatin1String(Constants::SETTINGS_GROUP) + '/' +
+            QLatin1String(Constants::SETTINGS_KEY_PACKAGE_PREFIX) + m_settingsKey;
+    QSettings *uS = Core::ICore::settings();
+    if (m_path == m_defaultPath)
+        uS->remove(key);
+    else
+        uS->setValue(key, m_path);
 }
 
 void McuPackage::setRelativePathModifier(const QString &path)
@@ -209,6 +223,8 @@ void McuPackage::updateStatus()
         break;
     }
     m_infoLabel->setText(statusText);
+    m_fileChooser->lineEdit()->button(Utils::FancyLineEdit::Right)->setEnabled(
+                m_path != m_defaultPath);
 }
 
 McuToolChainPackage::McuToolChainPackage(const QString &label, const QString &defaultPath,
@@ -320,10 +336,12 @@ QVariant McuToolChainPackage::debuggerId() const
     return debuggerId;
 }
 
-McuTarget::McuTarget(const QString &vendor, const QString &platform, OS os,
+McuTarget::McuTarget(const QVersionNumber &qulVersion, const QString &vendor,
+                     const QString &platform, OS os,
                      const QVector<McuPackage *> &packages,
                      const McuToolChainPackage *toolChainPackage)
-    : m_vendor(vendor)
+    : m_qulVersion(qulVersion)
+    , m_vendor(vendor)
     , m_qulPlatform(platform)
     , m_os(os)
     , m_packages(packages)
@@ -361,6 +379,11 @@ bool McuTarget::isValid() const
     return !Utils::anyOf(packages(), [](McuPackage *package) {
         return package->status() != McuPackage::ValidPackage;
     });
+}
+
+QVersionNumber McuTarget::qulVersion() const
+{
+    return m_qulVersion;
 }
 
 int McuTarget::colorDepth() const
@@ -439,9 +462,9 @@ void McuSupportOptions::deletePackagesAndTargets()
     mcuTargets.clear();
 }
 
-const QVersionNumber &McuSupportOptions::supportedQulVersion()
+const QVersionNumber &McuSupportOptions::minimalQulVersion()
 {
-    static const QVersionNumber v({1, 2});
+    static const QVersionNumber v({1, 3});
     return v;
 }
 
@@ -461,7 +484,8 @@ void McuSupportOptions::setQulDir(const Utils::FilePath &dir)
 Utils::FilePath McuSupportOptions::qulDirFromSettings()
 {
     return Utils::FilePath::fromUserInput(
-                packagePathFromSettings(Constants::SETTINGS_KEY_PACKAGE_QT_FOR_MCUS_SDK));
+                packagePathFromSettings(Constants::SETTINGS_KEY_PACKAGE_QT_FOR_MCUS_SDK,
+                                        QSettings::UserScope));
 }
 
 static Utils::FilePath jomExecutablePath()
@@ -481,7 +505,7 @@ static void setKitProperties(const QString &kitName, ProjectExplorer::Kit *k,
     k->setValue(KIT_MCUTARGET_VENDOR_KEY, mcuTarget->vendor());
     k->setValue(KIT_MCUTARGET_MODEL_KEY, mcuTarget->qulPlatform());
     k->setValue(KIT_MCUTARGET_COLORDEPTH_KEY, mcuTarget->colorDepth());
-    k->setValue(KIT_MCUTARGET_SDKVERSION_KEY, McuSupportOptions::supportedQulVersion().toString());
+    k->setValue(KIT_MCUTARGET_SDKVERSION_KEY, mcuTarget->qulVersion().toString());
     k->setValue(KIT_MCUTARGET_KITVERSION_KEY, KIT_VERSION);
     k->setValue(KIT_MCUTARGET_OS_KEY, static_cast<int>(mcuTarget->os()));
     k->setAutoDetected(true);
@@ -614,7 +638,7 @@ QString McuSupportOptions::kitName(const McuTarget *mcuTarget)
             ? "Desktop"
             : mcuTarget->qulPlatform();
     return QString::fromLatin1("Qt for MCUs %1 - %2%3%4")
-            .arg(supportedQulVersion().toString(), targetName, os, colorDepth);
+            .arg(mcuTarget->qulVersion().toString(), targetName, os, colorDepth);
 }
 
 QList<ProjectExplorer::Kit *> McuSupportOptions::existingKits(const McuTarget *mcuTarget)
@@ -624,8 +648,6 @@ QList<ProjectExplorer::Kit *> McuSupportOptions::existingKits(const McuTarget *m
     return Utils::filtered(KitManager::kits(), [mcuTarget](Kit *kit) {
         return kit->isAutoDetected()
                 && kit->value(KIT_MCUTARGET_KITVERSION_KEY) == KIT_VERSION
-                && kit->value(KIT_MCUTARGET_SDKVERSION_KEY) ==
-                   McuSupportOptions::supportedQulVersion().toString()
                 && (!mcuTarget || (
                         kit->value(KIT_MCUTARGET_VENDOR_KEY) == mcuTarget->vendor()
                         && kit->value(KIT_MCUTARGET_MODEL_KEY) == mcuTarget->qulPlatform()
